@@ -1,26 +1,94 @@
 @import "tailwindcss";
 
+/* ============================================================================
+ * ALIMXL — global styles
+ * Tailwind v4. If the project uses Tailwind v3, replace the first line with:
+ *   @tailwind base; @tailwind components; @tailwind utilities;
+ * Component-specific styles (scrollbars, print layout) live inside the page.
+ * ========================================================================== */
+
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #201f1e;
+  --surface: #f3f2f1;
+  --border: #e1dfde;
+  --accent: #106ebe;
+  --accent-hover: #0c5a9c;
+  color-scheme: light; /* the spreadsheet UI is a light theme; stop browsers forcing dark form controls */
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  height: 100%;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
+  min-height: 100%;
+  margin: 0;
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: "Segoe UI", system-ui, -apple-system, "Noto Sans", "Noto Sans Bengali", "Noto Sans Arabic", Arial, sans-serif;
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior: none; /* no pull-to-refresh / bounce while scrolling the grid */
+}
+
+/* Keyboard users get a clear focus ring; mouse clicks do not. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: rgba(16, 110, 190, 0.25);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+img,
+svg,
+canvas {
+  max-width: 100%;
+}
+
+/* Respect users who ask the OS to reduce motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Print: keep colours (cell fills, chart colours) and use a white page. */
+@media print {
+  html,
+  body {
+    background: #ffffff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 }

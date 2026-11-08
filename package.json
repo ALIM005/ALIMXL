@@ -2,25 +2,42 @@
   "name": "alimxl",
   "version": "0.1.0",
   "private": true,
+  "main": "electron/main.ts",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "electron:dev": "concurrently \"next dev\" \"wait-on http://localhost:3000/alimxl && npx electron .\"",
+    "electron:build": "next build && electron-builder"
   },
   "dependencies": {
-    "next": "16.4.0",
+    "@node-rs/argon2": "^2.2.2",
+    "@types/bcryptjs": "^2.4.6",
+    "bcryptjs": "^3.0.3",
+    "jose": "^6.2.12",
+    "lucide-react": "^1.56.0",
+    "mongodb": "^7.7.0",
+    "mongoose": "^9.11.1",
+    "next": "^16.4.5",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "server-only": "^0.0.1",
+    "xlsx": "^0.18.5",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "concurrently": "^10.0.6",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
     "eslint": "^9",
     "eslint-config-next": "16.4.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5.9.3",
+    "wait-on": "^9.5.1"
   }
 }
