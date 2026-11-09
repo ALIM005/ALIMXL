@@ -1,20 +1,27 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+
 import OfflineSetup from "../components/OfflineSetup";
+import SettingsProvider from "../components/SettingsProvider";
+
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "ALIMXL",
+
   description: "ALIMXL — AWM Excel Studio",
+
   applicationName: "ALIMXL",
+
   icons: {
     icon: [
       {
-        url: "/favicon.ico", // অথবা আপনার ছোট আকারের আইকন পাথ (যেমন: /icon.png)
+        url: "/favicon.ico",
         sizes: "32x32",
       },
     ],
   },
+
   appleWebApp: {
     capable: true,
     title: "ALIMXL",
@@ -25,19 +32,25 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+
   themeColor: "#106ebe",
 };
 
+interface RootLayoutProps {
+  children: ReactNode;
+}
+
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: ReactNode;
-}>) {
+}: Readonly<RootLayoutProps>) {
   return (
     <html lang="en">
       <body>
-        {children}
-        <OfflineSetup />
+        <SettingsProvider>
+          {children}
+
+          <OfflineSetup />
+        </SettingsProvider>
       </body>
     </html>
   );

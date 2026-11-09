@@ -1,13 +1,19 @@
 {
   "name": "alimxl",
-  "version": "0.1.0",
+  "version": "4.0.0",
   "private": true,
   "main": "electron/main.ts",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "lint:strict": "eslint . --max-warnings=0",
+    "check": "npm run typecheck && npm run lint",
+    "check:strict": "npm run typecheck && npm run lint:strict",
+    "verify": "npm run check:strict && npm run build",
     "electron:dev": "concurrently \"next dev\" \"wait-on http://localhost:3000/alimxl && npx electron .\"",
     "electron:build": "next build && electron-builder"
   },

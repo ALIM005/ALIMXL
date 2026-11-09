@@ -1,6 +1,9 @@
 /* eslint-env serviceworker */
+// প্রতিটি নতুন production release-এ এই version বদলাতে হবে।
+const APP_RELEASE = "v4";
 
-const CACHE_NAME = "alimxl-shell-v1";
+const CACHE_PREFIX = "alimxl-shell-";
+const CACHE_NAME = `${CACHE_PREFIX}${APP_RELEASE}`;
 
 const INITIAL_FILES = [
   "/",
@@ -34,9 +37,9 @@ self.addEventListener("activate", (event) => {
 
       await Promise.all(
         names
-          .filter(
+                    .filter(
             (name) =>
-              name.startsWith("alimxl-shell-") &&
+              name.startsWith(CACHE_PREFIX) &&
               name !== CACHE_NAME
           )
           .map((name) => caches.delete(name))

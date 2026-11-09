@@ -8,16 +8,95 @@ export default function OfflineSetup() {
   useEffect(() => {
     // Development mode-এ পুরোনো ক্যাশের ঝামেলা এড়াতে বন্ধ।
 
-    if (process.env.NODE_ENV !== "production") {
-      // Dev মোডে আগে রেজিস্টার হওয়া পুরোনো SW ও cache সরিয়ে ফেলা হচ্ছে
-      if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.getRegistrations().then((regs) => {
-          regs.forEach((r) => r.unregister());
-        });
-      }
-      if ("caches" in window) {
-        caches.keys().then((keys) => keys.forEach((k) => caches.delete(k)));
-      }
+       if (process.env.NODE_ENV !== "production") {
+      const cleanupDevelopmentOffline = async () => {
+        const expectedScope = new URL(
+          "/",
+          window.location.origin
+        ).href;
+
+        const expectedScript = new URL(
+          "/sw.js",
+          window.location.origin
+        ).href;
+
+        if ("serviceWorker" in navigator) {
+          try {
+            const registrations =
+              await navigator.serviceWorker.getRegistrations();
+
+            const appRegistrations = registrations.filter(
+              (item) => {
+                if (item.scope !== expectedScope) {
+                  return false;
+                }
+
+                const workers = [
+                  item.active,
+                  item.waiting,
+                  item.installing,
+                ];
+
+                return workers.some(
+                  (worker) =>
+                    worker !== null &&
+                    new URL(worker.scriptURL).href === expectedScript
+                );
+              }
+            );
+
+            const results = await Promise.allSettled(
+              appRegistrations.map((item) => item.unregister())
+            );
+
+            for (const result of results) {
+              if (result.status === "rejected") {
+                console.warn(
+                  "ALIMXL development SW cleanup failed:",
+                  result.reason
+                );
+              }
+            }
+          } catch (error) {
+            console.warn(
+              "ALIMXL development SW lookup failed:",
+              error
+            );
+          }
+        }
+
+        if ("caches" in window) {
+          try {
+            const names = await window.caches.keys();
+
+            const appCaches = names.filter((name) =>
+              name.startsWith("alimxl-shell-")
+            );
+
+            const results = await Promise.allSettled(
+              appCaches.map((name) =>
+                window.caches.delete(name)
+              )
+            );
+
+            for (const result of results) {
+              if (result.status === "rejected") {
+                console.warn(
+                  "ALIMXL development cache cleanup failed:",
+                  result.reason
+                );
+              }
+            }
+          } catch (error) {
+            console.warn(
+              "ALIMXL development cache lookup failed:",
+              error
+            );
+          }
+        }
+      };
+
+      void cleanupDevelopmentOffline();
       return;
     }
 

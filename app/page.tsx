@@ -197,8 +197,14 @@ type ClipboardMode = "copy" | "cut" | null;
 
 interface ClipboardData {
   mode: ClipboardMode;
+  sourceSheetId: string;
   origin: { row: number; col: number };
-  cells: { row: number; col: number; data: CellData }[];
+  cells: {
+    row: number;
+    col: number;
+    data: CellData;
+    valueAtCopy: EvalResult;
+  }[];
   rows: number;
   cols: number;
 }
@@ -1335,6 +1341,47 @@ function measureTextWidth(text: string, font: string): number {
   return ctx.measureText(text || " ").width;
 }
 
+function rangeTouchesMergedCells(
+  targetSheet: WorkbookSheet,
+  range: SelectionRange
+): boolean {
+  const r1 = Math.min(range.r1, range.r2);
+  const r2 = Math.max(range.r1, range.r2);
+  const c1 = Math.min(range.c1, range.c2);
+  const c2 = Math.max(range.c1, range.c2);
+
+  return Object.entries(targetSheet.cells).some(([key, cell]) => {
+    const position = parseKey(key);
+
+    if (!position) {
+      return false;
+    }
+
+    const rowSpan = cell.rowSpan || 1;
+    const colSpan = cell.colSpan || 1;
+
+    const isMerged =
+      Boolean(cell.mergedInto) ||
+      rowSpan > 1 ||
+      colSpan > 1;
+
+    if (!isMerged) {
+      return false;
+    }
+
+    const endRow = position.row + rowSpan - 1;
+    const endCol = position.col + colSpan - 1;
+
+    return (
+      position.row <= r2 &&
+      endRow >= r1 &&
+      position.col <= c2 &&
+      endCol >= c1
+    );
+  });
+}
+
+
 function normalizeRange(range: string): { r1: number; c1: number; r2: number; c2: number } | null {
   const [a, b] = range.split(":").map((x) => x.trim().toUpperCase());
   const pa = parseKey(a);
@@ -1622,7 +1669,7 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
       const vals = expandRange(node.value);
       return vals.length ? vals[0] : 0;
     }
-       case "neg": {
+    case "neg": {
       const value = evalNode(node.node, getCell, expandRange);
 
       if (
@@ -1637,7 +1684,7 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
     case "bin": {
       const l = evalNode(node.left, getCell, expandRange);
       const r = evalNode(node.right, getCell, expandRange);
-            if (typeof l === "string" && FORMULA_ERRORS.has(l)) {
+      if (typeof l === "string" && FORMULA_ERRORS.has(l)) {
         return l;
       }
 
@@ -1645,7 +1692,7 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
         return r;
       }
       if (node.op === "&") return `${l}${r}`;
-            if (["<", ">", "<=", ">=", "=", "<>"].includes(node.op)) {
+      if (["<", ">", "<=", ">=", "=", "<>"].includes(node.op)) {
         if (typeof l === "string" && FORMULA_ERRORS.has(l)) {
           return l;
         }
@@ -1737,7 +1784,7 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
         return out;
       };
       switch (node.name) {
-                case "SUM": {
+        case "SUM": {
           const values = collect();
 
           const error = values.find(
@@ -1754,7 +1801,7 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
             .map(toNumber)
             .reduce((total, value) => total + value, 0);
         }
-               case "AVERAGE":
+        case "AVERAGE":
         case "MIN":
         case "MAX": {
           const values = collect();
@@ -1798,13 +1845,13 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
             (maximum, value) => Math.max(maximum, value)
           );
         }
-                case "COUNT":
+        case "COUNT":
           return collect().filter(
             (value) =>
               typeof value === "number" &&
               Number.isFinite(value)
           ).length;
-                  case "COUNTIF": {
+        case "COUNTIF": {
           if (node.args.length !== 2) {
             return "#VALUE!";
           }
@@ -1854,7 +1901,7 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
         }
         case "IF": {
           const cond = evalNode(node.args[0], getCell, expandRange);
-                    if (
+          if (
             typeof cond === "string" &&
             FORMULA_ERRORS.has(cond)
           ) {
@@ -1863,7 +1910,7 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
           const ok = typeof cond === "boolean" ? cond : toNumber(cond) !== 0;
           return ok ? (node.args[1] ? evalNode(node.args[1], getCell, expandRange) : "") : node.args[2] ? evalNode(node.args[2], getCell, expandRange) : "";
         }
-                case "ROUND": {
+        case "ROUND": {
           if (node.args.length < 1 || node.args.length > 2) {
             return "#VALUE!";
           }
@@ -1950,7 +1997,7 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
 
           return Object.is(result, -0) ? 0 : result;
         }
-                case "ABS": {
+        case "ABS": {
           if (node.args.length !== 1) {
             return "#VALUE!";
           }
@@ -2015,7 +2062,7 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
           return String(evalNode(node.args[0], getCell, expandRange)).length;
         case "COUNTA":
           return collect().filter((v) => v !== "").length;
-               case "PRODUCT": {
+        case "PRODUCT": {
           const values = collect();
 
           const error = values.find(
@@ -2047,7 +2094,7 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
             ? result
             : "#VALUE!";
         }
-               case "STDEV":
+        case "STDEV":
         case "STDEVP":
         case "VAR":
         case "VARP": {
@@ -2139,7 +2186,7 @@ function getCellValueInSheet(
   key: string,
   visiting: Set<string> = new Set()
 ): EvalResult {
-    const cell = targetSheet.cells[key];
+  const cell = targetSheet.cells[key];
   const raw = cell?.value ?? "";
 
   if (raw === "") {
@@ -2943,7 +2990,7 @@ export default function ExcelStudioPage() {
 
   const [openToolbarMenu, setOpenToolbarMenu] = useState<"new" | "open" | "save" | null>(null);
   const [recentFiles, setRecentFiles] = useState<RecentFileEntry[]>([]);
-    useEffect(() => {
+  useEffect(() => {
     saveRecentFilesToStorage(recentFiles);
   }, [recentFiles]);
   const [recentFilesModuleOnly, setRecentFilesModuleOnly] = useState(true);
@@ -3311,12 +3358,18 @@ export default function ExcelStudioPage() {
       })
     );
   }, [activeSheetIndex]);
-
+  const focusActiveGridCell = useCallback(() => {
+    requestAnimationFrame(() => {
+      cellRefs.current.get(activeCell)?.focus({
+        preventScroll: true,
+      });
+    });
+  }, [activeCell]);
   const getRawValue = useCallback((key: string) => sheet.cells[key]?.value ?? "", [sheet.cells]);
 
   const getCellValue = useCallback(
     (key: string, visiting: Set<string> = new Set()): EvalResult => {
-            const cell = sheet.cells[key];
+      const cell = sheet.cells[key];
       const raw = cell?.value ?? "";
 
       if (raw === "") {
@@ -3501,7 +3554,25 @@ export default function ExcelStudioPage() {
 
   const activeCellStyle = sheet.cells[activeCell]?.style || {};
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
+  useEffect(() => {
+    if (showHomeScreen || showLoadDialog || editingKey) {
+      return;
+    }
 
+    const frame = requestAnimationFrame(() => {
+      cellRefs.current.get(activeCell)?.focus({
+        preventScroll: true,
+      });
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [
+    showHomeScreen,
+    showLoadDialog,
+    sheet.id,
+    activeCell,
+    editingKey,
+  ]);
   useLayoutEffect(() => {
     if (!editingKey) return;
     const el = editorRef.current;
@@ -3550,7 +3621,7 @@ export default function ExcelStudioPage() {
       return String(rawValue);
     }
 
-       const numeric =
+    const numeric =
       typeof rawValue === "number" ? rawValue : NaN;
     if (Number.isFinite(numeric)) {
       if (numberFormat === "currency") {
@@ -3914,7 +3985,8 @@ export default function ExcelStudioPage() {
     if (editingKey === key) {
       if (e.key === "Enter") {
         e.preventDefault();
-        commitEdit("down");
+        e.stopPropagation();
+        commitEdit(e.shiftKey ? "up" : "down");
       } else if (e.key === "Tab") {
         e.preventDefault();
         commitEdit("right");
@@ -3936,9 +4008,18 @@ export default function ExcelStudioPage() {
       setShowFindReplace(true);
       return;
     }
-    if (e.key === "Enter" || e.key === "F2") {
+    if (e.key === "Enter") {
       e.preventDefault();
+      e.stopPropagation();
+
+      commitEdit(e.shiftKey ? "up" : "down");
+      return;
+    } else if (e.key === "F2") {
+      e.preventDefault();
+      e.stopPropagation();
+
       startEditing(key);
+      return;
     } else if (e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault();
       updateSheet((s) => {
@@ -4389,10 +4470,27 @@ export default function ExcelStudioPage() {
     for (let r = r1; r <= r2; r++) {
       for (let c = c1; c <= c2; c++) {
         const k = cellKey(r, c);
-        if (sheet.cells[k]) collected.push({ row: r - r1, col: c - c1, data: { ...sheet.cells[k] } });
+        if (sheet.cells[k]) {
+          collected.push({
+            row: r - r1,
+            col: c - c1,
+            data: structuredClone(sheet.cells[k]),
+            valueAtCopy: getCellValue(k),
+          });
+        }
       }
     }
-    setClipboard({ mode, origin: { row: r1, col: c1 }, cells: collected, rows: r2 - r1 + 1, cols: c2 - c1 + 1 });
+    setClipboard({
+      mode,
+      sourceSheetId: sheet.id,
+      origin: {
+        row: r1,
+        col: c1,
+      },
+      cells: structuredClone(collected),
+      rows: r2 - r1 + 1,
+      cols: c2 - c1 + 1,
+    });
     showToast(mode === "cut" ? "Cut completed." : "Copy completed.");
   };
 
@@ -4405,6 +4503,26 @@ export default function ExcelStudioPage() {
     // শেষে একটা খালি লাইন থাকলে (কপি করার সময় প্রায়ই থাকে) সেটা বাদ দেওয়া হলো
     const rows = lines[lines.length - 1] === "" ? lines.slice(0, -1) : lines;
     if (rows.length === 0) return;
+
+    const pastedColumnCount = rows.reduce(
+      (maximum, rowText) =>
+        Math.max(maximum, rowText.split("\t").length),
+      1
+    );
+
+    const destinationRange: SelectionRange = {
+      r1: activePos.row,
+      c1: activePos.col,
+      r2: activePos.row + rows.length - 1,
+      c2: activePos.col + pastedColumnCount - 1,
+    };
+
+    if (rangeTouchesMergedCells(sheet, destinationRange)) {
+      showToast(
+        "Merged cell-এর ওপর text Paste বন্ধ করা হয়েছে। আগে Unmerge করুন বা অন্য রেঞ্জ বেছে নিন।"
+      );
+      return;
+    }
 
     updateSheet((s) => {
       const next = { ...s.cells };
@@ -4442,6 +4560,7 @@ export default function ExcelStudioPage() {
         const text = await navigator.clipboard.readText();
         if (text && text.trim() !== "") {
           pasteExternalText(text);
+          focusActiveGridCell();
           return;
         }
       } catch {
@@ -4451,28 +4570,220 @@ export default function ExcelStudioPage() {
       showToast("Clipboard is empty.");
       return;
     }
-    updateSheet((s) => {
-      const next = { ...s.cells };
-      clipboard.cells.forEach(({ row, col, data }) => {
-        const targetRow = activePos.row + row;
-        const targetCol = activePos.col + col;
-        if (targetRow < s.gridRows && targetCol < s.gridCols) {
-          next[cellKey(targetRow, targetCol)] = { ...data };
-        }
-      });
-      if (clipboard.mode === "cut") {
-        for (let r = 0; r < clipboard.rows; r++) {
-          for (let c = 0; c < clipboard.cols; c++) {
-            const source = cellKey(clipboard.origin.row + r, clipboard.origin.col + c);
-            const target = cellKey(activePos.row + r, activePos.col + c);
-            if (source !== target) delete next[source];
+
+
+    const copied = clipboard;
+    const destinationRow = activePos.row;
+    const destinationCol = activePos.col;
+    const destinationSheetId = sheet.id;
+
+    const currentSheets = sheetsRef.current;
+
+    const destinationIndex = currentSheets.findIndex(
+      (item) => item.id === destinationSheetId
+    );
+
+    const sourceIndex = currentSheets.findIndex(
+      (item) => item.id === copied.sourceSheetId
+    );
+
+    if (destinationIndex < 0) {
+      showToast("যে শিটে Paste করবেন সেটি পাওয়া যায়নি।");
+      return;
+    }
+
+    if (copied.mode === "cut" && sourceIndex < 0) {
+      showToast(
+        "Cut করা মূল শিটটি পাওয়া যায়নি। আবার ডেটা নির্বাচন করুন।"
+      );
+      return;
+    }
+
+    const destinationSheet = currentSheets[destinationIndex];
+
+    if (
+      destinationRow < 0 ||
+      destinationCol < 0 ||
+      destinationRow + copied.rows > destinationSheet.gridRows ||
+      destinationCol + copied.cols > destinationSheet.gridCols
+    ) {
+      showToast(
+        "পুরো ডেটা বসানোর মতো জায়গা নেই। অন্য সেল বেছে নিন বা গ্রিড বড় করুন।"
+      );
+      focusActiveGridCell();
+      return;
+    }
+
+    if (copied.mode === "cut") {
+      const sourceSheet = currentSheets[sourceIndex];
+
+      if (
+        !sourceSheet ||
+        copied.origin.row < 0 ||
+        copied.origin.col < 0 ||
+        copied.origin.row + copied.rows > sourceSheet.gridRows ||
+        copied.origin.col + copied.cols > sourceSheet.gridCols
+      ) {
+        setClipboard(null);
+
+        showToast(
+          "Cut করা রেঞ্জের অবস্থান বদলেছে। আবার নির্বাচন করে Cut করুন।"
+        );
+
+        focusActiveGridCell();
+        return;
+      }
+
+      const originalCells = new Map<string, CellData>();
+
+      for (const item of copied.cells) {
+        originalCells.set(
+          `${item.row},${item.col}`,
+          item.data
+        );
+      }
+
+      let sourceChanged = false;
+
+      for (
+        let row = 0;
+        row < copied.rows && !sourceChanged;
+        row++
+      ) {
+        for (let col = 0; col < copied.cols; col++) {
+          const sourceKey = cellKey(
+            copied.origin.row + row,
+            copied.origin.col + col
+          );
+
+          const currentCell = sourceSheet.cells[sourceKey];
+
+          const originalCell = originalCells.get(
+            `${row},${col}`
+          );
+
+          if (
+            JSON.stringify(currentCell) !==
+            JSON.stringify(originalCell)
+          ) {
+            sourceChanged = true;
+            break;
           }
         }
       }
-      return { cells: next };
-    });
+
+      if (sourceChanged) {
+        setClipboard(null);
+
+        showToast(
+          "Cut করার পরে মূল ডেটা বদলেছে। নিরাপত্তার জন্য Paste বন্ধ করা হয়েছে। আবার Cut করুন।"
+        );
+
+        focusActiveGridCell();
+        return;
+      }
+    }
+
+    const clipboardContainsMerge = copied.cells.some(
+      ({ data }) =>
+        Boolean(data.mergedInto) ||
+        (data.rowSpan || 1) > 1 ||
+        (data.colSpan || 1) > 1
+    );
+
+    const sourceTouchesMerge =
+      sourceIndex >= 0 &&
+      rangeTouchesMergedCells(currentSheets[sourceIndex], {
+        r1: copied.origin.row,
+        c1: copied.origin.col,
+        r2: copied.origin.row + copied.rows - 1,
+        c2: copied.origin.col + copied.cols - 1,
+      });
+
+    const destinationTouchesMerge = rangeTouchesMergedCells(
+      destinationSheet,
+      {
+        r1: destinationRow,
+        c1: destinationCol,
+        r2: destinationRow + copied.rows - 1,
+        c2: destinationCol + copied.cols - 1,
+      }
+    );
+
+    if (
+      clipboardContainsMerge ||
+      sourceTouchesMerge ||
+      destinationTouchesMerge
+    ) {
+      showToast(
+        "Merged cell থাকা রেঞ্জে সাধারণ Paste এখন সমর্থিত নয়। আগে Unmerge করুন বা অন্য রেঞ্জ বেছে নিন।"
+      );
+
+      focusActiveGridCell();
+      return;
+    }
+
+    const copiedCells = structuredClone(copied.cells);
+    const nextSheets = [...currentSheets];
+
+    if (copied.mode === "cut") {
+      const sourceSheet = nextSheets[sourceIndex];
+      const sourceCells = { ...sourceSheet.cells };
+
+      for (let row = 0; row < copied.rows; row++) {
+        for (let col = 0; col < copied.cols; col++) {
+          delete sourceCells[
+            cellKey(
+              copied.origin.row + row,
+              copied.origin.col + col
+            )
+          ];
+        }
+      }
+
+      nextSheets[sourceIndex] = {
+        ...sourceSheet,
+        cells: sourceCells,
+      };
+    }
+
+    // একই শিট হলে source সরানোর পরের cells থেকেই শুরু করি।
+    const targetSheet = nextSheets[destinationIndex];
+    const targetCells = { ...targetSheet.cells };
+
+    for (let row = 0; row < copied.rows; row++) {
+      for (let col = 0; col < copied.cols; col++) {
+        delete targetCells[
+          cellKey(
+            destinationRow + row,
+            destinationCol + col
+          )
+        ];
+      }
+    }
+
+    for (const { row, col, data } of copiedCells) {
+      targetCells[
+        cellKey(
+          destinationRow + row,
+          destinationCol + col
+        )
+      ] = data;
+    }
+
+    nextSheets[destinationIndex] = {
+      ...targetSheet,
+      cells: targetCells,
+    };
+
+    // দুই শিটের পরিবর্তন একই Undo step-এ রাখি।
+    setSheets(nextSheets);
+
+
+
     if (clipboard.mode === "cut") setClipboard(null);
     showToast("Paste completed.");
+    focusActiveGridCell();
   };
 
   const addRow = () => {
@@ -4948,33 +5259,151 @@ export default function ExcelStudioPage() {
     showToast("Direct formatting cleared.");
   }, [updateSheet, selectionCells, showToast]);
 
-  const doPasteSpecial = useCallback((mode: "values" | "formatting" | "formulas") => {
-    if (!clipboard) {
-      showToast("Clipboard is empty.");
-      return;
-    }
-    updateSheet((s) => {
-      const next = { ...s.cells };
-      clipboard.cells.forEach(({ row, col, data }) => {
-        const targetRow = activePos.row + row;
-        const targetCol = activePos.col + col;
-        if (targetRow >= s.gridRows || targetCol >= s.gridCols) return;
-        const key = cellKey(targetRow, targetCol);
-        const existing = next[key] || { value: "" };
-        if (mode === "formatting") {
-          next[key] = { ...existing, style: data.style };
-        } else if (mode === "formulas") {
-          next[key] = { ...existing, value: data.value };
-        } else {
-          const originalKey = cellKey(clipboard.origin.row + row, clipboard.origin.col + col);
-          const evaluated = getCellValue(originalKey);
-          next[key] = { ...existing, value: typeof evaluated === "number" ? String(evaluated) : String(evaluated ?? "") };
+  const doPasteSpecial = useCallback(
+    (mode: "values" | "formatting" | "formulas") => {
+      if (!clipboard) {
+        showToast("আগে অ্যাপের ভেতর থেকে Copy করুন।");
+        return;
+      }
+
+      if (clipboard.mode !== "copy") {
+        showToast(
+          "Paste Special-এর জন্য Copy ব্যবহার করুন। Cut-এর জন্য সাধারণ Paste ব্যবহার করুন।"
+        );
+        return;
+      }
+
+      const copied = clipboard;
+
+      const destinationRange: SelectionRange = {
+        r1: activePos.row,
+        c1: activePos.col,
+        r2: activePos.row + copied.rows - 1,
+        c2: activePos.col + copied.cols - 1,
+      };
+
+      if (
+        destinationRange.r1 < 0 ||
+        destinationRange.c1 < 0 ||
+        destinationRange.r2 >= sheet.gridRows ||
+        destinationRange.c2 >= sheet.gridCols
+      ) {
+        showToast("পুরো রেঞ্জ বসানোর মতো জায়গা নেই।");
+        return;
+      }
+
+      const hasMergedSource = copied.cells.some(
+        ({ data }) =>
+          Boolean(data.mergedInto) ||
+          (data.rowSpan || 1) > 1 ||
+          (data.colSpan || 1) > 1
+      );
+
+      if (
+        hasMergedSource ||
+        rangeTouchesMergedCells(sheet, destinationRange)
+      ) {
+        showToast(
+          "Merged cell-এর সঙ্গে Paste Special এখন সমর্থিত নয়।"
+        );
+        return;
+      }
+
+      const copiedCells = structuredClone(copied.cells);
+
+      const cellMap = new Map<
+        string,
+        (typeof copiedCells)[number]
+      >();
+
+      for (const item of copiedCells) {
+        cellMap.set(`${item.row},${item.col}`, item);
+      }
+
+      updateSheet((currentSheet) => {
+        const next = { ...currentSheet.cells };
+
+        for (let row = 0; row < copied.rows; row++) {
+          for (let col = 0; col < copied.cols; col++) {
+            const targetKey = cellKey(
+              activePos.row + row,
+              activePos.col + col
+            );
+
+            const source = cellMap.get(`${row},${col}`);
+
+            const existing = next[targetKey] || {
+              value: "",
+            };
+
+            if (mode === "formatting") {
+              next[targetKey] = {
+                ...existing,
+                style: source?.data.style,
+              };
+              continue;
+            }
+
+            if (mode === "formulas") {
+              const sourceIsText =
+                source?.data.style?.numberFormat === "text";
+
+              next[targetKey] = {
+                ...existing,
+                value: source?.data.value ?? "",
+                style: {
+                  ...existing.style,
+                  numberFormat: sourceIsText
+                    ? "text"
+                    : existing.style?.numberFormat === "text"
+                      ? "general"
+                      : existing.style?.numberFormat,
+                },
+              };
+              continue;
+            }
+
+            const value = source?.valueAtCopy ?? "";
+
+            const textValue =
+              typeof value === "boolean"
+                ? value
+                  ? "TRUE"
+                  : "FALSE"
+                : String(value);
+
+            next[targetKey] = {
+              ...existing,
+              value: textValue,
+              style: {
+                ...existing.style,
+                numberFormat:
+                  typeof value === "number"
+                    ? existing.style?.numberFormat === "text"
+                      ? "general"
+                      : existing.style?.numberFormat
+                    : "text",
+              },
+            };
+          }
         }
+
+        return { cells: next };
       });
-      return { cells: next };
-    });
-    showToast(`Paste special (${mode}) applied.`);
-  }, [clipboard, activePos, updateSheet, getCellValue, showToast]);
+
+      showToast(`Paste Special (${mode}) সম্পন্ন হয়েছে।`);
+      focusActiveGridCell();
+    },
+    [
+      clipboard,
+      activePos,
+      sheet,
+      updateSheet,
+      showToast,
+      focusActiveGridCell,
+    ]
+  );
+
 
   const insertSparkline = useCallback(() => {
     const range = window.prompt("Enter data range for sparkline (e.g. A1:A6):", selectedRangeText);
@@ -5143,27 +5572,112 @@ export default function ExcelStudioPage() {
   const topSpacerHeight = virtualizeRows ? Math.max(0, visibleRowRange.start - sheet.frozenRows) * DEFAULT_ROW_HEIGHT : 0;
   const bottomSpacerHeight = virtualizeRows ? Math.max(0, sheet.gridRows - 1 - visibleRowRange.end) * DEFAULT_ROW_HEIGHT : 0;
 
-  const handleExportCsv = useCallback(() => {
-    const rows: string[] = [];
-    for (let r = 0; r < sheet.gridRows; r++) {
-      const row: string[] = [];
-      for (let c = 0; c < sheet.gridCols; c++) {
-        const display = getDisplayValue(cellKey(r, c));
-        const needsQuotes = /[",\n]/.test(display);
-        row.push(needsQuotes ? `"${display.replace(/"/g, '""')}"` : display);
+  const handleExportCsv = useCallback(async (): Promise<void> => {
+    try {
+      let lastRow = -1;
+      let lastCol = -1;
+
+      for (const [key, cell] of Object.entries(sheet.cells)) {
+        if (cell.mergedInto || cell.value === "") {
+          continue;
+        }
+
+        const position = parseKey(key);
+
+        if (
+          !position ||
+          position.row < 0 ||
+          position.col < 0 ||
+          position.row >= sheet.gridRows ||
+          position.col >= sheet.gridCols
+        ) {
+          throw new Error(`সেলের ঠিকানা সঠিক নয়: ${key}`);
+        }
+
+        lastRow = Math.max(lastRow, position.row);
+        lastCol = Math.max(lastCol, position.col);
       }
-      rows.push(row.join(","));
+
+      if (lastRow < 0 || lastCol < 0) {
+        showToast("CSV export করার মতো সেল ডেটা নেই।");
+        return;
+      }
+
+      const exportCellCount = (lastRow + 1) * (lastCol + 1);
+      const maximumExportCells = 1_000_000;
+
+      if (exportCellCount > maximumExportCells) {
+        showToast(
+          "CSV রেঞ্জ অতিরিক্ত বড়। ডেটা ছোট রেঞ্জে সাজান বা JSON backup ব্যবহার করুন।"
+        );
+        return;
+      }
+
+      const escapeCsvValue = (value: string): string =>
+        /[",\r\n]/.test(value)
+          ? `"${value.replace(/"/g, '""')}"`
+          : value;
+
+      const rows: string[] = [];
+
+      for (let row = 0; row <= lastRow; row++) {
+        const values: string[] = [];
+
+        for (let col = 0; col <= lastCol; col++) {
+          const key = cellKey(row, col);
+          const cell = sheet.cells[key];
+
+          const display = cell?.mergedInto
+            ? ""
+            : getDisplayValue(key);
+
+          values.push(escapeCsvValue(display));
+        }
+
+        rows.push(values.join(","));
+      }
+
+      const csv = "\uFEFF" + rows.join("\r\n");
+
+      const result = await saveDeviceFile({
+        suggestedName: `${sheet.name.trim() || "sheet"}.csv`,
+        blob: new Blob([csv], {
+          type: "text/csv;charset=utf-8",
+        }),
+        types: [
+          {
+            description: "CSV File",
+            accept: {
+              "text/csv": [".csv"],
+            },
+          },
+        ],
+      });
+
+      if (result.status === "cancelled") {
+        showToast("CSV export বাতিল করা হয়েছে।");
+        return;
+      }
+
+      if (result.status === "saved") {
+        showToast(`CSV সেভ হয়েছে: ${result.fileName}`);
+      } else {
+        showToast(
+          "CSV ডাউনলোড শুরু হয়েছে। Downloads তালিকা পরীক্ষা করুন।"
+        );
+      }
+    } catch (error) {
+      console.error("ALIMXL CSV export failed:", error);
+
+      const message =
+        error instanceof Error
+          ? `${error.name}: ${error.message}`
+          : String(error);
+
+      window.alert(`CSV export হয়নি।\n\n${message}`);
     }
-    const csv = rows.join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${(sheet.name || "sheet").replace(/[^a-z0-9_-]/gi, "_")}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast("CSV exported.");
   }, [sheet, getDisplayValue, showToast]);
+
 
   // সিলেক্ট করা ক্যারেক্টারটি active cell-এ বসানো হবে, এবং Recent তালিকায় যোগ হবে
   const insertCharacterToCell = useCallback((ch: string) => {
@@ -5744,7 +6258,7 @@ export default function ExcelStudioPage() {
     const estimateValue = (x: number) => {
       const tempCells = { ...sheet.cells, [changeKey]: { ...(sheet.cells[changeKey] || { value: "" }), value: String(x) } };
       const getTempCellValue = (key: string, visiting = new Set<string>()): EvalResult => {
-                const cell = tempCells[key];
+        const cell = tempCells[key];
         const raw = cell?.value ?? "";
 
         if (raw === "") {
@@ -5882,7 +6396,7 @@ export default function ExcelStudioPage() {
   };
 
 
-    const recordRecentFile = useCallback(
+  const recordRecentFile = useCallback(
     (name: string, id?: string) => {
       const savedId = id?.trim();
 
@@ -5989,7 +6503,7 @@ export default function ExcelStudioPage() {
         showToast("Unable to open the selected workbook.");
       }
     },
-      [showToast, replaceWorkbookSheets]
+    [showToast, replaceWorkbookSheets]
   );
 
 
@@ -6024,7 +6538,7 @@ export default function ExcelStudioPage() {
     setSelection({ r1: 0, c1: 0, r2: 0, c2: 0 });
     setShowTemplatesDialog(null);
     showToast(`New workbook created from "${tpl.name}".`);
-   }, [showToast, replaceWorkbookSheets]);
+  }, [showToast, replaceWorkbookSheets]);
 
   const handleApplyBuiltInTemplate = useCallback(
     (tpl: (typeof BUILT_IN_TEMPLATES)[number]) => {
@@ -6047,7 +6561,7 @@ export default function ExcelStudioPage() {
   }, []);
 
   const onFileSelected = async (file: File) => {
-        if (file.name.toLowerCase().endsWith(".json")) {
+    if (file.name.toLowerCase().endsWith(".json")) {
       if (localSaveInProgressRef.current) {
         throw new Error("সেভ সম্পন্ন হওয়া পর্যন্ত অপেক্ষা করুন।");
       }
@@ -6215,13 +6729,13 @@ export default function ExcelStudioPage() {
     try {
       const XLSX = await import("xlsx");
       const buf = await file.arrayBuffer();
-           const wb = XLSX.read(buf, {
+      const wb = XLSX.read(buf, {
         type: "array",
         cellFormula: true,
         cellNF: true,
       });
 
-     
+
       const importedSheets: WorkbookSheet[] = wb.SheetNames.map(
         (name: string) => {
           const ws = wb.Sheets[name];
@@ -6348,7 +6862,7 @@ export default function ExcelStudioPage() {
       recordRecentFile(file.name.replace(/\.[^/.]+$/, ""));
 
       showToast("Workbook loaded.");
-       } catch (error) {
+    } catch (error) {
       console.error("ALIMXL XLSX import failed:", error);
 
       throw error instanceof Error
@@ -6438,7 +6952,6 @@ export default function ExcelStudioPage() {
   };
 
 
-  
   const handleExportAlimxl = async (): Promise<void> => {
     try {
       const XLSX = await import("xlsx");
@@ -6586,8 +7099,8 @@ export default function ExcelStudioPage() {
   };
 
 
-    const handleExportJsonBackup = async (): Promise<void> => {
-          console.info("ALIMXL JSON backup: handler started");
+  const handleExportJsonBackup = async (): Promise<void> => {
+    console.info("ALIMXL JSON backup: handler started");
     try {
       const snapshot = buildWorkbookSnapshot();
 
@@ -6629,7 +7142,7 @@ export default function ExcelStudioPage() {
       showToast(
         "ব্যাকআপ ডাউনলোড শুরু হয়েছে। ব্রাউজারের Downloads তালিকা পরীক্ষা করুন।"
       );
-       } catch (error) {
+    } catch (error) {
       console.error("ALIMXL JSON backup export failed:", error);
 
       const details =
@@ -6641,78 +7154,191 @@ export default function ExcelStudioPage() {
         `JSON backup সেভ ব্যর্থ হয়েছে।\n\n${details}`
       );
 
+
       showToast("ব্যাকআপ সেভ হয়নি। দেখানো error-টি পরীক্ষা করুন।");
     }
   };
-       
 
-  const handleOpenRemoteFile = useCallback(async () => {
+
+  const handleOpenRemoteFile = useCallback(async (): Promise<void> => {
     const url = window.prompt("Enter the URL of the remote file to open:");
-    if (!url) return;
-    if (!/^https?:\/\//i.test(url.trim())) {
-      showToast("Only http(s) URLs are allowed.");
-      return;
-    }
-    try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("Remote file request failed");
-      const text = await res.text();
-      if (url.toLowerCase().endsWith(".csv")) {
-        importCsvText(text);
-      } else {
-        try {
-          const parsed = JSON.parse(text) as WorkbookSnapshot;
-                    replaceWorkbookSheets(
-            parsed.sheets && parsed.sheets.length
-              ? parsed.sheets
-              : [createSheet("Sheet 1")]
-          );
-          setActiveSheetIndex(0);
-          setWorkbookName(parsed.name || "Remote Workbook");
-          setWorkbookId(parsed.id || null);
-        } catch {
-          importCsvText(text);
-        }
-      }
-      showToast("Remote file opened.");
-    } catch {
-      showToast("Unable to open the remote file. Check the URL and try again.");
-    }
-  }, [importCsvText, showToast]);
 
-  const handleSaveRemoteFile = useCallback(async () => {
-    const url = window.prompt("Enter the URL to save this workbook to:");
-    if (!url) return;
-    if (!/^https?:\/\//i.test(url.trim())) {
-      showToast("Only http(s) URLs are allowed.");
+    if (!url) {
       return;
     }
+
+    const trimmedUrl = url.trim();
+
+    if (!/^https?:\/\//i.test(trimmedUrl)) {
+      showToast("শুধু http বা https URL ব্যবহার করা যাবে।");
+      return;
+    }
+
     try {
-      const res = await fetch(url, {
+      const response = await fetch(trimmedUrl);
+
+      if (!response.ok) {
+        throw new Error(
+          `Remote file request failed with status ${response.status}`
+        );
+      }
+
+      const text = await response.text();
+
+      const isCsv =
+        trimmedUrl.toLowerCase().endsWith(".csv") ||
+        response.headers
+          .get("content-type")
+          ?.toLowerCase()
+          .includes("text/csv");
+
+      if (isCsv) {
+        importCsvText(text);
+        showToast("Remote CSV file opened.");
+        return;
+      }
+
+      try {
+        const parsed = JSON.parse(text) as WorkbookSnapshot;
+
+        const sheets = parsed.sheets?.length
+          ? parsed.sheets
+          : [createSheet("Sheet 1")];
+
+        replaceWorkbookSheets(sheets);
+        setActiveSheetIndex(0);
+        setWorkbookName(parsed.name || "Remote Workbook");
+        setWorkbookId(parsed.id || null);
+
+        showToast("Remote workbook opened.");
+      } catch {
+        importCsvText(text);
+        showToast("Remote CSV file opened.");
+      }
+    } catch (error) {
+      console.error("ALIMXL remote open failed:", error);
+
+      const message =
+        error instanceof Error
+          ? `${error.name}: ${error.message}`
+          : String(error);
+
+      window.alert(`Remote file খোলা যায়নি।\n\n${message}`);
+      showToast("Remote file খোলা যায়নি। দেখানো error-টি পরীক্ষা করুন।");
+    }
+  }, [importCsvText, showToast, replaceWorkbookSheets]);
+
+
+  const handleSaveRemoteFile = useCallback(async (): Promise<void> => {
+    const url = window.prompt("Enter the URL to save this workbook to:");
+
+    if (!url) {
+      return;
+    }
+
+    const trimmedUrl = url.trim();
+
+    if (!/^https?:\/\//i.test(trimmedUrl)) {
+      showToast("শুধু http বা https URL ব্যবহার করা যাবে।");
+      return;
+    }
+
+    try {
+      const snapshot = buildWorkbookSnapshot();
+
+      const response = await fetch(trimmedUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildWorkbookSnapshot()),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(snapshot),
       });
-      if (!res.ok) throw new Error("Remote save failed");
+
+      if (!response.ok) {
+        throw new Error(
+          `Remote save failed with status ${response.status}`
+        );
+      }
+
       showToast("Workbook saved to the remote location.");
-    } catch {
-      showToast("Unable to save to the remote location. Check the URL and try again.");
+    } catch (error) {
+      console.error("ALIMXL remote save failed:", error);
+
+      const message =
+        error instanceof Error
+          ? `${error.name}: ${error.message}`
+          : String(error);
+
+      window.alert(`Remote save হয়নি।\n\n${message}`);
+      showToast("Remote save হয়নি। দেখানো error-টি পরীক্ষা করুন।");
     }
   }, [buildWorkbookSnapshot, showToast]);
 
-  const handleSaveAsTemplate = useCallback(() => {
-    const name = window.prompt("Template name:", workbookName || "Untitled Template");
-    if (!name) return;
-    const entry: WorkbookTemplate = { id: `tpl-${Date.now()}`, name, createdAt: new Date().toISOString(), snapshot: buildWorkbookSnapshot() };
-    setTemplates((prev) => {
-      const next = [entry, ...prev.filter((t) => t.name !== name)];
-      saveTemplatesToStorage(next);
-      return next;
-    });
-    showToast(`Template "${name}" saved.`);
-  }, [workbookName, buildWorkbookSnapshot, showToast]);
+  const handleSaveAsTemplate = useCallback((): void => {
+    const name = window.prompt(
+      "Template name:",
+      workbookName || "Untitled Template"
+    );
 
-   const openLoadDialog = () => {
+    if (!name) {
+      showToast("Template save বাতিল করা হয়েছে।");
+      return;
+    }
+
+    const trimmedName = name.trim();
+
+    if (!trimmedName) {
+      showToast("Template name দিন।");
+      return;
+    }
+
+    const duplicate = templates.some(
+      (template) =>
+        template.name.toLowerCase() === trimmedName.toLowerCase()
+    );
+
+    if (duplicate) {
+      showToast("এই নামে template আগেই আছে।");
+      return;
+    }
+
+    try {
+      const snapshot = buildWorkbookSnapshot();
+
+      const entry: WorkbookTemplate = {
+        id: `tpl-${Date.now()}`,
+        name: trimmedName,
+        createdAt: new Date().toISOString(),
+        snapshot,
+      };
+
+      const next = [entry, ...templates];
+
+      saveTemplatesToStorage(next);
+
+      setTemplates(next);
+
+      showToast(`Template "${trimmedName}" saved.`);
+    } catch (error) {
+      console.error("ALIMXL template save failed:", error);
+
+      const message =
+        error instanceof Error
+          ? `${error.name}: ${error.message}`
+          : String(error);
+
+      window.alert(`Template save হয়নি।\n\n${message}`);
+      showToast("Template save হয়নি। দেখানো error-টি পরীক্ষা করুন।");
+    }
+  }, [
+    workbookName,
+    templates,
+    buildWorkbookSnapshot,
+    showToast,
+  ]);
+
+
+  const openLoadDialog = () => {
     if (localSaveInProgressRef.current) {
       showToast("সেভ সম্পন্ন হওয়া পর্যন্ত অপেক্ষা করুন।");
       return;
@@ -6724,9 +7350,11 @@ export default function ExcelStudioPage() {
     setShowLoadDialog(true);
   };
 
-    const loadWorkbookById = async (id: string): Promise<void> => {
+
+  const loadWorkbookById = async (id: string): Promise<void> => {
     if (localSaveInProgressRef.current) {
-      throw new Error("সেভ সম্পন্ন হওয়া পর্যন্ত অপেক্ষা করুন।");
+      showToast("সেভ সম্পন্ন হওয়া পর্যন্ত অপেক্ষা করুন।");
+      return;
     }
 
     const confirmed = window.confirm(
@@ -6737,41 +7365,62 @@ export default function ExcelStudioPage() {
       return;
     }
 
-    const doc = await getLocalWorkbook<WorkbookSnapshot>(id);
+    try {
+      const doc = await getLocalWorkbook<WorkbookSnapshot>(id);
 
-    if (!doc) {
-      throw new Error("ওয়ার্কবুকটি পাওয়া যায়নি।");
+      if (!doc) {
+        throw new Error("ওয়ার্কবুকটি পাওয়া যায়নি।");
+      }
+
+      setEditingKey(null);
+      setEditValue("");
+      setClipboard(null);
+      setFormatPainter(null);
+
+      setWorkbookId(doc.id);
+      setWorkbookName(doc.name);
+      setPageSize(doc.pageSize);
+      setOrientation(doc.orientation);
+
+      setActiveSheetIndex(
+        Math.min(
+          Math.max(doc.activeSheetIndex, 0),
+          doc.sheets.length - 1
+        )
+      );
+
+      replaceWorkbookSheets(doc.sheets);
+
+      setActiveCell("A1");
+      setSelection({
+        r1: 0,
+        c1: 0,
+        r2: 0,
+        c2: 0,
+      });
+
+      setSaveState("idle");
+      setShowHomeScreen(false);
+      setShowLoadDialog(false);
+
+      void refreshRecentFromDevice();
+
+      showToast(`ওয়ার্কবুক খোলা হয়েছে: ${doc.name}`);
+    } catch (error) {
+      console.error("ALIMXL local load failed:", error);
+
+      const message =
+        error instanceof Error
+          ? `${error.name}: ${error.message}`
+          : String(error);
+
+      window.alert(`ওয়ার্কবুক খোলা যায়নি।\n\n${message}`);
+      showToast(
+        "ওয়ার্কবুক খোলা যায়নি। দেখানো error-টি পরীক্ষা করুন।"
+      );
     }
-
-    setEditingKey(null);
-    setEditValue("");
-    setClipboard(null);
-    setFormatPainter(null);
-
-    setWorkbookId(doc.id);
-    setWorkbookName(doc.name);
-    setPageSize(doc.pageSize);
-    setOrientation(doc.orientation);
-
-    setActiveSheetIndex(doc.activeSheetIndex);
-   replaceWorkbookSheets(doc.sheets);
-
-    setActiveCell("A1");
-    setSelection({
-      r1: 0,
-      c1: 0,
-      r2: 0,
-      c2: 0,
-    });
-
-    setSaveState("idle");
-    setShowHomeScreen(false);
-    setShowLoadDialog(false);
-
-    void refreshRecentFromDevice();
-
-    showToast("ডিভাইস থেকে ওয়ার্কবুক খোলা হয়েছে।");
   };
+
   const [showPrintPreview, setShowPrintPreview] = useState(false);
   const [printSettings, setPrintSettings] = useState({
     pageSize: "A4",
@@ -6903,20 +7552,44 @@ export default function ExcelStudioPage() {
   };
 
   const getChartData = (range: string) => {
-    const nr = normalizeRange(range);
-    if (!nr) return [];
+    const normalized = range.trim();
+
+    if (!normalized) {
+      return [];
+    }
+
+    const nr = normalizeRange(normalized);
+
+    if (!nr) {
+      return [];
+    }
+
     const out: { label: string; value: number }[] = [];
+
     for (let r = nr.r1; r <= nr.r2; r++) {
-      const label = getDisplayValue(cellKey(r, nr.c1)) || `Row ${r + 1}`;
-      const value = toNumber(getCellValue(cellKey(r, Math.min(nr.c1 + 1, nr.c2))));
+      const label =
+        getDisplayValue(cellKey(r, nr.c1)) || `Row ${r + 1}`;
+
+      const value = toNumber(
+        getCellValue(cellKey(r, Math.min(nr.c1 + 1, nr.c2)))
+      );
+
       out.push({ label, value });
     }
+
     return out;
   };
 
   const openChartWizard = () => {
+    const range = selectedRangeText.trim();
+
+    if (!range) {
+      showToast("আগে ডেটা রেঞ্জ সিলেক্ট করুন।");
+      return;
+    }
+
     setChartTitle("Chart");
-    setChartRange(selectedRangeText);
+    setChartRange(range);
     setWizardStep(1);
     setWizardType("column");
     setWizardSubtitle("");
@@ -6927,33 +7600,59 @@ export default function ExcelStudioPage() {
     setWizard3D(false);
     setWizardRealistic(false);
     setWizardShape("cylinder");
-    setWizardSeries([{ id: `s_${Date.now()}`, name: "Series 1", range: selectedRangeText }]);
+    setWizardSeries([
+      {
+        id: `s_${Date.now()}`,
+        name: "Series 1",
+        range,
+      },
+    ]);
     setShowChartWizard(true);
   };
 
   const finishChartWizard = () => {
-    updateSheet((s) => ({
-      charts: [
-        ...s.charts,
-        {
-          id: `chart_${Date.now()}`,
-          title: chartTitle,
-          type: wizardType,
-          range: chartRange,
-          subtitle: wizardSubtitle,
-          xAxisTitle: wizardXAxisTitle,
-          yAxisTitle: wizardYAxisTitle,
-          showLegend: wizardShowLegend,
-          legendPosition: wizardLegendPosition,
-          is3D: wizard3D,
-          realistic: wizardRealistic,
-          shape: wizardShape,
-          series: wizardSeries,
-        },
-      ],
-    }));
-    setShowChartWizard(false);
-    showToast("Chart created.");
+    const range = chartRange.trim();
+
+    if (!range) {
+      showToast("Chart data range দিন।");
+      return;
+    }
+
+    try {
+      updateSheet((s) => ({
+        charts: [
+          ...s.charts,
+          {
+            id: `chart_${Date.now()}`,
+            title: chartTitle,
+            type: wizardType,
+            range,
+            subtitle: wizardSubtitle,
+            xAxisTitle: wizardXAxisTitle,
+            yAxisTitle: wizardYAxisTitle,
+            showLegend: wizardShowLegend,
+            legendPosition: wizardLegendPosition,
+            is3D: wizard3D,
+            realistic: wizardRealistic,
+            shape: wizardShape,
+            series: wizardSeries,
+          },
+        ],
+      }));
+
+      setShowChartWizard(false);
+      showToast("Chart added.");
+    } catch (error) {
+      console.error("ALIMXL chart creation failed:", error);
+
+      const message =
+        error instanceof Error
+          ? `${error.name}: ${error.message}`
+          : String(error);
+
+      window.alert(`Chart তৈরি হয়নি।\n\n${message}`);
+      showToast("Chart তৈরি হয়নি। দেখানো error-টি পরীক্ষা করুন।");
+    }
   };
 
   const pivotHeaderOptions = useMemo(() => {
@@ -8083,7 +8782,7 @@ export default function ExcelStudioPage() {
             void handleOpenRecentFile(recent);
             setShowHomeScreen(false);
           }}
-                   onMyFiles={() => {
+          onMyFiles={() => {
             openLoadDialog();
           }}
           onContinue={() => {
@@ -8126,7 +8825,7 @@ export default function ExcelStudioPage() {
         .awm-premium-scrollbar::-webkit-scrollbar-thumb:hover { background: #A19F9D; }
       `}</style>
 
-           <input
+      <input
         ref={fileInputRef}
         type="file"
         accept=".xlsx,.xls,.csv,.json"
@@ -8664,8 +9363,6 @@ export default function ExcelStudioPage() {
               </div>
             )}
           </div>
-
-
 
           <select
             value={activeCellStyle.borderStyle || "solid"}
@@ -10682,7 +11379,7 @@ export default function ExcelStudioPage() {
         </Modal>
       )}
 
-            <MyFiles
+      <MyFiles
         open={showLoadDialog}
         activeWorkbookId={workbookId}
         onOpen={loadWorkbookById}
