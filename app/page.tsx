@@ -3247,7 +3247,28 @@ export default function ExcelStudioPage() {
       setHistoryVersion(v => v + 1);
     }
   }, []);
+  const replaceWorkbookSheets = useCallback(
+    (nextSheets: WorkbookSheet[]) => {
+      if (nextSheets.length === 0) {
+        throw new Error("অন্তত একটি শিট থাকতে হবে।");
+      }
 
+      const isolatedSheets = structuredClone(nextSheets);
+
+      undoStackRef.current = [];
+      redoStackRef.current = [];
+
+      sheetsRef.current = isolatedSheets;
+      setSheetsRaw(isolatedSheets);
+      setHistoryVersion((version) => version + 1);
+
+      setEditingKey(null);
+      setEditValue("");
+      setClipboard(null);
+      setFormatPainter(null);
+    },
+    []
+  );
   const canUndo = undoStackRef.current.length > 0;
   const canRedo = redoStackRef.current.length > 0;
 
@@ -5945,7 +5966,7 @@ export default function ExcelStudioPage() {
             ? workbook.sheets
             : [createSheet("Sheet 1")];
 
-        setSheets(nextSheets);
+        replaceWorkbookSheets(nextSheets);
         setActiveSheetIndex(
           Math.min(
             workbook.activeSheetIndex || 0,
@@ -5968,7 +5989,7 @@ export default function ExcelStudioPage() {
         showToast("Unable to open the selected workbook.");
       }
     },
-    [showToast]
+      [showToast, replaceWorkbookSheets]
   );
 
 
@@ -6003,7 +6024,7 @@ export default function ExcelStudioPage() {
     setSelection({ r1: 0, c1: 0, r2: 0, c2: 0 });
     setShowTemplatesDialog(null);
     showToast(`New workbook created from "${tpl.name}".`);
-  }, [showToast]);
+   }, [showToast, replaceWorkbookSheets]);
 
   const handleApplyBuiltInTemplate = useCallback(
     (tpl: (typeof BUILT_IN_TEMPLATES)[number]) => {
@@ -6168,7 +6189,7 @@ export default function ExcelStudioPage() {
       setClipboard(null);
       setFormatPainter(null);
 
-      setSheets(snapshot.sheets);
+      replaceWorkbookSheets(snapshot.sheets);
       setActiveSheetIndex(snapshot.activeSheetIndex);
       setWorkbookName(snapshot.name.trim());
 
@@ -6641,7 +6662,11 @@ export default function ExcelStudioPage() {
       } else {
         try {
           const parsed = JSON.parse(text) as WorkbookSnapshot;
-          setSheets(parsed.sheets && parsed.sheets.length ? parsed.sheets : [createSheet("Sheet 1")]);
+                    replaceWorkbookSheets(
+            parsed.sheets && parsed.sheets.length
+              ? parsed.sheets
+              : [createSheet("Sheet 1")]
+          );
           setActiveSheetIndex(0);
           setWorkbookName(parsed.name || "Remote Workbook");
           setWorkbookId(parsed.id || null);
@@ -6729,7 +6754,7 @@ export default function ExcelStudioPage() {
     setOrientation(doc.orientation);
 
     setActiveSheetIndex(doc.activeSheetIndex);
-    setSheets(doc.sheets);
+   replaceWorkbookSheets(doc.sheets);
 
     setActiveCell("A1");
     setSelection({
@@ -8008,7 +8033,7 @@ export default function ExcelStudioPage() {
 
             setWorkbookName("Untitled Workbook");
             setWorkbookId(null);
-            setSheets([createSheet("Sheet 1")]);
+            replaceWorkbookSheets([createSheet("Sheet 1")]);
             setActiveSheetIndex(0);
 
             setActiveCell("A1");
