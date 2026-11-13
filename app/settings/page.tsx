@@ -324,8 +324,6 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!ready) return;
 
-    // Initialize the editable draft from the asynchronously hydrated settings context.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setForm((current) => {
       if (current !== null) return current;
 
@@ -1006,7 +1004,7 @@ export default function SettingsPage() {
                         Theme, accent and motion are applied
                         after Save to this Settings interface
                         and other components explicitly using
-                        the provider&apos;s styles. Existing
+                        the provider's styles. Existing
                         hard-coded Home, Workbook and Photo
                         Studio colours are not automatically
                         rewritten.
@@ -1335,7 +1333,7 @@ export default function SettingsPage() {
 
                         <p className="ax-settings-muted mt-2 text-sm leading-7">
                           Preferences are stored in this
-                          browser&apos;s localStorage for this site.
+                          browser's localStorage for this site.
                           They are not encrypted or synchronized
                           to an account. This module does not
                           store passwords, access tokens, API

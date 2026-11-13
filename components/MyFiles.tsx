@@ -89,19 +89,10 @@ export default function MyFiles({
             return;
         }
 
-        let cancelled = false;
-
-        // Start the refresh after the effect has completed. This keeps
-        // the effect focused on scheduling external I/O and avoids
-        // synchronous state updates during the effect body.
-        void Promise.resolve().then(() => {
-            if (!cancelled) {
-                return refreshFiles();
-            }
-        });
+        setFiles([]);
+        void refreshFiles();
 
         return () => {
-            cancelled = true;
             requestVersion.current += 1;
         };
     }, [open, refreshFiles]);

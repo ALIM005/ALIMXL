@@ -1,9 +1,5 @@
 "use client";
 
-/* eslint-disable react-hooks/refs -- render helpers only read stable refs; event handlers perform all mutations. */
-
-import Image from "next/image";
-import { useRouter } from "next/navigation";
 import React, {
   useCallback,
   useEffect,
@@ -278,6 +274,16 @@ interface WorkbookTemplate {
   name: string;
   createdAt: string;
   snapshot: WorkbookSnapshot;
+}
+
+function loadRecentFilesFromStorage(): RecentFileEntry[] {
+  try {
+    if (typeof window === "undefined") return [];
+    const raw = window.localStorage.getItem(RECENT_FILES_KEY);
+    return raw ? (JSON.parse(raw) as RecentFileEntry[]) : [];
+  } catch {
+    return [];
+  }
 }
 
 function saveRecentFilesToStorage(files: RecentFileEntry[]) {
@@ -559,7 +565,6 @@ const EXCEL_MENU_DATA: MenuCategory[] = [
       { label: "Recalculate All", action: "DATA_CALCULATE" },
       { label: "", action: "", isDivider: true },
       { label: "Export CSV", action: "FILE_EXPORT" },
-      { label: "Reset Template Inputs", action: "RESET_TEMPLATE_INPUTS" },
       { label: "Reload Page", action: "FILE_RELOAD" }
     ]
   },
@@ -589,6 +594,21 @@ const DEFAULT_ROW_HEIGHT = 36;
 const ROW_HEADER_WIDTH = 52;
 const HEADER_HEIGHT = 30;
 
+// Sticky-layer z-index registry — freeze panes ও normal cell-এর স্তরবিন্যাস
+// একই জায়গায় কেন্দ্রীভূত রাখা হলো যাতে ভবিষ্যতে নতুন sticky element যোগ করার সময়
+// z-index সংঘর্ষ (conflict) না হয়।
+const Z_LAYER = {
+  cell: 1,
+  colHeader: 25,
+  colHeaderFrozenCol: 35,   // frozen data-column-এর উপরের header
+  rowHeader: 20,
+  rowHeaderFrozenRow: 32,   // frozen data-row-এর পাশের row header
+  frozenCol: 22,
+  frozenRow: 21,
+  frozenCorner: 31,         // frozen row + frozen col intersection
+  corner: 40,               // top-left corner (সর্বোচ্চ, সবসময় সবার উপরে)
+} as const;
+
 const FONT_CATEGORIES: { category: string; fonts: string[] }[] = [
   {
     category: "Theme Fonts",
@@ -617,6 +637,8 @@ const FONT_FAMILIES = FONT_CATEGORIES.flatMap((c) => c.fonts);
 const RECENT_FONTS_KEY = "awm_excel_recent_fonts";
 
 type AppLocale = "en" | "bn" | "ar" | "hi" | "es";
+
+const DEFAULT_APP_LOCALE: AppLocale = "en";
 
 const LOCALE_LABELS: Record<AppLocale, string> = {
   en: "English",
@@ -787,18 +809,9 @@ const FUNCTION_LIST: { name: string; usage: string; desc: string }[] = [
   { name: "UPPER", usage: "UPPER(A1)", desc: "Converts text to uppercase." },
   { name: "LOWER", usage: "LOWER(A1)", desc: "Converts text to lowercase." },
   { name: "LEN", usage: "LEN(A1)", desc: "Returns text length." },
-  { name: "COUNTIF", usage: 'COUNTIF(A1:A10,">3")', desc: "Counts cells that meet a condition." },
-  { name: "SUMIF", usage: 'SUMIF(A1:A10,"x",B1:B10)', desc: "Adds cells that meet a condition." },
-
-  {
-    name: "CONVERT",
-    usage: 'CONVERT(100,"USD","BDT")',
-    desc: "Converts an amount from one currency to another using the Exchange Rates sheet or built-in rates.",
-  },
 ];
 
 const FUNCTION_CATEGORIES: Record<string, string> = {
-  CONVERT: "Financial",
   SUM: "Math", ROUND: "Math", ABS: "Math",
   AVERAGE: "Statistical", MIN: "Statistical", MAX: "Statistical", COUNT: "Statistical",
   IF: "Logical", AND: "Logical", OR: "Logical",
@@ -872,8 +885,21 @@ function getCharacterName(codePoint: number): string {
   return `UNICODE CHARACTER (U+${codePoint.toString(16).toUpperCase().padStart(4, "0")})`;
 }
 
+// ডিফল্ট Favorites তালিকা — একদম প্রথমবার (localStorage খালি থাকলে) এগুলো দেখাবে
+const DEFAULT_SPECIAL_CHAR_FAVORITES = ["€", "¥", "£", "©", "Σ", "Ω", "≤", "≥", "∞", "π"];
+
 const SPECIAL_CHARS_FAVORITES_KEY = "awm_excel_special_char_favorites";
 const SPECIAL_CHARS_RECENT_KEY = "awm_excel_special_char_recent";
+
+function loadCharListFromStorage(key: string, fallback: string[]): string[] {
+  try {
+    if (typeof window === "undefined") return fallback;
+    const raw = window.localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as string[]) : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 function saveCharListToStorage(key: string, items: string[]) {
   try {
@@ -1213,109 +1239,6 @@ function matchesCurrency(c: WorldCurrency, query: string): boolean {
   );
 }
 
-const EXCHANGE_RATE_SHEET_NAME = "Exchange Rates";
-
-const activeExchangeRates: Record<string, number> = {};
-
-const DEFAULT_EXCHANGE_RATES_TO_USD: Record<string, number> = {
-  USD: 1,
-  BDT: 0.0082,
-  EUR: 1.08,
-  GBP: 1.27,
-  INR: 0.0119,
-  PKR: 0.0036,
-  SAR: 0.2666,
-  AED: 0.2723,
-  QAR: 0.2747,
-  KWD: 3.26,
-  OMR: 2.6,
-  JPY: 0.0067,
-  CNY: 0.14,
-  AUD: 0.66,
-  CAD: 0.73,
-  CHF: 1.12,
-  SGD: 0.74,
-  MYR: 0.22,
-  THB: 0.029,
-  IDR: 0.000063,
-  KRW: 0.00073,
-  TRY: 0.029,
-  RUB: 0.011,
-  BRL: 0.18,
-  MXN: 0.055,
-  ZAR: 0.055,
-  NGN: 0.00065,
-  EGP: 0.021,
-  KES: 0.0077,
-};
-
-function rateKey(from: string, to: string) {
-  return `${from}-${to}`;
-}
-
-function isValidRate(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value > 0;
-}
-
-function getUsdRate(currencyCode: string): number | null {
-  if (currencyCode === "USD") return 1;
-
-  const direct = activeExchangeRates[rateKey(currencyCode, "USD")];
-  if (isValidRate(direct)) return direct;
-
-  const reverse = activeExchangeRates[rateKey("USD", currencyCode)];
-  if (isValidRate(reverse)) return 1 / reverse;
-
-  const fallback = DEFAULT_EXCHANGE_RATES_TO_USD[currencyCode];
-  return typeof fallback === "number" && fallback > 0 ? fallback : null;
-}
-
-function getExchangeRate(from: string, to: string): number {
-  if (from === to) return 1;
-
-  const direct = activeExchangeRates[rateKey(from, to)];
-  if (isValidRate(direct)) return direct;
-
-  const reverse = activeExchangeRates[rateKey(to, from)];
-  if (isValidRate(reverse)) return 1 / reverse;
-
-  const fromUsd = getUsdRate(from);
-  const toUsd = getUsdRate(to);
-
-  if (fromUsd && toUsd) {
-    return fromUsd / toUsd;
-  }
-
-  return NaN;
-}
-
-function syncExchangeRates(allSheets: WorkbookSheet[]): void {
-  const rateSheet = allSheets.find(
-    (item) =>
-      item.name.trim().toLowerCase() === EXCHANGE_RATE_SHEET_NAME.toLowerCase()
-  );
-
-  const next: Record<string, number> = {};
-
-  if (rateSheet) {
-    for (let row = 1; row < rateSheet.gridRows; row += 1) {
-      const from = String(rateSheet.cells[cellKey(row, 0)]?.value ?? "").trim().toUpperCase();
-      const to = String(rateSheet.cells[cellKey(row, 1)]?.value ?? "").trim().toUpperCase();
-      const rate = parseFloat(
-        String(rateSheet.cells[cellKey(row, 2)]?.value ?? "").replace(/,/g, "")
-      );
-
-      if (from && to && Number.isFinite(rate) && rate > 0) {
-        next[rateKey(from, to)] = rate;
-      }
-    }
-  }
-
-  Object.keys(activeExchangeRates).forEach((key) => delete activeExchangeRates[key]);
-  Object.assign(activeExchangeRates, next);
-}
-
-
 function formatCurrencyValue(numeric: number, currencyCode: string, decimals: number): string {
   const currency = findCurrency(currencyCode);
   try {
@@ -1551,58 +1474,10 @@ function tokenize(src: string): Token[] {
       i = j;
       continue;
     }
-
-    if (ch === "'") {
-      let j = i + 1;
-      let sheetName = "";
-
-      while (j < src.length && src[j] !== "'") sheetName += src[j++];
-
-      if (src[j] === "'" && src[j + 1] === "!") {
-        let k = j + 2;
-        let reference = "";
-
-        while (k < src.length && /[A-Za-z0-9:]/.test(src[k])) reference += src[k++];
-
-        tokens.push({
-          type: reference.includes(":") ? "range" : "ref",
-          value: `${sheetName}!${reference.toUpperCase()}`,
-        });
-
-        i = k;
-        continue;
-      }
-    }
-
     if (/[A-Za-z]/.test(ch)) {
       let j = i;
       let out = "";
       while (j < src.length && /[A-Za-z0-9]/.test(src[j])) out += src[j++];
-
-      if (src[j] === "!") {
-        let k = j + 1;
-        let sheetReference = "";
-
-        while (k < src.length && /[A-Za-z0-9:]/.test(src[k])) {
-          sheetReference += src[k];
-          k++;
-        }
-
-        if (sheetReference.includes(":")) {
-          tokens.push({
-            type: "range",
-            value: `${out.toUpperCase()}!${sheetReference.toUpperCase()}`,
-          });
-        } else {
-          tokens.push({
-            type: "ref",
-            value: `${out.toUpperCase()}!${sheetReference.toUpperCase()}`,
-          });
-        }
-
-        i = k;
-        continue;
-      }
       if (src[j] === ":" && /^[A-Za-z]+\d+$/.test(out)) {
         let k = j + 1;
         let out2 = "";
@@ -1782,43 +1657,6 @@ function parseNumericCell(raw: string): number | string {
   return NUMERIC_RE.test(s) ? Number(s.replace(/,/g, "")) : raw;
 }
 
-// COUNTIF/SUMIF-এর মানদণ্ড: "text", 5, ">3", "<=10", "<>x", "=x", "<>"
-function matchesCriterion(value: EvalResult, criterion: EvalResult): boolean {
-  const text = String(criterion).trim();
-  const valueText = String(value).trim();
-
-  if (text === "") return valueText === "";
-  if (text === "<>") return valueText !== "";
-
-  const operator = /^(>=|<=|<>|>|<|=)/.exec(text)?.[1] ?? "";
-  const operand = text.slice(operator.length).trim();
-  const operandNumber = operand === "" ? NaN : Number(operand);
-  const isNumber = Number.isFinite(operandNumber);
-
-  const equalsOperand = (): boolean => {
-    if (operand === "") return valueText === "";
-    if (isNumber) {
-      if (typeof value === "number") return value === operandNumber;
-      return valueText !== "" && Number(valueText) === operandNumber;
-    }
-    return valueText.toLowerCase() === operand.toLowerCase();
-  };
-
-  if (operator === "" || operator === "=") return equalsOperand();
-  if (operator === "<>") return !equalsOperand();
-
-  // বড়/ছোট তুলনা শুধু সংখ্যার ঘরের জন্য (ফাঁকা ও টেক্সট বাদ)
-  if (!isNumber || typeof value !== "number") return false;
-
-  switch (operator) {
-    case ">": return value > operandNumber;
-    case ">=": return value >= operandNumber;
-    case "<": return value < operandNumber;
-    case "<=": return value <= operandNumber;
-    default: return false;
-  }
-}
-
 function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange: (range: string) => EvalResult[]): EvalResult {
   switch (node.kind) {
     case "num":
@@ -1946,31 +1784,6 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
         return out;
       };
       switch (node.name) {
-        case "CONVERT": {
-          if (node.args.length !== 3) return "VALUE!";
-
-          const amount = toNumber(
-            evalNode(node.args[0], getCell, expandRange)
-          );
-
-          const fromCurrency = String(
-            evalNode(node.args[1], getCell, expandRange)
-          )
-            .trim()
-            .toUpperCase();
-
-          const toCurrency = String(
-            evalNode(node.args[2], getCell, expandRange)
-          )
-            .trim()
-            .toUpperCase();
-
-          const rate = getExchangeRate(fromCurrency, toCurrency);
-
-          if (!Number.isFinite(rate)) return "VALUE!";
-
-          return amount * rate;
-        }
         case "SUM": {
           const values = collect();
 
@@ -2038,16 +1851,27 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
               typeof value === "number" &&
               Number.isFinite(value)
           ).length;
-
-
         case "COUNTIF": {
-          if (node.args.length !== 2) return "#VALUE!";
+          if (node.args.length !== 2) {
+            return "#VALUE!";
+          }
 
           const rangeArg = node.args[0];
-          if (rangeArg.kind !== "range" && rangeArg.kind !== "ref") return "#VALUE!";
 
-          const criterion = evalNode(node.args[1], getCell, expandRange);
-          if (typeof criterion === "string" && FORMULA_ERRORS.has(criterion)) {
+          if (rangeArg.kind !== "range" && rangeArg.kind !== "ref") {
+            return "#VALUE!";
+          }
+
+          const criterion = evalNode(
+            node.args[1],
+            getCell,
+            expandRange
+          );
+
+          if (
+            typeof criterion === "string" &&
+            FORMULA_ERRORS.has(criterion)
+          ) {
             return criterion;
           }
 
@@ -2056,54 +1880,25 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
               ? expandRange(rangeArg.value)
               : [getCell(rangeArg.value)];
 
-          return values.filter((value) => matchesCriterion(value, criterion)).length;
-        }
-
-        case "SUMIF": {
-          if (node.args.length < 2 || node.args.length > 3) return "#VALUE!";
-
-          const rangeArg = node.args[0];
-          if (rangeArg.kind !== "range" && rangeArg.kind !== "ref") return "#VALUE!";
-
-          const sumArg = node.args[2] ?? rangeArg;
-          if (sumArg.kind !== "range" && sumArg.kind !== "ref") return "#VALUE!";
-
-          const criterion = evalNode(node.args[1], getCell, expandRange);
-          if (typeof criterion === "string" && FORMULA_ERRORS.has(criterion)) {
-            return criterion;
+          // এই ধাপে Attendance-এর exact-text criteria সমর্থন করছি।
+          if (typeof criterion !== "string") {
+            return "#VALUE!";
           }
 
-          const toList = (arg: Node): EvalResult[] =>
-            arg.kind === "range"
-              ? expandRange(arg.value)
-              : arg.kind === "ref"
-                ? [getCell(arg.value)]
-                : [];
-
-          const tested = toList(rangeArg);
-          const summed = toList(sumArg);
-
-          if (tested.length !== summed.length) return "#VALUE!";
-
-          let total = 0;
-
-          for (let index = 0; index < tested.length; index++) {
-            if (!matchesCriterion(tested[index], criterion)) continue;
-
-            const amount = summed[index];
-
-            if (typeof amount === "string" && FORMULA_ERRORS.has(amount)) {
-              return amount;
-            }
-
-            if (typeof amount === "number" && Number.isFinite(amount)) {
-              total += amount;
-            }
+          // Unsupported criteria-তে নীরবে ভুল ফল দেব না।
+          if (/^[<>=]/.test(criterion) || /[~*?]/.test(criterion)) {
+            return "#VALUE!";
           }
 
-          return total;
-        }
+          const expected = criterion.toLowerCase();
 
+          return values.filter(
+            (value) =>
+              typeof value === "string" &&
+              !FORMULA_ERRORS.has(value) &&
+              value.toLowerCase() === expected
+          ).length;
+        }
         case "IF": {
           const cond = evalNode(node.args[0], getCell, expandRange);
           if (
@@ -2386,23 +2181,6 @@ function evaluateFormula(formula: string, getCell: (key: string) => EvalResult, 
  * সার্চ করতে হলে যেকোনো sheet object দিয়ে formula evaluate করা দরকার —
  * তাই এই standalone (component-independent) ভার্সনটি তৈরি করা হলো।
  * ========================================================================== */
-const splitSheetReference = (
-  reference: string
-): { sheetName: string | null; reference: string } => {
-  const match = reference.match(/^([A-Za-z0-9_ ]+)!([A-Za-z0-9:]+)$/);
-
-  if (!match) {
-    return {
-      sheetName: null,
-      reference,
-    };
-  }
-
-  return {
-    sheetName: match[1].trim(),
-    reference: match[2].trim(),
-  };
-};
 function getCellValueInSheet(
   targetSheet: WorkbookSheet,
   key: string,
@@ -2484,70 +2262,37 @@ function safeRefreshWorkbookState(snapshot: {
   };
 }
 
-
 /* ============================================================================
  * Main component
  * ========================================================================== */
 
 function shiftFormulaRefs(formula: string, dr: number, dc: number): string {
   const tokens = tokenize(formula);
-
   const shiftRef = (ref: string) => {
     const pos = parseKey(ref);
     if (!pos) return ref;
-
     const newRow = pos.row + dr;
     const newCol = pos.col + dc;
-
     if (newRow < 0 || newCol < 0) return ref;
-
     return cellKey(newRow, newCol);
   };
-
-  const shiftQualified = (value: string): string => {
-    const bang = value.lastIndexOf("!");
-
-    if (bang < 0) {
-      return value.split(":").map(shiftRef).join(":");
-    }
-
-    const sheetName = value.slice(0, bang);
-    const shifted = value
-      .slice(bang + 1)
-      .split(":")
-      .map(shiftRef)
-      .join(":");
-
-    const name = /^[A-Za-z0-9]+$/.test(sheetName)
-      ? sheetName
-      : `'${sheetName}'`;
-
-    return `${name}!${shifted}`;
-  };
-
   let out = "";
-
   for (const t of tokens) {
     if (t.type === "end") continue;
-
-    if (t.type === "ref" || t.type === "range") {
-      out += shiftQualified(t.value);
-    } else if (t.type === "str") {
-      out += `"${t.value}"`;
-    } else {
-      out += t.value;
-    }
+    if (t.type === "ref") out += shiftRef(t.value);
+    else if (t.type === "range") {
+      const [a, b] = t.value.split(":");
+      out += `${shiftRef(a)}:${shiftRef(b)}`;
+    } else if (t.type === "str") out += `"${t.value}"`;
+    else out += t.value;
   }
-
   return out;
 }
 
 function parseFillDate(v: string): Date | null {
   if (!v || !/[\/\-]/.test(v)) return null;
-
   const t = Date.parse(v);
   if (!Number.isFinite(t)) return null;
-
   return new Date(t);
 }
 
@@ -2557,7 +2302,6 @@ function detectDigitScript(value: string): DigitScript {
   if (/[০-৯]/.test(value)) return "bengali";
   if (/[٠-٩]/.test(value)) return "arabic";
   if (/[۰-۹]/.test(value)) return "persian";
-
   return "latin";
 }
 
@@ -2579,7 +2323,6 @@ function normalizeLocalizedDigits(value: string): string {
     return ch;
   });
 }
-
 
 function localizeDigits(value: string, script: DigitScript): string {
   const maps: Record<DigitScript, string> = {
@@ -2668,6 +2411,44 @@ function formatTrailingNumber(
 }
 
 function applyCustomNumberFormat(numeric: number, pattern: string): string {
+
+  /* ============================================================================
+   * Standalone Cell Display Formatter — Search Engine-এ ব্যবহারের জন্য
+   * এটি কম্পোনেন্টের ভেতরের formatDisplayValue-এর সাথে হুবহু একই লজিক,
+   * কিন্তু module-level (component state-এর বাইরে) যাতে search engine
+   * যেকোনো sheet-এর cell display-text বের করতে এটি ব্যবহার করতে পারে।
+   * ========================================================================== */
+  function computeCellDisplayText(rawValue: EvalResult, style?: CellStyle): string {
+    if (rawValue === "") return "";
+    if (typeof rawValue === "boolean") return rawValue ? "TRUE" : "FALSE";
+    const numberFormat = style?.numberFormat || "general";
+    const decimals = typeof style?.decimals === "number" ? style.decimals : 2;
+
+    if (numberFormat === "text") return String(rawValue);
+
+    if (numberFormat === "date") {
+      const date = new Date(String(rawValue));
+      if (!Number.isNaN(date.getTime())) return date.toLocaleDateString();
+      return String(rawValue);
+    }
+
+    const numeric = typeof rawValue === "number" ? rawValue : NaN;
+    if (Number.isFinite(numeric)) {
+      if (numberFormat === "currency") return formatCurrencyValue(numeric, style?.currencyCode || "USD", decimals);
+      if (numberFormat === "percentage")
+        return `${(numeric * 100).toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}%`;
+      if (numberFormat === "number")
+        return numeric.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+      if (numberFormat === "scientific") return numeric.toExponential(decimals);
+      if (numberFormat === "accounting") {
+        const abs = Math.abs(numeric).toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+        return numeric === 0 ? "$ -" : numeric < 0 ? `(${abs})` : `${abs}`;
+      }
+      if (numberFormat === "custom" && style?.customFormat) return applyCustomNumberFormat(numeric, style.customFormat);
+      return Number.isInteger(numeric) ? numeric.toLocaleString("en-US") : numeric.toFixed(Math.max(0, Math.min(decimals, 10)));
+    }
+    return String(rawValue);
+  }
 
   const hasPercent = pattern.includes("%");
   const hasGrouping = pattern.includes(",");
@@ -3145,39 +2926,34 @@ function calculatePredictiveAnalytics(
 }
 
 
+function PrintStyles({ pageSize, orientation }: { pageSize: "A4" | "Letter" | "Legal"; orientation: "portrait" | "landscape" }) {
+  const dims = PAGE_SIZES[pageSize];
+  const w = orientation === "landscape" ? dims.h : dims.w;
+  const h = orientation === "landscape" ? dims.w : dims.h;
+  return (
+    <style>{`
+      @media print {
+        @page { size: ${w}mm ${h}mm; margin: 0; }
+        html, body { height: auto !important; overflow: visible !important; }
+        .no-print { display: none !important; }
+        #awm-print-area {
+          position: static !important;
+          overflow: visible !important;
+          width: 100% !important;
+          height: auto !important;
+        }
+      }
+    `}</style>
+  );
+}
+
+
 export default function ExcelStudioPage() {
-  const router = useRouter();
-  const [confirmDialog, setConfirmDialog] = useState<{
-    title: string;
-    message: string;
-    onConfirm: () => void;
-  } | null>(null);
-
-  const requestConfirm = useCallback(
-    (title: string, message: string, onConfirm: () => void) => {
-      setConfirmDialog({ title, message, onConfirm });
-    },
-    []
-  );
-  const [promptDialog, setPromptDialog] = useState<{
-    title: string;
-    message: string;
-    onConfirm: (value: string) => void;
-  } | null>(null);
-  const [promptValue, setPromptValue] = useState("");
-
-  const requestPrompt = useCallback(
-    (title: string, message: string, onConfirm: (value: string) => void, defaultValue = "") => {
-      setPromptValue(defaultValue);
-      setPromptDialog({ title, message, onConfirm });
-    },
-    []
-  );
   const [showHomeScreen, setShowHomeScreen] = useState(true);
   const [appLocale, setAppLocale] = useState<AppLocale>("en");
   const [rtlEnabled, setRtlEnabled] = useState(false);
   const [showChartWizard, setShowChartWizard] = useState(false);
-  const [, setRefreshTick] = useState(0);
+  const [refreshTick, setRefreshTick] = useState(0);
   const [workbookName, setWorkbookName] = useState("Untitled Workbook");
   const [workbookId, setWorkbookId] = useState<string | null>(null);
   const localSaveInProgressRef = useRef(false);
@@ -3187,9 +2963,13 @@ export default function ExcelStudioPage() {
   const [orientation, setOrientation] = useState<"portrait" | "landscape">("landscape");
 
   const [activeCell, setActiveCell] = useState("A1");
+  const [nameBoxText, setNameBoxText] = useState("");
+  const [nameBoxEditing, setNameBoxEditing] = useState(false);
   const [selection, setSelection] = useState<SelectionRange>({ r1: 0, c1: 0, r2: 0, c2: 0 });
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [editWidth, setEditWidth] = useState<number | null>(null);
+  const [formulaBar, setFormulaBar] = useState("");
   const [clipboard, setClipboard] = useState<ClipboardData | null>(null);
   const [formatPainter, setFormatPainter] = useState<CellStyle | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -3230,6 +3010,7 @@ export default function ExcelStudioPage() {
   const [matchCase, setMatchCase] = useState(false);
 
   const [chartTitle, setChartTitle] = useState("Chart");
+  const [chartType, setChartType] = useState<ChartType>("bar");
   const [chartRange, setChartRange] = useState("A1:B5");
   const [wizardStep, setWizardStep] = useState(1);
   const [wizardType, setWizardType] = useState<ChartType>("column");
@@ -3244,7 +3025,6 @@ export default function ExcelStudioPage() {
   const [wizardSeries, setWizardSeries] = useState<ChartSeries[]>([
     { id: "s_initial", name: "Series 1", range: "" },
   ]);
-  const chartSeriesIdRef = useRef(0);
   const [pivotRange, setPivotRange] = useState("A1:C10");
   const [pivotRowField, setPivotRowField] = useState("");
   const [pivotColumnField, setPivotColumnField] = useState("");
@@ -3265,12 +3045,15 @@ export default function ExcelStudioPage() {
   const [printFooter, setPrintFooter] = useState("Page &P of &N");
   const [printArea, setPrintArea] = useState<string>("");
   const [printTitleRows, setPrintTitleRows] = useState<string>(""); // যেমন "1:1"
-  const [printTitleCols, setPrintTitleCols] = useState<string>("");
+  const [printTitleCols, setPrintTitleCols] = useState<string>(""); // যেমন "A:A"
+  const [showPageBreakPreview, setShowPageBreakPreview] = useState(false);
   const [showAdvancedPrintPreview, setShowAdvancedPrintPreview] = useState(false);
   type SplitAxis = "vertical" | "horizontal" | null;
   const [splitAxis, setSplitAxis] = useState<SplitAxis>(null);
   const [splitRatio, setSplitRatio] = useState(0.5); // 0.1–0.9 এর মধ্যে clamp হবে
   const [activePane, setActivePane] = useState<"a" | "b">("a");
+  const [paneBViewport, setPaneBViewport] = useState({ scrollTop: 0, scrollLeft: 0, clientHeight: 800, clientWidth: 1200 });
+  const splitDraggingRef = useRef(false);
   const [showDrawFunctions, setShowDrawFunctions] = useState(false);
   const [activeDrawTool, setActiveDrawTool] = useState<DrawToolId>("select");
   const [selectedDrawId, setSelectedDrawId] = useState<string | null>(null);
@@ -3279,7 +3062,7 @@ export default function ExcelStudioPage() {
   const resizeRef = useRef<{ id: string; handle: string; orig: DrawShape } | null>(null);
   const rotateRef = useRef<{ id: string; cx: number; cy: number; startAngle: number; origRotation: number } | null>(null);
   const [formulaExpanded, setFormulaExpanded] = useState(false);
-  const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
+  const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
   const [rightSidebarUndocked, setRightSidebarUndocked] = useState(false);
   const [activeSidebarPanel, setActiveSidebarPanel] = useState<SidebarPanel>("properties");
   const [sidebarWidth, setSidebarWidth] = useState(310);
@@ -3287,7 +3070,7 @@ export default function ExcelStudioPage() {
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [sidebarHoverPeek, setSidebarHoverPeek] = useState(false);
 
-  const [, setToolbarPulse] = useState(0);
+  const [toolbarPulse, setToolbarPulse] = useState(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -3406,58 +3189,42 @@ export default function ExcelStudioPage() {
       return;
     }
 
-    requestPrompt(
-      "Macro সংরক্ষণ",
-      "Macro-র নাম দিন:",
-      (name) => {
-        if (!name || !name.trim()) {
-          showToast("নাম দেওয়া হয়নি, macro save বাতিল করা হলো।");
-          recordedActionsRef.current = [];
-          return;
-        }
-        const trimmedName = name.trim();
+    const name = window.prompt("Macro-র নাম দিন:", "");
+    if (!name || !name.trim()) {
+      showToast("নাম দেওয়া হয়নি, macro save বাতিল করা হলো।");
+      recordedActionsRef.current = [];
+      return;
+    }
+    const trimmedName = name.trim();
 
-        const existing = savedMacros.find(
-          (m) => m.name.toLowerCase() === trimmedName.toLowerCase()
+    setSavedMacros((prev) => {
+      const existing = prev.find((m) => m.name.toLowerCase() === trimmedName.toLowerCase());
+      if (existing) {
+        const confirmOverwrite = window.confirm(
+          `"${trimmedName}" নামে ইতিমধ্যে একটি macro আছে। এটি overwrite করবেন?`
         );
+        if (!confirmOverwrite) return prev;
+        const updated = prev.map((m) =>
+          m.id === existing.id ? { ...m, actions, updatedAt: new Date().toISOString() } : m
+        );
+        saveMacrosToStorage(updated);
+        return updated;
+      }
+      const entry: SavedMacro = {
+        id: `macro_${Date.now()}`,
+        name: trimmedName,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        actions,
+      };
+      const next = [...prev, entry];
+      saveMacrosToStorage(next);
+      return next;
+    });
 
-        if (existing) {
-          requestConfirm(
-            "Macro Overwrite",
-            `"${trimmedName}" নামে ইতিমধ্যে একটি macro আছে। এটি overwrite করবেন?`,
-            () => {
-              const updated = savedMacros.map((m) =>
-                m.id === existing.id
-                  ? { ...m, actions, updatedAt: new Date().toISOString() }
-                  : m
-              );
-              setSavedMacros(updated);
-              saveMacrosToStorage(updated);
-              recordedActionsRef.current = [];
-              showToast(`Macro "${trimmedName}" সংরক্ষণ করা হয়েছে।`);
-            }
-          );
-          return;
-        }
-
-        const entry: SavedMacro = {
-          id: `macro_${Date.now()}`,
-          name: trimmedName,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          actions,
-        };
-        const next = [...savedMacros, entry];
-        setSavedMacros(next);
-        saveMacrosToStorage(next);
-        recordedActionsRef.current = [];
-        showToast(`Macro "${trimmedName}" সংরক্ষণ করা হয়েছে।`);
-      },
-      ""
-    );
-  }, [showToast, savedMacros, requestPrompt, requestConfirm]);
-
-
+    recordedActionsRef.current = [];
+    showToast(`Macro "${trimmedName}" সংরক্ষণ করা হয়েছে।`);
+  }, [showToast]);
 
   const toggleMacroRecording = useCallback(() => {
     if (isRecordingRef.current) stopMacroRecording();
@@ -3474,31 +3241,24 @@ export default function ExcelStudioPage() {
   }, [showToast]);
 
   const renameMacro = useCallback((id: string) => {
-    const target = savedMacros.find((m) => m.id === id);
-    if (!target) return;
-
-    requestPrompt(
-      "Macro Rename",
-      "নতুন নাম দিন:",
-      (newName) => {
-        if (!newName || !newName.trim()) return;
-        const trimmed = newName.trim();
-        const duplicate = savedMacros.find(
-          (m) => m.id !== id && m.name.toLowerCase() === trimmed.toLowerCase()
-        );
-        if (duplicate) {
-          showToast("এই নামে ইতিমধ্যে একটি macro আছে।");
-          return;
-        }
-        const next = savedMacros.map((m) =>
-          m.id === id ? { ...m, name: trimmed, updatedAt: new Date().toISOString() } : m
-        );
-        setSavedMacros(next);
-        saveMacrosToStorage(next);
-      },
-      target.name
-    );
-  }, [showToast, savedMacros, requestPrompt]);
+    setSavedMacros((prev) => {
+      const target = prev.find((m) => m.id === id);
+      if (!target) return prev;
+      const newName = window.prompt("নতুন নাম দিন:", target.name);
+      if (!newName || !newName.trim()) return prev;
+      const trimmed = newName.trim();
+      const duplicate = prev.find((m) => m.id !== id && m.name.toLowerCase() === trimmed.toLowerCase());
+      if (duplicate) {
+        showToast("এই নামে ইতিমধ্যে একটি macro আছে।");
+        return prev;
+      }
+      const next = prev.map((m) =>
+        m.id === id ? { ...m, name: trimmed, updatedAt: new Date().toISOString() } : m
+      );
+      saveMacrosToStorage(next);
+      return next;
+    });
+  }, [showToast]);
 
   const cancelMacroPlayback = useCallback(() => {
     macroCancelRef.current = true;
@@ -3513,17 +3273,11 @@ export default function ExcelStudioPage() {
   // ---- Enterprise Undo / Redo History ----
   // 🔄 P0-FIX-1: latest sheets-এর live mirror — undo/redo-তে safe read-এর জন্য
   const sheetsRef = useRef(sheets);
-
-
-  // Keep the committed workbook snapshot in sync without writing to a ref during render.
-  useLayoutEffect(() => {
-    sheetsRef.current = sheets;
-  }, [sheets]);
-
+  sheetsRef.current = sheets; // প্রতি render-এ sync (idempotent)
   const undoStackRef = useRef<WorkbookSheet[][]>([]);
   const redoStackRef = useRef<WorkbookSheet[][]>([]);
   const HISTORY_LIMIT = 100;
-  const [historyVersion, setHistoryVersion] = useState(0);
+  const [, setHistoryVersion] = useState(0);
 
   // 🔄 P0-FIX-1: history push এখন updater-এর বাইরে — StrictMode-safe
   const setSheets = useCallback((updater: React.SetStateAction<WorkbookSheet[]>) => {
@@ -3536,7 +3290,6 @@ export default function ExcelStudioPage() {
       if (undoStackRef.current.length > HISTORY_LIMIT) undoStackRef.current.shift();
       redoStackRef.current = [];
       sheetsRef.current = next; // ref সাথে সাথে update — পরের call-এ সঠিক prev পাবে
-      syncExchangeRates(next);
       setSheetsRaw(next);
       setHistoryVersion(v => v + 1);
     }
@@ -3553,7 +3306,6 @@ export default function ExcelStudioPage() {
       redoStackRef.current = [];
 
       sheetsRef.current = isolatedSheets;
-      syncExchangeRates(isolatedSheets);
       setSheetsRaw(isolatedSheets);
       setHistoryVersion((version) => version + 1);
 
@@ -3564,6 +3316,8 @@ export default function ExcelStudioPage() {
     },
     []
   );
+  const canUndo = undoStackRef.current.length > 0;
+  const canRedo = redoStackRef.current.length > 0;
 
   // 🔄 P0-FIX-1: side-effect updater-এর বাইরে — StrictMode-safe undo
   const undo = useCallback(() => {
@@ -3575,7 +3329,6 @@ export default function ExcelStudioPage() {
     const previous = undoStackRef.current.pop()!;
     redoStackRef.current.push(current);
     sheetsRef.current = previous;
-    syncExchangeRates(previous);
     setSheetsRaw(previous);
     setHistoryVersion((v) => v + 1);
     showToast("Undo");
@@ -3591,7 +3344,6 @@ export default function ExcelStudioPage() {
     const nextState = redoStackRef.current.pop()!;
     undoStackRef.current.push(current);
     sheetsRef.current = nextState;
-    syncExchangeRates(nextState);
     setSheetsRaw(nextState);
     setHistoryVersion((v) => v + 1);
     showToast("Redo");
@@ -3605,7 +3357,7 @@ export default function ExcelStudioPage() {
         return { ...s, ...nextPatch };
       })
     );
-  }, [activeSheetIndex, setSheets]);
+  }, [activeSheetIndex]);
   const focusActiveGridCell = useCallback(() => {
     requestAnimationFrame(() => {
       cellRefs.current.get(activeCell)?.focus({
@@ -3614,83 +3366,40 @@ export default function ExcelStudioPage() {
     });
   }, [activeCell]);
   const getRawValue = useCallback((key: string) => sheet.cells[key]?.value ?? "", [sheet.cells]);
-  const formulaBar = getRawValue(activeCell);
 
-  // Each top-level formula evaluation gets a local cache. This avoids mutating refs
-  // during React render while still preventing repeated work inside nested formulas.
   const getCellValue = useCallback(
-    (
-      key: string,
-      visiting: Set<string> = new Set(),
-      activeSheet: WorkbookSheet = sheet,
-      allSheets: WorkbookSheet[] = sheets
-    ): EvalResult => {
-      const evaluationCache = new Map<string, EvalResult>();
+    (key: string, visiting: Set<string> = new Set()): EvalResult => {
+      const cell = sheet.cells[key];
+      const raw = cell?.value ?? "";
 
-      const resolveCellValue = (
-        targetKey: string,
-        currentVisiting: Set<string>,
-        currentSheet: WorkbookSheet
-      ): EvalResult => {
-        const cell = currentSheet.cells[targetKey];
-        const raw = cell?.value ?? "";
+      if (raw === "") {
+        return "";
+      }
 
-        if (!raw) return "";
-        if (cell?.style?.numberFormat === "text") return raw;
-        if (!raw.startsWith("=")) return parseNumericCell(raw);
+      if (cell?.style?.numberFormat === "text") {
+        return raw;
+      }
 
-        const visitKey = `${historyVersion}:${currentSheet.id}!${targetKey}`;
-        if (currentVisiting.has(visitKey)) return "#CIRCULAR!";
-
-        const cached = evaluationCache.get(visitKey);
-        if (cached !== undefined) return cached;
-
-        const nextVisiting = new Set(currentVisiting);
-        nextVisiting.add(visitKey);
-
-        const findSheet = (name: string): WorkbookSheet | undefined =>
-          allSheets.find(
-            (item) => item.name.trim().toLowerCase() === name.trim().toLowerCase()
-          );
-
-        const getCell = (reference: string): EvalResult => {
-          const { sheetName, reference: localReference } = splitSheetReference(reference);
-          if (!sheetName) {
-            return resolveCellValue(localReference, nextVisiting, currentSheet);
-          }
-
-          const targetSheet = findSheet(sheetName);
-          if (!targetSheet) return "#REF!";
-          return resolveCellValue(localReference, nextVisiting, targetSheet);
-        };
-
-        const expandRange = (range: string): EvalResult[] => {
-          const { sheetName, reference: localReference } = splitSheetReference(range);
-          const rangeSheet = sheetName ? findSheet(sheetName) : currentSheet;
-          if (!rangeSheet) return ["#REF!"];
-
-          const normalizedRange = normalizeRange(localReference);
-          if (!normalizedRange) return [];
-
-          const output: EvalResult[] = [];
-          for (let row = normalizedRange.r1; row <= normalizedRange.r2; row += 1) {
-            for (let col = normalizedRange.c1; col <= normalizedRange.c2; col += 1) {
-              output.push(resolveCellValue(cellKey(row, col), nextVisiting, rangeSheet));
-            }
-          }
-          return output;
-        };
-
-        const result = evaluateFormula(raw.slice(1), getCell, expandRange);
-        evaluationCache.set(visitKey, result);
-        return result;
+      if (!raw.startsWith("=")) {
+        return parseNumericCell(raw);
+      }
+      if (visiting.has(key)) return "#CIRCULAR!";
+      const nextVisiting = new Set(visiting);
+      nextVisiting.add(key);
+      const getCell = (ref: string) => getCellValue(ref, nextVisiting);
+      const expandRange = (range: string) => {
+        const nr = normalizeRange(range);
+        if (!nr) return [];
+        const out: EvalResult[] = [];
+        for (let r = nr.r1; r <= nr.r2; r++) {
+          for (let c = nr.c1; c <= nr.c2; c++) out.push(getCellValue(cellKey(r, c), nextVisiting));
+        }
+        return out;
       };
-
-      return resolveCellValue(key, visiting, activeSheet);
+      return evaluateFormula(raw.slice(1), getCell, expandRange);
     },
-    [sheet, sheets, historyVersion]
+    [sheet.cells]
   );
-
 
   const activePos = useMemo(() => parseKey(activeCell) || { row: 0, col: 0 }, [activeCell]);
 
@@ -3833,7 +3542,6 @@ export default function ExcelStudioPage() {
   const [currencySearch, setCurrencySearch] = useState("");
 
   const [autoFilterEnabled, setAutoFilterEnabled] = useState(false);
-  const autoFilterIsEnabled = autoFilterEnabled || Object.keys(sheet.filters || {}).length > 0;
 
   const [autoFilterMenu, setAutoFilterMenu] = useState<{
     col: number;
@@ -3875,10 +3583,8 @@ export default function ExcelStudioPage() {
     el.setSelectionRange(len, len);
   }, [editingKey]);
 
-  // Edit width is derived from the current editor content and cell formatting.
-  // Keeping it derived avoids an effect-driven extra render while preserving sizing.
-  const editWidth = useMemo(() => {
-    if (!editingKey) return null;
+  useLayoutEffect(() => {
+    if (!editingKey) { setEditWidth(null); return; }
     const cellStyle = sheet.cells[editingKey]?.style;
     const fontSize = cellStyle?.fontSize || 12;
     const fontFamily = cellStyle?.fontFamily || "Inter";
@@ -3886,7 +3592,7 @@ export default function ExcelStudioPage() {
     const textWidth = measureTextWidth(editValue, font);
     const pos = parseKey(editingKey);
     const cellWidth = pos ? (sheet.colWidths[pos.col] || DEFAULT_COL_WIDTH) : DEFAULT_COL_WIDTH;
-    return Math.max(cellWidth, Math.ceil(textWidth) + 20);
+    setEditWidth(Math.max(cellWidth, Math.ceil(textWidth) + 20));
   }, [editValue, editingKey, sheet.cells, sheet.colWidths]);
 
   const isSelected = useCallback(
@@ -3910,7 +3616,7 @@ export default function ExcelStudioPage() {
     if (numberFormat === "text") return String(rawValue);
 
     if (numberFormat === "date") {
-      const date = new Date(String(rawValue));
+      const date = (rawValue as any) instanceof Date ? (rawValue as unknown as Date) : new Date(String(rawValue));
       if (!Number.isNaN(date.getTime())) return date.toLocaleDateString();
       return String(rawValue);
     }
@@ -3978,6 +3684,13 @@ export default function ExcelStudioPage() {
     },
     [updateSheet, recordAction]
   );
+
+  useEffect(() => {
+    setFormulaBar(getRawValue(activeCell));
+  }, [activeCell, getRawValue]);
+  useEffect(() => {
+    setFormulaBar(getRawValue(activeCell));
+  }, [activeCell, getRawValue]);
 
   useEffect(() => {
     if (editingKey) return;
@@ -4066,6 +3779,11 @@ export default function ExcelStudioPage() {
     return () => window.removeEventListener("mousedown", handler);
   }, [shareMenu]);
 
+  useEffect(() => {
+    if (Object.keys(sheet.filters || {}).length > 0) {
+      setAutoFilterEnabled(true);
+    }
+  }, [sheet.filters]);
   const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
     // রাইট-ক্লিক (e.button === 2) হলে সিলেকশন পরিবর্তন করা যাবে না।
     // কারণ ব্রাউজারে রাইট-ক্লিকের সময় mousedown আগে ফায়ার হয়, তারপর
@@ -4080,6 +3798,7 @@ export default function ExcelStudioPage() {
       dragging.current = false;
       setSelection((prev) => ({ ...prev, r2: row, c2: col }));
       setActiveCell(key);
+      setFormulaBar(getRawValue(key));
       return;
     }
 
@@ -4087,12 +3806,14 @@ export default function ExcelStudioPage() {
       dragging.current = false;
       setSelection((prev) => ({ ...prev, r2: row, c2: col }));
       setActiveCell(key);
+      setFormulaBar(getRawValue(key));
       return;
     }
 
     dragging.current = true;
     setActiveCell(key);
     setSelection({ r1: row, c1: col, r2: row, c2: col });
+    setFormulaBar(getRawValue(key));
     // Macro recording চালু থাকলে cell-selection action হিসেবে record হচ্ছে
     recordAction({ type: "SELECT", keys: [key], activeCell: key });
     if (formatPainter) {
@@ -4282,31 +4003,14 @@ export default function ExcelStudioPage() {
       }
       return;
     }
-
-    // Ctrl+A / Cmd+A — Select entire sheet
-    if (
-      (e.ctrlKey || e.metaKey) &&
-      !e.altKey &&
-      !e.shiftKey &&
-      e.key.toLowerCase() === "a"
-    ) {
-      e.preventDefault();
-      e.stopPropagation();
-      selectAllCells();
-      return;
-    }
-
-
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
       e.preventDefault();
       setShowFindReplace(true);
       return;
     }
-
     if (e.key === "Enter") {
       e.preventDefault();
       e.stopPropagation();
-
 
       commitEdit(e.shiftKey ? "up" : "down");
       return;
@@ -4314,23 +4018,10 @@ export default function ExcelStudioPage() {
       e.preventDefault();
       e.stopPropagation();
 
-
       startEditing(key);
       return;
     } else if (e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault();
-
-      const totalSelectedCells = selectionCells.length;
-
-      if (
-        totalSelectedCells > 500 &&
-        !window.confirm(
-          "Clear all selected cells? Formulas in the selected cells will also be removed."
-        )
-      ) {
-        return;
-      }
-
       updateSheet((s) => {
         const next = { ...s.cells };
         selectionCells.forEach((k) => {
@@ -4360,8 +4051,7 @@ export default function ExcelStudioPage() {
     }
   };
 
-
-  const applyStyleToSelection = useCallback((patch: Partial<CellStyle>, targetKeys?: string[]) => {
+  const applyStyleToSelection = (patch: Partial<CellStyle>, targetKeys?: string[]) => {
     // targetKeys দেওয়া থাকলে (Macro Playback থেকে আসা explicit cell list)
     // সেটাই ব্যবহার হবে; না দিলে স্বাভাবিক UI ব্যবহারে বর্তমান selectionCells ব্যবহার হবে
     const keys = targetKeys && targetKeys.length ? targetKeys : selectionCells;
@@ -4377,15 +4067,13 @@ export default function ExcelStudioPage() {
     });
     // Macro recording চালু থাকলে এই formatting-change action হিসেবে record হচ্ছে
     recordAction({ type: "SET_STYLE", keys, style: patch });
-  }, [selectionCells, updateSheet, recordAction]);
-
+  };
 
   const toggleStyle = (field: "bold" | "italic" | "underline") => {
     const current = sheet.cells[activeCell]?.style?.[field];
     applyStyleToSelection({ [field]: !current } as Partial<CellStyle>);
     showToast(`${field.charAt(0).toUpperCase() + field.slice(1)} ${current ? "off" : "on"}.`);
   };
-
 
   const toggleBorderAll = () => {
     const current = sheet.cells[activeCell]?.style?.borders;
@@ -4399,7 +4087,6 @@ export default function ExcelStudioPage() {
     const c1 = Math.min(selection.c1, selection.c2);
     const c2 = Math.max(selection.c1, selection.c2);
 
-
     updateSheet((s) => {
       const next = { ...s.cells };
       for (let r = r1; r <= r2; r++) {
@@ -4408,7 +4095,6 @@ export default function ExcelStudioPage() {
           const existing = next[key] || { value: "" };
           const existingStyle = existing.style || {};
           let borders: CellBorders | undefined;
-
 
           switch (preset) {
             case "none":
@@ -4447,7 +4133,6 @@ export default function ExcelStudioPage() {
               break;
           }
 
-
           next[key] = {
             ...existing,
             style: { ...existingStyle, wrap: true, borders },
@@ -4458,6 +4143,14 @@ export default function ExcelStudioPage() {
     });
 
     showToast(preset === "none" ? "Borders removed." : "Borders applied.");
+  };
+
+  // Advanced Border Dropdown থেকে স্টাইল + পুরুত্ব + রঙ + প্লেসমেন্ট — সবকিছু একবারে অ্যাপ্লাই হয়
+  const applyAdvancedBorder = (preset: BorderPreset, style: NonNullable<CellStyle["borderStyle"]>, width: number, color: string) => {
+    // প্রথমে সিলেক্ট করা সেলগুলোতে স্টাইল/পুরুত্ব/রঙ বসানো হচ্ছে
+    applyStyleToSelection({ borderStyle: style, borderWidth: width, borderColor: color });
+    // এরপর কোন কোন পাশে (top/right/bottom/left) বর্ডার বসবে তা প্রয়োগ করা হচ্ছে
+    applyBorderPreset(preset);
   };
 
   const macroSleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -5093,6 +4786,16 @@ export default function ExcelStudioPage() {
     focusActiveGridCell();
   };
 
+  const addRow = () => {
+    updateSheet((s) => ({ gridRows: Math.min(s.gridRows + 1, MAX_ROWS) }));
+    showToast("Row inserted.");
+  };
+
+  const addCol = () => {
+    updateSheet((s) => ({ gridCols: Math.min(s.gridCols + 1, MAX_COLS) }));
+    showToast("Column inserted.");
+  };
+
   const removeRow = () => {
     const r1 = Math.min(selection.r1, selection.r2);
     const r2 = Math.max(selection.r1, selection.r2);
@@ -5460,10 +5163,7 @@ export default function ExcelStudioPage() {
       const next = { ...s.cells };
       selectionCells.forEach((k) => {
         if (next[k]) {
-          const rest = { ...next[k] };
-          delete rest.rowSpan;
-          delete rest.colSpan;
-          delete rest.mergedInto;
+          const { rowSpan, colSpan, mergedInto, ...rest } = next[k];
           next[k] = rest;
         }
       });
@@ -5496,23 +5196,20 @@ export default function ExcelStudioPage() {
     showToast(`"${link.label}" পেইজের লিংক যোগ করা হয়েছে।`);
   };
 
+  // চাইলে ম্যানুয়ালি নিজের URL ও বসানো যাবে (ব্যাকআপ অপশন হিসেবে রাখা হলো)
   const insertManualHyperlinkUrl = () => {
-    requestPrompt(
-      "Insert Hyperlink",
-      "Enter URL",
-      (url) => {
-        if (!url) return;
-        if (!sanitizeUrl(url)) {
-          showToast("Invalid link. Only https, mailto and tel links are allowed.");
-          return;
-        }
-        setCellData(activeCell, { hyperlink: url.trim() });
-        setShowHyperlinkDialog(false);
-        showToast("Hyperlink inserted.");
-      },
-      sheet.cells[activeCell]?.hyperlink || "https://"
-    );
+    const url = window.prompt("Enter URL:", sheet.cells[activeCell]?.hyperlink || "https://");
+    if (url) {
+      if (!sanitizeUrl(url)) {
+        showToast("Invalid link. Only http(s), mailto and tel links are allowed.");
+        return;
+      }
+      setCellData(activeCell, { hyperlink: url.trim() });
+      setShowHyperlinkDialog(false);
+      showToast("Hyperlink inserted.");
+    }
   };
+
   const openShareMenu = (url: string, label: string, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -5522,6 +5219,15 @@ export default function ExcelStudioPage() {
       url,
       label,
     });
+  };
+
+  const shareActiveCellHyperlink = (e: React.MouseEvent) => {
+    const link = sheet.cells[activeCell]?.hyperlink;
+    if (!link) {
+      showToast("এই সেলে কোনো হাইপারলিংক নেই।");
+      return;
+    }
+    openShareMenu(link, sheet.cells[activeCell]?.value || link, e);
   };
 
   const copyShareLink = async (url: string) => {
@@ -5535,16 +5241,11 @@ export default function ExcelStudioPage() {
   };
 
   const insertComment = () => {
-    requestPrompt(
-      "Insert Comment",
-      "Enter comment",
-      (text) => {
-        if (!text) return;
-        setCellData(activeCell, { comment: text });
-        showToast("Comment saved.");
-      },
-      sheet.cells[activeCell]?.comment ?? ""
-    );
+    const text = window.prompt("Enter comment:", sheet.cells[activeCell]?.comment || "");
+    if (text !== null) {
+      setCellData(activeCell, { comment: text });
+      showToast("Comment saved.");
+    }
   };
 
   const clearFormattingOnSelection = useCallback(() => {
@@ -5705,17 +5406,11 @@ export default function ExcelStudioPage() {
 
 
   const insertSparkline = useCallback(() => {
-    requestPrompt(
-      "Insert Sparkline",
-      "Enter data range for sparkline (e.g. A1:A6)",
-      (range) => {
-        if (!range) return;
-        setCellData(activeCell, { sparkline: range });
-        showToast("Sparkline inserted.");
-      },
-      selectedRangeText
-    );
-  }, [selectedRangeText, activeCell, setCellData, showToast, requestPrompt]);
+    const range = window.prompt("Enter data range for sparkline (e.g. A1:A6):", selectedRangeText);
+    if (!range) return;
+    setCellData(activeCell, { sparkline: range });
+    showToast("Sparkline inserted.");
+  }, [selectedRangeText, activeCell, setCellData, showToast]);
 
   const clearAllFilters = useCallback(() => {
     updateSheet({ filters: {}, hiddenRows: [] });
@@ -5753,7 +5448,7 @@ export default function ExcelStudioPage() {
     setNrName("");
     setNrRange("");
     showToast("Named range saved.");
-  }, [nrName, nrRange, updateSheet, showToast, setNrName, setNrRange]);
+  }, [nrName, nrRange, updateSheet, showToast]);
 
   const removeNamedRange = useCallback((key: string) => {
     updateSheet((s) => {
@@ -5857,7 +5552,6 @@ export default function ExcelStudioPage() {
   }, []);
 
   const selectionStats = useMemo(() => {
-  // Formula evaluation helper is render-safe; its internal cache ref is read-only during evaluation.
     const nums = selectionCells.map((k) => getCellValue(k)).filter((v): v is number => typeof v === "number");
     const sum = nums.reduce((a, b) => a + b, 0);
     const avg = nums.length ? sum / nums.length : 0;
@@ -6147,7 +5841,7 @@ export default function ExcelStudioPage() {
         `Sorted by ${kind === "bg" ? "background" : "font"} color in column ${colToLetter(col)}.`
       );
     },
-    [sheet.cells, updateSheet, showToast]
+    [sheet.gridRows, sheet.cells, updateSheet, showToast]
   );
 
   const getColumnUniqueValues = useCallback(
@@ -6352,7 +6046,7 @@ export default function ExcelStudioPage() {
 
   const openAutoFilterMenu = useCallback(
     (col: number, e?: React.MouseEvent) => {
-      if (!autoFilterIsEnabled && !sheet.filters[col]) {
+      if (!autoFilterEnabled && !sheet.filters[col]) {
         return;
       }
 
@@ -6370,7 +6064,7 @@ export default function ExcelStudioPage() {
         y: e ? Math.min(e.clientY + 8, window.innerHeight - 560) : 160,
       });
     },
-    [autoFilterIsEnabled, getColumnUniqueValues, sheet.filters, setAutoFilterDraft, setAutoFilterMenu]
+    [autoFilterEnabled, getColumnUniqueValues, sheet.filters]
   );
 
   const applyAutoFilterDraft = useCallback(() => {
@@ -6420,8 +6114,6 @@ export default function ExcelStudioPage() {
     buildHiddenRowsFromFilterRecords,
     updateSheet,
     showToast,
-    setAutoFilterMenu,
-    setAutoFilterDraft,
   ]);
 
   const clearAutoFilterColumn = useCallback(() => {
@@ -6447,14 +6139,12 @@ export default function ExcelStudioPage() {
     buildHiddenRowsFromFilterRecords,
     updateSheet,
     showToast,
-    setAutoFilterMenu,
-    setAutoFilterDraft,
   ]);
 
   const toggleAutoFilter = useCallback(() => {
     const hasActiveFilters = Object.keys(sheet.filters || {}).length > 0;
 
-    if (autoFilterIsEnabled || hasActiveFilters) {
+    if (autoFilterEnabled || hasActiveFilters) {
       setAutoFilterEnabled(false);
       setAutoFilterMenu(null);
       setAutoFilterDraft(null);
@@ -6471,12 +6161,10 @@ export default function ExcelStudioPage() {
     setAutoFilterEnabled(true);
     showToast("AutoFilter turned on. Use the header dropdown arrows to filter.");
   }, [
-    autoFilterIsEnabled,
+    autoFilterEnabled,
     sheet.filters,
     updateSheet,
     showToast,
-    setAutoFilterMenu,
-    setAutoFilterDraft,
   ]);
 
 
@@ -6504,13 +6192,7 @@ export default function ExcelStudioPage() {
       const group = groups.find((g) => g.id === id);
       const hidden = new Set(s.hiddenRows);
       if (group) {
-        for (let r = group.start + 1; r <= group.end; r++) {
-          if (group.collapsed) {
-            hidden.add(r);
-          } else {
-            hidden.delete(r);
-          }
-        }
+        for (let r = group.start + 1; r <= group.end; r++) group.collapsed ? hidden.add(r) : hidden.delete(r);
       }
       return { groups, hiddenRows: Array.from(hidden) };
     });
@@ -6641,7 +6323,7 @@ export default function ExcelStudioPage() {
 
 
 
-  const importCsvText = useCallback((text: string) => {
+  const importCsvText = (text: string) => {
     const parseCsv = (input: string) => {
       const rows: string[][] = [];
       let row: string[] = [];
@@ -6711,7 +6393,7 @@ export default function ExcelStudioPage() {
 
     setShowDataSource(false);
     showToast("CSV data imported.");
-  }, [updateSheet, showToast]);
+  };
 
 
   const recordRecentFile = useCallback(
@@ -6762,19 +6444,14 @@ export default function ExcelStudioPage() {
 
 
   const handleNewFile = () => {
-    requestConfirm(
-      "New Workbook",
-      "Create a new workbook? Unsaved changes will be lost.",
-      () => {
-        setWorkbookName("Untitled Workbook");
-        setWorkbookId(null);
-        setSheets([createSheet("Sheet 1")]);
-        setActiveSheetIndex(0);
-        setActiveCell("A1");
-        setSelection({ r1: 0, c1: 0, r2: 0, c2: 0 });
-        showToast("New workbook created.");
-      }
-    );
+    if (!window.confirm("Create a new workbook? Unsaved changes will be lost.")) return;
+    setWorkbookName("Untitled Workbook");
+    setWorkbookId(null);
+    setSheets([createSheet("Sheet 1")]);
+    setActiveSheetIndex(0);
+    setActiveCell("A1");
+    setSelection({ r1: 0, c1: 0, r2: 0, c2: 0 });
+    showToast("New workbook created.");
   };
 
 
@@ -6861,7 +6538,7 @@ export default function ExcelStudioPage() {
     setSelection({ r1: 0, c1: 0, r2: 0, c2: 0 });
     setShowTemplatesDialog(null);
     showToast(`New workbook created from "${tpl.name}".`);
-  }, [showToast, replaceWorkbookSheets, setSheets]);
+  }, [showToast, replaceWorkbookSheets]);
 
   const handleApplyBuiltInTemplate = useCallback(
     (tpl: (typeof BUILT_IN_TEMPLATES)[number]) => {
@@ -7195,81 +6872,83 @@ export default function ExcelStudioPage() {
   };
 
 
-  const buildWorkbookSnapshot = useCallback((): WorkbookSnapshot => ({
+  const buildWorkbookSnapshot = (): WorkbookSnapshot => ({
     id: workbookId || undefined,
     name: workbookName,
     pageSize,
     orientation,
     activeSheetIndex,
     sheets,
-  }), [workbookId, workbookName, pageSize, orientation, activeSheetIndex, sheets]);
+  });
 
-  const handleSaveToApp = () => {
+
+  const handleSaveToApp = async () => {
     if (localSaveInProgressRef.current) {
       return;
     }
 
-    const nameToUse = workbookName.trim();
-
-    const proceed = (finalName: string) => {
-      if (!finalName) {
-        showToast("ওয়ার্কবুকের নাম দিন।");
-        return;
-      }
-
-      localSaveInProgressRef.current = true;
-      setSaveState("saving");
-
-      void (async () => {
-        try {
-          const snapshot: WorkbookSnapshot = {
-            ...buildWorkbookSnapshot(),
-            name: finalName,
-          };
-
-          const saved = await saveLocalWorkbook(snapshot);
-
-          setWorkbookId(saved.id);
-          setWorkbookName(saved.name);
-          setSaveState("saved");
-          void refreshRecentFromDevice();
-          showToast("ওয়ার্কবুক এই ডিভাইসে সেভ হয়েছে।");
-
-          window.setTimeout(() => {
-            setSaveState((current) =>
-              current === "saved" ? "idle" : current
-            );
-          }, 1800);
-        } catch (error) {
-          console.error("ALIMXL local save failed:", error);
-
-          setSaveState("error");
-
-          showToast(
-            "সেভ হয়নি। ডিভাইসের খালি জায়গা ও ব্রাউজারের স্টোরেজ অনুমতি পরীক্ষা করুন।"
-          );
-        } finally {
-          localSaveInProgressRef.current = false;
-        }
-      })();
-    };
+    let nameToUse = workbookName.trim();
 
     if (
       !workbookId &&
       (!nameToUse || nameToUse === "Untitled Workbook")
     ) {
-      requestPrompt(
-        "Save Workbook",
+      const entered = window.prompt(
         "ওয়ার্কবুকের নাম দিন",
-        (entered) => {
-          proceed(entered.trim());
-        },
         nameToUse === "Untitled Workbook" ? "" : nameToUse
       );
+
+      if (entered === null) {
+        showToast("সেভ বাতিল করা হয়েছে।");
+        return;
+      }
+
+      nameToUse = entered.trim();
+
+      if (!nameToUse) {
+        showToast("ওয়ার্কবুকের নাম দিন।");
+        return;
+      }
+    }
+
+    if (!nameToUse) {
+      showToast("ওয়ার্কবুকের নাম দিন।");
       return;
     }
 
-    proceed(nameToUse);
+    localSaveInProgressRef.current = true;
+    setSaveState("saving");
+
+    try {
+      const snapshot: WorkbookSnapshot = {
+        ...buildWorkbookSnapshot(),
+        name: nameToUse,
+      };
+
+      const saved = await saveLocalWorkbook(snapshot);
+
+      setWorkbookId(saved.id);
+      setWorkbookName(saved.name);
+      setSaveState("saved");
+      void refreshRecentFromDevice();
+      showToast("ওয়ার্কবুক এই ডিভাইসে সেভ হয়েছে।");
+
+      window.setTimeout(() => {
+        setSaveState((current) =>
+          current === "saved" ? "idle" : current
+        );
+      }, 1800);
+    } catch (error) {
+      console.error("ALIMXL local save failed:", error);
+
+      setSaveState("error");
+
+      showToast(
+        "সেভ হয়নি। ডিভাইসের খালি জায়গা ও ব্রাউজারের স্টোরেজ অনুমতি পরীক্ষা করুন।"
+      );
+    } finally {
+      localSaveInProgressRef.current = false;
+    }
   };
 
 
@@ -7415,7 +7094,7 @@ export default function ExcelStudioPage() {
           ? `${error.name}: ${error.message}`
           : String(error);
 
-      showToast(`XLSX export হয়নি।\n\n${message}`);
+      window.alert(`XLSX export হয়নি।\n\n${message}`);
     }
   };
 
@@ -7471,200 +7150,191 @@ export default function ExcelStudioPage() {
           ? `${error.name}: ${error.message}`
           : String(error);
 
-      showToast(`JSON backup সেভ ব্যর্থ হয়েছে।\n\n${details}`);
+      window.alert(
+        `JSON backup সেভ ব্যর্থ হয়েছে।\n\n${details}`
+      );
+
+
+      showToast("ব্যাকআপ সেভ হয়নি। দেখানো error-টি পরীক্ষা করুন।");
     }
   };
 
 
-  const handleOpenRemoteFile = useCallback(() => {
-    requestPrompt(
-      "Open Remote File",
-      "Enter the URL of the remote file to open:",
-      (url) => {
-        if (!url) {
-          return;
-        }
+  const handleOpenRemoteFile = useCallback(async (): Promise<void> => {
+    const url = window.prompt("Enter the URL of the remote file to open:");
 
-        const trimmedUrl = url.trim();
+    if (!url) {
+      return;
+    }
 
-        if (!/^https?:\/\//i.test(trimmedUrl)) {
-          showToast("শুধু http বা https URL ব্যবহার করা যাবে।");
-          return;
-        }
+    const trimmedUrl = url.trim();
 
-        void (async () => {
-          try {
-            const response = await fetch(trimmedUrl);
+    if (!/^https?:\/\//i.test(trimmedUrl)) {
+      showToast("শুধু http বা https URL ব্যবহার করা যাবে।");
+      return;
+    }
 
-            if (!response.ok) {
-              throw new Error(
-                `Remote file request failed with status ${response.status}`
-              );
-            }
+    try {
+      const response = await fetch(trimmedUrl);
 
-            const text = await response.text();
-
-            const isCsv =
-              trimmedUrl.toLowerCase().endsWith(".csv") ||
-              response.headers
-                .get("content-type")
-                ?.toLowerCase()
-                .includes("text/csv");
-
-            if (isCsv) {
-              importCsvText(text);
-              showToast("Remote CSV file opened.");
-              return;
-            }
-
-            try {
-              const parsed = JSON.parse(text) as WorkbookSnapshot;
-
-              const sheets = parsed.sheets?.length
-                ? parsed.sheets
-                : [createSheet("Sheet 1")];
-
-              replaceWorkbookSheets(sheets);
-              setActiveSheetIndex(0);
-              setWorkbookName(parsed.name || "Remote Workbook");
-              setWorkbookId(parsed.id || null);
-
-              showToast("Remote workbook opened.");
-            } catch {
-              importCsvText(text);
-              showToast("Remote CSV file opened.");
-            }
-          } catch (error) {
-            console.error("ALIMXL remote open failed:", error);
-
-            const message =
-              error instanceof Error
-                ? `${error.name}: ${error.message}`
-                : String(error);
-
-            showToast(`Remote file খোলা যায়নি।\n\n${message}`);
-          }
-        })();
+      if (!response.ok) {
+        throw new Error(
+          `Remote file request failed with status ${response.status}`
+        );
       }
-    );
-  }, [importCsvText, showToast, replaceWorkbookSheets, requestPrompt]);
 
+      const text = await response.text();
 
+      const isCsv =
+        trimmedUrl.toLowerCase().endsWith(".csv") ||
+        response.headers
+          .get("content-type")
+          ?.toLowerCase()
+          .includes("text/csv");
 
-  const handleSaveRemoteFile = useCallback(() => {
-    requestPrompt(
-      "Save to Remote",
-      "Enter the URL to save this workbook to:",
-      (url) => {
-        if (!url) {
-          return;
-        }
-
-        const trimmedUrl = url.trim();
-
-        if (!/^https?:\/\//i.test(trimmedUrl)) {
-          showToast("শুধু http বা https URL ব্যবহার করা যাবে।");
-          return;
-        }
-
-        void (async () => {
-          try {
-            const snapshot = buildWorkbookSnapshot();
-
-            const response = await fetch(trimmedUrl, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify(snapshot),
-            });
-
-            if (!response.ok) {
-              throw new Error(
-                `Remote save failed with status ${response.status}`
-              );
-            }
-
-            showToast("Workbook saved to the remote location.");
-          } catch (error) {
-            console.error("ALIMXL remote save failed:", error);
-
-            const message =
-              error instanceof Error
-                ? `${error.name}: ${error.message}`
-                : String(error);
-
-            showToast(`Remote save হয়নি।\n\n${message}`);
-          }
-        })();
+      if (isCsv) {
+        importCsvText(text);
+        showToast("Remote CSV file opened.");
+        return;
       }
-    );
-  }, [buildWorkbookSnapshot, showToast, requestPrompt]);
 
+      try {
+        const parsed = JSON.parse(text) as WorkbookSnapshot;
+
+        const sheets = parsed.sheets?.length
+          ? parsed.sheets
+          : [createSheet("Sheet 1")];
+
+        replaceWorkbookSheets(sheets);
+        setActiveSheetIndex(0);
+        setWorkbookName(parsed.name || "Remote Workbook");
+        setWorkbookId(parsed.id || null);
+
+        showToast("Remote workbook opened.");
+      } catch {
+        importCsvText(text);
+        showToast("Remote CSV file opened.");
+      }
+    } catch (error) {
+      console.error("ALIMXL remote open failed:", error);
+
+      const message =
+        error instanceof Error
+          ? `${error.name}: ${error.message}`
+          : String(error);
+
+      window.alert(`Remote file খোলা যায়নি।\n\n${message}`);
+      showToast("Remote file খোলা যায়নি। দেখানো error-টি পরীক্ষা করুন।");
+    }
+  }, [importCsvText, showToast, replaceWorkbookSheets]);
+
+
+  const handleSaveRemoteFile = useCallback(async (): Promise<void> => {
+    const url = window.prompt("Enter the URL to save this workbook to:");
+
+    if (!url) {
+      return;
+    }
+
+    const trimmedUrl = url.trim();
+
+    if (!/^https?:\/\//i.test(trimmedUrl)) {
+      showToast("শুধু http বা https URL ব্যবহার করা যাবে।");
+      return;
+    }
+
+    try {
+      const snapshot = buildWorkbookSnapshot();
+
+      const response = await fetch(trimmedUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(snapshot),
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          `Remote save failed with status ${response.status}`
+        );
+      }
+
+      showToast("Workbook saved to the remote location.");
+    } catch (error) {
+      console.error("ALIMXL remote save failed:", error);
+
+      const message =
+        error instanceof Error
+          ? `${error.name}: ${error.message}`
+          : String(error);
+
+      window.alert(`Remote save হয়নি।\n\n${message}`);
+      showToast("Remote save হয়নি। দেখানো error-টি পরীক্ষা করুন।");
+    }
+  }, [buildWorkbookSnapshot, showToast]);
 
   const handleSaveAsTemplate = useCallback((): void => {
-    requestPrompt(
-      "Save as Template",
+    const name = window.prompt(
       "Template name:",
-      (name) => {
-        if (!name) {
-          showToast("Template save বাতিল করা হয়েছে।");
-          return;
-        }
-
-        const trimmedName = name.trim();
-
-        if (!trimmedName) {
-          showToast("Template name দিন।");
-          return;
-        }
-
-        const duplicate = templates.some(
-          (template) =>
-            template.name.toLowerCase() === trimmedName.toLowerCase()
-        );
-
-        if (duplicate) {
-          showToast("এই নামে template আগেই আছে।");
-          return;
-        }
-
-        try {
-          const snapshot = buildWorkbookSnapshot();
-
-          const entry: WorkbookTemplate = {
-            id: `tpl-${Date.now()}`,
-            name: trimmedName,
-            createdAt: new Date().toISOString(),
-            snapshot,
-          };
-
-          const next = [entry, ...templates];
-
-          saveTemplatesToStorage(next);
-
-          setTemplates(next);
-
-          showToast(`Template "${trimmedName}" saved.`);
-        } catch (error) {
-          console.error("ALIMXL template save failed:", error);
-
-          const message =
-            error instanceof Error
-              ? `${error.name}: ${error.message}`
-              : String(error);
-
-          showToast(`Template save হয়নি।\n\n${message}`);
-        }
-      },
       workbookName || "Untitled Template"
     );
+
+    if (!name) {
+      showToast("Template save বাতিল করা হয়েছে।");
+      return;
+    }
+
+    const trimmedName = name.trim();
+
+    if (!trimmedName) {
+      showToast("Template name দিন।");
+      return;
+    }
+
+    const duplicate = templates.some(
+      (template) =>
+        template.name.toLowerCase() === trimmedName.toLowerCase()
+    );
+
+    if (duplicate) {
+      showToast("এই নামে template আগেই আছে।");
+      return;
+    }
+
+    try {
+      const snapshot = buildWorkbookSnapshot();
+
+      const entry: WorkbookTemplate = {
+        id: `tpl-${Date.now()}`,
+        name: trimmedName,
+        createdAt: new Date().toISOString(),
+        snapshot,
+      };
+
+      const next = [entry, ...templates];
+
+      saveTemplatesToStorage(next);
+
+      setTemplates(next);
+
+      showToast(`Template "${trimmedName}" saved.`);
+    } catch (error) {
+      console.error("ALIMXL template save failed:", error);
+
+      const message =
+        error instanceof Error
+          ? `${error.name}: ${error.message}`
+          : String(error);
+
+      window.alert(`Template save হয়নি।\n\n${message}`);
+      showToast("Template save হয়নি। দেখানো error-টি পরীক্ষা করুন।");
+    }
   }, [
     workbookName,
     templates,
     buildWorkbookSnapshot,
     showToast,
-    requestPrompt,
   ]);
 
 
@@ -7680,78 +7350,150 @@ export default function ExcelStudioPage() {
     setShowLoadDialog(true);
   };
 
-  const loadWorkbookById = (id: string) => {
+
+  const loadWorkbookById = async (id: string): Promise<void> => {
     if (localSaveInProgressRef.current) {
-      showToast("সেভ সম্পন্ন হওয়া পর্যন্ত অপেক্ষা করুন।");
+      showToast("সেভ সম্পন্ন হওয়া পর্যন্ত অপেক্ষা করুন।");
       return;
     }
 
-    requestConfirm(
-      "Open Workbook",
-      "সেভ করা ওয়ার্কবুক খুলবেন? বর্তমান কাজ সেভ না করলে হারিয়ে যাবে।",
-      () => {
-        void (async () => {
-          try {
-            const doc = await getLocalWorkbook<WorkbookSnapshot>(id);
-
-            if (!doc) {
-              throw new Error("ওয়ার্কবুকটি পাওয়া যায়নি।");
-            }
-
-            setEditingKey(null);
-            setEditValue("");
-            setClipboard(null);
-            setFormatPainter(null);
-
-            setWorkbookId(doc.id);
-            setWorkbookName(doc.name);
-            setPageSize(doc.pageSize);
-            setOrientation(doc.orientation);
-
-            setActiveSheetIndex(
-              Math.min(
-                Math.max(doc.activeSheetIndex, 0),
-                doc.sheets.length - 1
-              )
-            );
-
-            replaceWorkbookSheets(doc.sheets);
-
-            setActiveCell("A1");
-            setSelection({
-              r1: 0,
-              c1: 0,
-              r2: 0,
-              c2: 0,
-            });
-
-            setSaveState("idle");
-            setShowHomeScreen(false);
-            setShowLoadDialog(false);
-
-            void refreshRecentFromDevice();
-
-            showToast(`ওয়ার্কবুক খোলা হয়েছে: ${doc.name}`);
-          } catch (error) {
-            console.error("ALIMXL local load failed:", error);
-
-            const message =
-              error instanceof Error
-                ? `${error.name}: ${error.message}`
-                : String(error);
-
-            showToast(`ওয়ার্কবুক খোলা যায়নি।\n\n${message}`);
-          }
-        })();
-      }
+    const confirmed = window.confirm(
+      "সেভ করা ওয়ার্কবুক খুলবেন? বর্তমান কাজ সেভ না করলে হারিয়ে যাবে।"
     );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const doc = await getLocalWorkbook<WorkbookSnapshot>(id);
+
+      if (!doc) {
+        throw new Error("ওয়ার্কবুকটি পাওয়া যায়নি।");
+      }
+
+      setEditingKey(null);
+      setEditValue("");
+      setClipboard(null);
+      setFormatPainter(null);
+
+      setWorkbookId(doc.id);
+      setWorkbookName(doc.name);
+      setPageSize(doc.pageSize);
+      setOrientation(doc.orientation);
+
+      setActiveSheetIndex(
+        Math.min(
+          Math.max(doc.activeSheetIndex, 0),
+          doc.sheets.length - 1
+        )
+      );
+
+      replaceWorkbookSheets(doc.sheets);
+
+      setActiveCell("A1");
+      setSelection({
+        r1: 0,
+        c1: 0,
+        r2: 0,
+        c2: 0,
+      });
+
+      setSaveState("idle");
+      setShowHomeScreen(false);
+      setShowLoadDialog(false);
+
+      void refreshRecentFromDevice();
+
+      showToast(`ওয়ার্কবুক খোলা হয়েছে: ${doc.name}`);
+    } catch (error) {
+      console.error("ALIMXL local load failed:", error);
+
+      const message =
+        error instanceof Error
+          ? `${error.name}: ${error.message}`
+          : String(error);
+
+      window.alert(`ওয়ার্কবুক খোলা যায়নি।\n\n${message}`);
+      showToast(
+        "ওয়ার্কবুক খোলা যায়নি। দেখানো error-টি পরীক্ষা করুন।"
+      );
+    }
   };
+
+  const [showPrintPreview, setShowPrintPreview] = useState(false);
+  const [printSettings, setPrintSettings] = useState({
+    pageSize: "A4",
+    orientation: "landscape",
+    marginTop: 10,
+    marginRight: 10,
+    marginBottom: 10,
+    marginLeft: 10,
+    fitToWidth: 1,
+    fitToHeight: 0,
+    centerHorizontally: true,
+    centerVertically: false,
+    printGridLines: false,
+    printHeadings: false,
+    printSelectionOnly: true,
+  });
+
+  const getPrintableRange = useCallback(() => {
+    const selectedOnly = printSettings.printSelectionOnly && selection;
+    const sourceCells = Object.entries(sheet.cells);
+
+    if (selectedOnly) {
+      const r1 = Math.min(selection.r1, selection.r2);
+      const r2 = Math.max(selection.r1, selection.r2);
+      const c1 = Math.min(selection.c1, selection.c2);
+      const c2 = Math.max(selection.c1, selection.c2);
+      return { r1, r2, c1, c2 };
+    }
+
+    let minR = Infinity;
+    let minC = Infinity;
+    let maxR = -1;
+    let maxC = -1;
+
+    for (const [key, cell] of sourceCells) {
+      const [r, c] = key.split(":").map(Number);
+      const value = String(cell?.value ?? "").trim();
+      if (!value) continue;
+      minR = Math.min(minR, r);
+      minC = Math.min(minC, c);
+      maxR = Math.max(maxR, r);
+      maxC = Math.max(maxC, c);
+    }
+
+    if (maxR === -1) {
+      return { r1: 0, r2: 0, c1: 0, c2: 0 };
+    }
+
+    return { r1: minR, r2: maxR, c1: minC, c2: maxC };
+  }, [printSettings.printSelectionOnly, selection, sheet.cells]);
+
+  const openPrintPreview = useCallback(() => {
+    setShowPrintPreview(true);
+  }, []);
+
+  const closePrintPreview = useCallback(() => {
+    setShowPrintPreview(false);
+  }, []);
+
+  const doNativePrint = useCallback(() => {
+    setTimeout(() => window.print(), 100);
+  }, []);
 
 
 
   const handleExportPdf = () => {
     showToast("Preparing PDF export.");
     window.setTimeout(() => window.print(), 80);
+  };
+
+  const togglePrintPreview = () => {
+    setPrintPreview((v) => !v);
+    showToast(printPreview ? "Print preview closed." : "Print preview enabled.");
   };
 
   const findMatches = useCallback(() => {
@@ -7809,67 +7551,33 @@ export default function ExcelStudioPage() {
     showToast("All matches replaced.");
   };
 
-  const getChartData = (
-    range: string
-  ): { label: string; value: number }[] => {
+  const getChartData = (range: string) => {
     const normalized = range.trim();
 
-    if (!normalized) return [];
-
-    const { sheetName, reference } = splitSheetReference(normalized);
-
-    const targetSheet = sheetName
-      ? sheets.find(
-        (item) =>
-          item.name.trim().toLowerCase() ===
-          sheetName.trim().toLowerCase()
-      )
-      : sheet;
-
-    if (!targetSheet) return [];
-
-    const normalizedRange = normalizeRange(reference);
-
-    if (!normalizedRange) return [];
-
-    const output: { label: string; value: number }[] = [];
-
-    for (let row = normalizedRange.r1; row <= normalizedRange.r2; row++) {
-      const labelColumn =
-        normalizedRange.c1 === normalizedRange.c2
-          ? Math.max(0, normalizedRange.c1 - 1)
-          : normalizedRange.c1;
-
-      const labelKey = cellKey(row, labelColumn);
-
-      const labelValue = getCellValue(
-        labelKey,
-        new Set(),
-        targetSheet,
-        sheets
-      );
-
-      const label =
-        formatDisplayValue(
-          labelValue,
-          targetSheet.cells[labelKey]?.style
-        ) || `Row ${row + 1}`;
-      const value = toNumber(
-        getCellValue(
-          cellKey(
-            row,
-            Math.min(normalizedRange.c1 + 1, normalizedRange.c2)
-          ),
-          new Set(),
-          targetSheet,
-          sheets
-        )
-      );
-
-      output.push({ label, value });
+    if (!normalized) {
+      return [];
     }
 
-    return output;
+    const nr = normalizeRange(normalized);
+
+    if (!nr) {
+      return [];
+    }
+
+    const out: { label: string; value: number }[] = [];
+
+    for (let r = nr.r1; r <= nr.r2; r++) {
+      const label =
+        getDisplayValue(cellKey(r, nr.c1)) || `Row ${r + 1}`;
+
+      const value = toNumber(
+        getCellValue(cellKey(r, Math.min(nr.c1 + 1, nr.c2)))
+      );
+
+      out.push({ label, value });
+    }
+
+    return out;
   };
 
   const openChartWizard = () => {
@@ -7894,7 +7602,7 @@ export default function ExcelStudioPage() {
     setWizardShape("cylinder");
     setWizardSeries([
       {
-        id: `s_${++chartSeriesIdRef.current}`,
+        id: `s_${Date.now()}`,
         name: "Series 1",
         range,
       },
@@ -7952,8 +7660,7 @@ export default function ExcelStudioPage() {
     if (!nr) return [] as string[];
     const headers: string[] = [];
     for (let c = nr.c1; c <= nr.c2; c++) {
-      // Display helper reads workbook state; no ref is mutated by this render.
-          const label = getDisplayValue(cellKey(nr.r1, c));
+      const label = getDisplayValue(cellKey(nr.r1, c));
       if (label) headers.push(label);
     }
     return headers;
@@ -8052,7 +7759,7 @@ export default function ExcelStudioPage() {
   };
 
   const addSheet = () => {
-    const idSuffix = "new";
+    const idSuffix = Date.now().toString(36);
     setSheets((prev) => [...prev, createSheet(`Sheet ${prev.length + 1}`, idSuffix)]);
     setActiveSheetIndex(sheets.length);
     showToast("Sheet inserted.");
@@ -8067,7 +7774,7 @@ export default function ExcelStudioPage() {
 
   const duplicateSheet = () => {
     const copy: WorkbookSheet = JSON.parse(JSON.stringify(sheet));
-    copy.id = `sheet_duplicate_${++sheetIdCounter}`;
+    copy.id = `sheet_${Date.now()}`;
     copy.name = `${sheet.name} Copy`;
     setSheets((prev) => [...prev, copy]);
     setActiveSheetIndex(sheets.length);
@@ -8084,44 +7791,6 @@ export default function ExcelStudioPage() {
     setActiveSheetIndex((i) => Math.max(0, i - 1));
     showToast("Sheet deleted.");
   };
-
-  const resetTemplateInputValues = () => {
-    if (
-      !window.confirm(
-        "Reset all editable input values?\n\nFormulas, headings, department names, currency and template structure will remain unchanged."
-      )
-    ) {
-      return;
-    }
-
-    setSheets((prevSheets) =>
-      prevSheets.map((targetSheet) => {
-        const nextCells = { ...targetSheet.cells };
-
-        Object.entries(nextCells).forEach(([cellKey, cellData]) => {
-          const background = cellData?.style?.bg;
-
-          // #FFF9DE = editable input cell in the built-in Monthly Budget template.
-          if (background === "#FFF9DE") {
-            nextCells[cellKey] = {
-              ...cellData,
-              value: "",
-            };
-          }
-        });
-
-        return {
-          ...targetSheet,
-          cells: nextCells,
-        };
-      })
-    );
-
-    showToast(
-      "Template inputs reset. Formulas and structure are unchanged."
-    );
-  };
-
 
   const clearSelection = () => {
     updateSheet((s) => {
@@ -8278,7 +7947,6 @@ export default function ExcelStudioPage() {
     selectedRangeText,
     predictivePeriods,
     showToast,
-    setShowPredictiveAnalytics,
   ]);
 
   const refreshPredictiveAnalytics = useCallback(() => {
@@ -8306,6 +7974,8 @@ export default function ExcelStudioPage() {
       showToast("No forecast result to insert.");
       return;
     }
+
+    const r1 = Math.min(selection.r1, selection.r2);
     const r2 = Math.max(selection.r1, selection.r2);
     const c1 = Math.min(selection.c1, selection.c2);
 
@@ -8480,13 +8150,6 @@ export default function ExcelStudioPage() {
     showGoalSeek,
     showTemplatesDialog,
     showToast,
-    setRightSidebarOpen,
-    setRightSidebarUndocked,
-    setActiveSidebarPanel,
-    setShowPredictiveAnalytics,
-    setPredictivePeriods,
-    setShowConditionalFormatting,
-    setShowNamedRanges,
   ]);
 
   const toggleTextDirection = () => {
@@ -8513,7 +8176,7 @@ export default function ExcelStudioPage() {
     callback();
   };
 
-  const dispatchMenuAction = (action: string) => {
+  const dispatchMenuAction = useCallback((action: string) => {
     switch (action) {
       case "FILE_NEW":
         handleNewFile();
@@ -8529,9 +8192,6 @@ export default function ExcelStudioPage() {
       case "FILE_EXPORT":
       case "FILE_SAVE_AS":
         handleExportAlimxl();
-        break;
-      case "RESET_TEMPLATE_INPUTS":
-        resetTemplateInputValues();
         break;
       case "FILE_RELOAD":
         handleRefreshPage();
@@ -8745,18 +8405,52 @@ export default function ExcelStudioPage() {
         break;
     }
     closeMenu();
-  };
+  }, [
+    activePos.col,
+    activeSidebarPanel,
+    activeCellStyle.decimals,
+    activeCellStyle.numberFormat,
+    findText,
+    matchCase,
+    replaceText,
+    selectedRangeText,
+    selectionCells,
+    sheet,
+    sheets.length,
+    sortDir,
+    workbookName,
+    workbookId,
+    pageSize,
+    orientation,
+    activeSheetIndex,
+    sheets,
+    clipboard,
+    activePos.row,
+    activeCell,
+    formulaBar,
+    splitAxis,
+    printPreview,
+    showGridLines,
+    getCellValue,
+    getDisplayValue,
+    getRawValue,
+    showToast,
+    setCellValue,
+    updateSheet,
+  ]);
 
   useEffect(() => {
-    // Restore persisted browser-only lists after mount; no render-derived state is fed back.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refreshRecentFromDevice();
     setTemplates(loadTemplatesFromStorage());
     setSavedMacros(loadMacrosFromStorage());
-  }, [refreshRecentFromDevice]);
+  }, []);
 
-  // refreshTick is intentionally a render trigger for the explicit Refresh action.
-  // Do not clone predictiveResult in an effect: the clone does not recalculate analytics.
+  useEffect(() => {
+    if (refreshTick === 0) return;
+    if (showPredictiveAnalytics && predictiveResult) {
+      setPredictiveResult((prev) => prev ? { ...prev } : prev);
+    }
+  }, [refreshTick, showPredictiveAnalytics, predictiveResult]);
   useEffect(() => {
 
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
@@ -8944,7 +8638,7 @@ export default function ExcelStudioPage() {
             try {
               await fetch("/api/auth/logout", { method: "POST" });
             } finally {
-              router.push("/login");
+              window.location.href = "/login";
             }
           },
         },
@@ -8988,7 +8682,7 @@ export default function ExcelStudioPage() {
     { label: "Delete Columns", icon: Icons.PanelRightClose, onClick: () => handleToolbarAction("Delete Columns", removeCol) },
     { label: "Sort Ascending", icon: Icons.ArrowUpAZ, onClick: () => handleToolbarAction("Sort Ascending", () => sortByActiveColumn("asc")) },
     { label: "Sort Descending", icon: Icons.ArrowDownZA, onClick: () => handleToolbarAction("Sort Descending", () => sortByActiveColumn("desc")) },
-    { label: "AutoFilter", icon: Icons.Filter, active: autoFilterIsEnabled, kind: "toggle", onClick: () => handleToolbarAction("AutoFilter", toggleAutoFilter), },
+    { label: "AutoFilter", icon: Icons.Filter, active: autoFilterEnabled || Object.keys(sheet.filters || {}).length > 0, kind: "toggle", onClick: () => handleToolbarAction("AutoFilter", toggleAutoFilter), },
     { label: "Insert Image", icon: Icons.ImagePlus, onClick: () => handleToolbarAction("Insert Image", () => imageInputRef.current?.click()) },
     { label: "Insert Chart", icon: Icons.ChartColumnBig, onClick: () => handleToolbarAction("Insert Chart", openChartWizard) },
     { label: "Insert Pivot Table", icon: Icons.TableProperties, onClick: () => handleToolbarAction("Insert Pivot Table", () => setShowPivotDialog(true)) },
@@ -9129,24 +8823,6 @@ export default function ExcelStudioPage() {
         .awm-premium-scrollbar::-webkit-scrollbar-track { background: #F3F2F1; }
         .awm-premium-scrollbar::-webkit-scrollbar-thumb { background: #C8C6C4; border-radius: 999px; border: 2px solid #F3F2F1; }
         .awm-premium-scrollbar::-webkit-scrollbar-thumb:hover { background: #A19F9D; }
-                /* ===== VIP Green & Gold Toolbar Theme ===== */
-        .awm-vip-toolbar [class~="text-[#323130]"] { color: #014E00 !important; }
-        .awm-vip-toolbar [class~="text-[#106EBE]"] { color: #014E00 !important; }
-        .awm-vip-toolbar [class~="bg-[#E5F1FB]"] { background-color: #FFF3C4 !important; }
-        .awm-vip-toolbar [class~="border-[#106EBE]"] { border-color: #E3A200 !important; }
-        .awm-vip-toolbar [class~="border-[#C8C6C4]"],
-        .awm-vip-toolbar [class~="border-[#D2D0CE]"] { border-color: #D9B44A !important; }
-        .awm-vip-toolbar [class~="bg-[#C8C6C4]"] { background-color: #D9B44A !important; }
-        .awm-vip-toolbar [class~="bg-[#106EBE]"] { background-color: #014E00 !important; color: #F8D150 !important; }
-        .awm-vip-toolbar [class~="hover:bg-[#005A9E]"]:hover { background-color: #013706 !important; }
-
-        .awm-vip-toolbar [class~="hover:bg-white"]:hover,
-        .awm-vip-toolbar [class~="hover:bg-[#F4F9FD]"]:hover,
-        .awm-vip-toolbar [class~="hover:bg-[#E5F1FB]"]:hover,
-        .awm-vip-toolbar [class~="hover:bg-[#F3F2F1]"]:hover { background-color: #FFF3C4 !important; }
-        .awm-vip-toolbar [class~="hover:text-[#106EBE]"]:hover { color: #013706 !important; }
-        .awm-vip-toolbar [class~="hover:border-[#106EBE]"]:hover,
-        .awm-vip-toolbar [class~="hover:border-[#C8C6C4]"]:hover { border-color: #E3A200 !important; }
       `}</style>
 
       <input
@@ -9199,17 +8875,13 @@ export default function ExcelStudioPage() {
       {/* Enterprise Top Navigation Menu Bar */}
       <nav
         ref={menuBarRef}
-        className="flex flex-wrap items-center bg-linear-to-b from-[#016200] to-[#013706] border-b-2 border-[#E3A200] text-[13px] text-[#F8D150] select-none relative z-50 shadow-md"
+        className="flex flex-wrap items-center bg-linear-to-b from-[#FFFFFF] to-[#F7F7F7] border-b border-[#D2D0CE] text-[13px] select-none relative z-50 shadow-sm"
       >
-        <div className="flex items-center gap-2 px-4 font-black text-[#014E00] mr-2 tracking-widest uppercase text-xs">
-          <Image
-            src="/icons/icon-192.png"
-            alt="ALIMXL"
-            width={192}
-            height={192}
-            className="h-8 w-auto drop-shadow-sm"
-            priority
-          />
+        <div className="flex items-center gap-2 px-4 font-black text-[#106EBE] mr-2 tracking-widest uppercase text-xs">
+          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#106EBE] text-white shadow-sm">
+            A
+          </span>
+          ALIMXL
         </div>
 
         {/* Home button */}
@@ -9240,7 +8912,7 @@ export default function ExcelStudioPage() {
             >
 
               <button
-                className={`flex items-center gap-1 px-3 py-1.5 outline-none transition-colors ${isActive ? "bg-[#E3A200] text-[#013706]" : "hover:bg-[#E3A200]/25"}`}
+                className={`flex items-center gap-1 px-3 py-1.5 outline-none transition-colors ${isActive ? "bg-[#E1DFDD]" : "hover:bg-[#F3F2F1]"}`}
                 onClick={() => setActiveMenuIndex(isActive ? null : index)}
                 onKeyDown={(e) => handleMenuKeyDown(e, index)}
                 aria-haspopup="true"
@@ -9320,14 +8992,13 @@ export default function ExcelStudioPage() {
 
 
       {/* alimxl Style Enterprise Toolbar */}
-      <div className="awm-vip-toolbar border-b-2 border-[#E3A200] bg-linear-to-b from-[#FFFDF4] via-[#FFF6D6] to-[#F7E7B0] shadow-[0_2px_6px_rgba(1,78,0,0.18)]">
+      <div className="border-b border-[#C8C6C4] bg-linear-to-b from-[#F9FAFB] via-[#F3F4F6] to-[#ECEFF3] shadow-[0_1px_2px_rgba(0,0,0,0.08)]">
         <div className="flex items-center gap-3 border-b border-[#D2D0CE] px-3 py-1.5">
 
         </div>
 
         {/* Row 1: Standard Toolbar */}
         <div className="flex flex-wrap items-center gap-o.75px] border-b border-[#D2D0CE] px-2 py-1">
-          {/* Toolbar callbacks read refs only when clicked, not while rendering. */}
           {standardToolbarButtons.map((button, index) => (
             <React.Fragment key={button.label}>
               {button.dropdownItems || button.dropdownExtra ? (
@@ -9551,7 +9222,7 @@ export default function ExcelStudioPage() {
                       );
                     })}
                     {WORLD_CURRENCIES.filter((c) => matchesCurrency(c, currencySearch)).length === 0 && (
-                      <li className="px-3 py-2 text-xs text-[#605E5C]">No currency matches &quot;{currencySearch}&quot;.</li>
+                      <li className="px-3 py-2 text-xs text-[#605E5C]">No currency matches "{currencySearch}".</li>
                     )}
                   </ul>
                 </div>
@@ -9593,6 +9264,7 @@ export default function ExcelStudioPage() {
                 aria-label="Apply Border"
               >
                 <Icons.Square size={14} />
+                Borders
               </button>
 
               <button
@@ -9752,10 +9424,11 @@ export default function ExcelStudioPage() {
           <textarea
             spellCheck
             dir="ltr"
-            value={editingKey === activeCell ? editValue : getRawValue(activeCell)}
+            value={editingKey === activeCell ? editValue : formulaBar}
             onChange={(e) => {
               if (editingKey === activeCell) setEditValue(e.target.value);
               else {
+                setFormulaBar(e.target.value);
                 startEditing(activeCell, e.target.value);
               }
             }}
@@ -9939,7 +9612,7 @@ export default function ExcelStudioPage() {
                               position: "sticky",
                               top: 0,
                               zIndex: 25,
-                              backgroundColor: "#014E00",
+                              backgroundColor: "#106EBE",
                             }}
                           />
                         );
@@ -9968,9 +9641,7 @@ export default function ExcelStudioPage() {
                             top: 0,
                             left: frozen ? leftOffset(c) : undefined,
                             zIndex: frozen ? 35 : 25,
-                            backgroundColor: colMarked ? "#E3A200" : "#014E00",
-                            color: colMarked ? "#013706" : "#F8D150",
-                            // ⬅️ সিলেক্ট করা কলাম হেডার এখন গাঢ় নীল (আগে ছিল সবুজ #107C10)
+                            backgroundColor: colMarked ? "#0057B7" : "#106EBE", // ⬅️ সিলেক্ট করা কলাম হেডার এখন গাঢ় নীল (আগে ছিল সবুজ #107C10)
                             ...(viewport.scrollTop > 0 ? headerRowShadow : {}),
                             // হেডারকে নিজস্ব compositor layer-এ রাখা হচ্ছে — নিচের
                             // সেলগুলো রি-রেন্ডার হলেও হেডার আলাদা লেয়ার হওয়ায় ফ্লিকার করবে না
@@ -9982,7 +9653,7 @@ export default function ExcelStudioPage() {
 
                             {sheet.filters[c] && <Icons.Filter size={11} className="text-white" />}
 
-                            {(autoFilterIsEnabled || !!sheet.filters[c]) && (
+                            {(autoFilterEnabled || !!sheet.filters[c]) && (
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -10026,7 +9697,6 @@ export default function ExcelStudioPage() {
                     <td colSpan={sheet.gridCols + 1} style={{ padding: 0, border: "none" }} />
                   </tr>
                 )}
-                {/* Row render helpers read refs without mutating them. */}
                 {rowsArr.map((r) => {
                   if (hiddenRows.has(r)) return null;
                   if (virtualizeRows && r >= sheet.frozenRows && (r < visibleRowRange.start || r > visibleRowRange.end)) return null;
@@ -10053,9 +9723,7 @@ export default function ExcelStudioPage() {
                           top: rowFrozen ? topOffset(r) : undefined,
                           zIndex: rowFrozen ? 32 : 20,
                           height: sheet.rowHeights[r] || DEFAULT_ROW_HEIGHT,
-                          backgroundColor: rowMarked ? "#E3A200" : "#014E00",
-                          color: rowMarked ? "#013706" : "#F8D150",
-                          // ⬅️ কলামের সাথে মিলিয়ে রো হেডারও নীল করা হলো
+                          backgroundColor: rowMarked ? "#0057B7" : "#106EBE", // ⬅️ কলামের সাথে মিলিয়ে রো হেডারও নীল করা হলো
                           ...(viewport.scrollLeft > 0 ? headerColShadow : {}),
                           // একই কারণে রো-হেডারকেও আলাদা লেয়ারে প্রমোট করা হলো
                           willChange: "transform",
@@ -10336,7 +10004,7 @@ export default function ExcelStudioPage() {
                                 />
                               ) : data?.image ? (
 
-                                <Image src={data.image} alt="" width={800} height={600} unoptimized className="max-h-full max-w-full object-contain" />
+                                <img src={data.image} alt="" className="max-h-full max-w-full object-contain" />
 
 
 
@@ -10457,38 +10125,19 @@ export default function ExcelStudioPage() {
 
           {/* Embedded Charts Area */}
           {sheet.charts.length > 0 && (
-            <div className="bg-[#F3F2F1] p-4 grid max-h-[40vh] min-h-0 grid-cols-1 gap-4 overflow-y-auto lg:grid-cols-2 border-t border-[#D2D0CE] shrink-0 awm-premium-scrollbar">
-              {/* Chart render callbacks are invoked by user interaction only. */}
+            <div className="bg-[#F3F2F1] p-4 grid gap-4 lg:grid-cols-2 border-t border-[#D2D0CE] shrink-0">
               {sheet.charts.map((chart) => (
-                <div
-                  key={chart.id}
-                  className="rounded-xl border border-[#D2D0CE] bg-[#FFFFFF] p-4 shadow-sm"
-                >
+                <div key={chart.id} className="rounded-xl border border-[#D2D0CE] bg-[#FFFFFF] p-4 shadow-sm">
                   <div className="mb-3 flex items-center justify-between">
-                    <h3 className="font-bold text-[#000000]">
-                      {chart.title}
-                    </h3>
-
-                    <button
-                      onClick={() =>
-                        updateSheet((s) => ({
-                          charts: s.charts.filter((c) => c.id !== chart.id),
-                        }))
-                      }
-                      className="rounded-md border border-[#D2D0CE] px-2 py-1 text-xs hover:bg-[#F3F2F1]"
-                    >
-                      Remove
-                    </button>
+                    <h3 className="font-bold text-[#000000]">{chart.title}</h3>
+                    <button onClick={() => updateSheet((s) => ({ charts: s.charts.filter((c) => c.id !== chart.id) }))} className="rounded-md border border-[#D2D0CE] px-2 py-1 text-xs hover:bg-[#F3F2F1]">Remove</button>
                   </div>
-
-                  <ChartView
-                    type={chart.type}
-                    data={getChartData(chart.range)}
-                  />
+                  <ChartView type={chart.type} data={getChartData(chart.range)} />
                 </div>
               ))}
             </div>
           )}
+
           {/* Sheet Tabs */}
           <div
             className="flex items-center gap-1 border-t border-[#D2D0CE] bg-[#F3F2F1] px-2 py-1 shrink-0 overflow-x-auto">
@@ -10744,7 +10393,7 @@ export default function ExcelStudioPage() {
                   {sidebarPanels.find((p) => p.key === activeSidebarPanel)?.label}
                 </p>
                 <p className="text-xs text-[#605E5C]">
-                  Click to expand — edit {activeCell}&apos;s properties, styles, gallery items, and more.
+                  Click to expand — edit {activeCell}'s properties, styles, gallery items, and more.
                 </p>
               </div>
             )}
@@ -11005,7 +10654,6 @@ export default function ExcelStudioPage() {
           style={{ position: "fixed", top: contextMenu.y, left: contextMenu.x, zIndex: 9999 }}
           className="w-60 rounded-lg border border-[#D2D0CE] bg-white py-1 text-sm shadow-2xl"
         >
-          {/* Context-menu actions are deferred until a click. */}
           {[
             { label: "Cut", onClick: () => doCopy("cut") },
             { label: "Copy", onClick: () => doCopy("copy") },
@@ -11497,61 +11145,7 @@ export default function ExcelStudioPage() {
           onApply={() => { setShowPageSetup(false); setPrintPreview(true); showToast("Page setup applied."); }}
         />
       )}
-      {confirmDialog && (
-        <Modal title={confirmDialog.title} onClose={() => setConfirmDialog(null)}>
-          <p className="text-sm">{confirmDialog.message}</p>
-          <div className="flex justify-end gap-2 mt-4">
-            <button
-              type="button"
-              onClick={() => setConfirmDialog(null)}
-              className="rounded-md border border-gray-300 px-3 py-1 text-sm"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                confirmDialog.onConfirm();
-                setConfirmDialog(null);
-              }}
-              className="rounded-md bg-blue-600 px-3 py-1 text-sm text-white"
-            >
-              Confirm
-            </button>
-          </div>
-        </Modal>
-      )}
 
-      {promptDialog && (
-        <Modal title={promptDialog.title} onClose={() => setPromptDialog(null)}>
-          <p className="text-sm">{promptDialog.message}</p>
-          <input
-            type="text"
-            value={promptValue}
-            onChange={(e) => setPromptValue(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm mt-2"
-          />
-          <div className="flex justify-end gap-2 mt-4">
-            <button
-              type="button"
-              onClick={() => setPromptDialog(null)}
-              className="rounded-md border border-gray-300 px-3 py-1 text-sm"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                promptDialog.onConfirm(promptValue);
-                setPromptDialog(null);
-              }}
-              className="rounded-md bg-blue-600 px-3 py-1 text-sm text-white"
-            >
-              OK
-            </button>
-          </div>
-        </Modal>
-      )}
 
       {showChartWizard && (
         <ChartWizardModal
@@ -12437,6 +12031,19 @@ function SpreadsheetToolbarSplitButton({
   );
 }
 
+function ColorToolbarButton({ label, icon: Icon, value, onChange }: { label: string; icon: React.ComponentType<{ size?: number; className?: string }>; value: string; onChange: (value: string) => void }) {
+  return (
+    <label className="group relative flex h-8 w-9 cursor-pointer items-center justify-center rounded-md border border-transparent text-[#323130] transition-all hover:border-[#C8C6C4] hover:bg-white hover:text-[#106EBE] hover:shadow-md" title={label} aria-label={label}>
+      <Icon size={17} />
+      <span className="absolute bottom-1 h-0.75 w-5 rounded-full" style={{ backgroundColor: value }} />
+      <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className="absolute inset-0 cursor-pointer opacity-0" aria-label={label} />
+      <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block">
+        {label}
+      </span>
+    </label>
+  );
+}
+
 /* ============================================================================
  * Advanced Color Picker — Theme Colors / Standard Colors / Recent / Custom Hex
  * ========================================================================== */
@@ -12484,8 +12091,6 @@ function AdvancedColorDropdown({
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(storageKey);
-      // Restore persisted color history once this browser-only control mounts.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (raw) setRecentColors(JSON.parse(raw));
     } catch {
       /* localStorage unavailable */
@@ -12678,8 +12283,6 @@ function AdvancedFontPicker({
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(RECENT_FONTS_KEY);
-      // Restore persisted font history once this browser-only control mounts.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (raw) setRecentFonts(JSON.parse(raw));
     } catch {
       /* localStorage unavailable */
@@ -12789,7 +12392,7 @@ function AdvancedFontPicker({
                   onClick={() => commitFont(query)}
                   className="mt-2 rounded-md border border-[#106EBE] px-3 py-1 text-xs font-bold text-[#106EBE] hover:bg-[#E5F1FB]"
                 >
-                  Use &quot;{query.trim()}&quot; anyway
+                  Use "{query.trim()}" anyway
                 </button>
               )}
             </div>
@@ -12887,6 +12490,276 @@ function blendWithAlpha(baseHex: string, overlayHex: string, alpha: number): str
  * ========================================================================== */
 
 // বর্ডারের মিনি-প্রিভিউ লাইন — প্রতিটা স্টাইল অপশনের পাশে ছোট নমুনা দেখানোর জন্য
+function BorderStylePreviewLine({ style, color = "#323130" }: { style: NonNullable<CellStyle["borderStyle"]>; color?: string }) {
+  return <span className="block h-0 w-10" style={{ borderTopWidth: 3, borderTopStyle: style, borderTopColor: color }} />;
+}
+
+function AdvancedBorderDropdown({
+  borderStyle,
+  borderWidth,
+  borderColor,
+  onApply,
+}: {
+  borderStyle: NonNullable<CellStyle["borderStyle"]>;
+  borderWidth: number;
+  borderColor: string;
+  onApply: (preset: BorderPreset, style: NonNullable<CellStyle["borderStyle"]>, width: number, color: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draftStyle, setDraftStyle] = useState(borderStyle);
+  const [draftWidth, setDraftWidth] = useState(borderWidth);
+  const [customWidth, setCustomWidth] = useState(String(borderWidth));
+  const [draftColor, setDraftColor] = useState(borderColor);
+  const [colorTab, setColorTab] = useState<"theme" | "hex" | "rgb" | "hsl">("theme");
+  const [hexInput, setHexInput] = useState(borderColor);
+  const [rgbInput, setRgbInput] = useState(() => hexToRgb(borderColor) || { r: 0, g: 0, b: 0 });
+  const [hslInput, setHslInput] = useState(() => {
+    const rgb = hexToRgb(borderColor) || { r: 0, g: 0, b: 0 };
+    return rgbToHsl(rgb.r, rgb.g, rgb.b);
+  });
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  // ড্রপডাউন প্রতিবার খোলার সময় active cell-এর বর্তমান বর্ডার তথ্য দিয়ে draft রিফ্রেশ হয়
+  useEffect(() => {
+    if (!open) return;
+    setDraftStyle(borderStyle);
+    setDraftWidth(borderWidth);
+    setCustomWidth(String(borderWidth));
+    setDraftColor(borderColor);
+    setHexInput(borderColor);
+    const rgb = hexToRgb(borderColor) || { r: 0, g: 0, b: 0 };
+    setRgbInput(rgb);
+    setHslInput(rgbToHsl(rgb.r, rgb.g, rgb.b));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // ড্রপডাউনের বাইরে ক্লিক করলে বন্ধ হয়ে যাবে
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (wrapRef.current && e.target instanceof Node && wrapRef.current.contains(e.target)) return;
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  // প্লেসমেন্ট বাটনে ক্লিক করলেই style+width+color সহ বর্ডার সাথে সাথে বসে যাবে
+  const applyPlacement = (preset: BorderPreset) => {
+    onApply(preset, draftStyle, draftWidth, draftColor);
+    setOpen(false);
+  };
+
+  const commitHex = (hex: string) => {
+    setHexInput(hex);
+    if (/^#([0-9A-Fa-f]{6})$/.test(hex)) {
+      setDraftColor(hex);
+      const rgb = hexToRgb(hex)!;
+      setRgbInput(rgb);
+      setHslInput(rgbToHsl(rgb.r, rgb.g, rgb.b));
+    }
+  };
+  const commitRgb = (next: { r: number; g: number; b: number }) => {
+    setRgbInput(next);
+    const hex = rgbToHex(next.r, next.g, next.b);
+    setDraftColor(hex);
+    setHexInput(hex);
+    setHslInput(rgbToHsl(next.r, next.g, next.b));
+  };
+  const commitHsl = (next: { h: number; s: number; l: number }) => {
+    setHslInput(next);
+    const hex = hslToHex(next.h, next.s, next.l);
+    setDraftColor(hex);
+    setHexInput(hex);
+    setRgbInput(hexToRgb(hex)!);
+  };
+
+  const placementOptions: { preset: BorderPreset; label: string; icon: React.ComponentType<{ size?: number }> }[] = [
+    { preset: "all", label: "All", icon: Icons.Grid2X2 },
+    { preset: "outside", label: "Outside", icon: Icons.Square },
+    { preset: "inside", label: "Inside", icon: Icons.LayoutGrid },
+    { preset: "top", label: "Top", icon: Icons.PanelTop },
+    { preset: "bottom", label: "Bottom", icon: Icons.PanelBottom },
+    { preset: "left", label: "Left", icon: Icons.PanelLeft },
+    { preset: "right", label: "Right", icon: Icons.PanelRight },
+    { preset: "none", label: "None", icon: Icons.Ban },
+  ];
+
+  return (
+    <div className="relative" ref={wrapRef}>
+      {/* ট্রিগার বাটন — আইকন + লেবেল + v-shaped chevron ইন্ডিকেটর */}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        title="Borders"
+        aria-label="Borders"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className={`flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium shadow-inner transition-all duration-150 ${open ? "border-[#106EBE] bg-[#E5F1FB] text-[#106EBE]" : "border-[#C8C6C4] bg-white text-[#444] hover:border-[#106EBE] hover:bg-[#F4F9FD]"
+          }`}
+      >
+        <Icons.Grid2X2 size={14} />
+        <span className="hidden md:inline">Borders</span>
+        {/* চেভরন — ড্রপডাউন খুললে স্মুথলি ১৮০° ঘুরে যায় */}
+        <Icons.ChevronDown size={13} className={`transition-transform duration-200 ${open ? "rotate-180" : "rotate-0"}`} />
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-9990" aria-hidden="true" onClick={() => setOpen(false)} />
+          {/* মূল প্যানেল — ফেড-ইন অ্যানিমেশনসহ */}
+          <div className="absolute left-0 top-full z-9991 mt-1 w-90 animate-[awmFadeIn_0.14s_ease-out] rounded-xl border border-[#C8C6C4] bg-white shadow-2xl">
+            {/* ===== লাইভ প্রিভিউ — স্টাইল/উইডথ/কালার বদলালে সাথে সাথে দেখা যাবে ===== */}
+            <div className="border-b border-[#E1DFDD] bg-[#FAFAFA] p-3">
+              <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-[#8A8886]">Live Preview</p>
+              <div className="flex h-16 items-center justify-center rounded-md bg-white">
+                <div className="h-10 w-24 bg-white" style={{ borderStyle: draftStyle, borderWidth: draftWidth, borderColor: draftColor }} />
+              </div>
+            </div>
+
+            <div className="max-h-[60vh] overflow-y-auto p-3 awm-premium-scrollbar">
+              {/* ===== লাইন স্টাইল ===== */}
+              <p className="mb-1 text-[10px] font-black uppercase tracking-wide text-[#8A8886]">Line Style</p>
+              <div className="mb-3 grid grid-cols-2 gap-1">
+                {BORDER_STYLE_OPTIONS.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setDraftStyle(s!)}
+                    className={`flex items-center justify-between rounded-md border px-2 py-1.5 text-xs ${draftStyle === s ? "border-[#106EBE] bg-[#E5F1FB] text-[#106EBE]" : "border-[#E1DFDD] text-[#323130] hover:border-[#106EBE]"}`}
+                  >
+                    <span>{BORDER_STYLE_LABELS[s!]}</span>
+                    <BorderStylePreviewLine style={s!} color={draftStyle === s ? "#106EBE" : "#8A8886"} />
+                  </button>
+                ))}
+              </div>
+
+              {/* ===== পুরুত্ব (Width) — প্রিসেট + কাস্টম ===== */}
+              <p className="mb-1 text-[10px] font-black uppercase tracking-wide text-[#8A8886]">Width</p>
+              <div className="mb-3 flex flex-wrap items-center gap-1">
+                {BORDER_WIDTH_PRESETS.map((w) => (
+                  <button
+                    key={w}
+                    type="button"
+                    onClick={() => { setDraftWidth(w); setCustomWidth(String(w)); }}
+                    className={`rounded-md border px-2.5 py-1 text-xs font-bold ${draftWidth === w ? "border-[#106EBE] bg-[#E5F1FB] text-[#106EBE]" : "border-[#E1DFDD] text-[#323130] hover:border-[#106EBE]"}`}
+                  >
+                    {w}px
+                  </button>
+                ))}
+                <input
+                  type="number"
+                  min={0}
+                  max={20}
+                  value={customWidth}
+                  onChange={(e) => {
+                    setCustomWidth(e.target.value);
+                    const n = parseInt(e.target.value, 10);
+                    if (Number.isFinite(n) && n >= 0) setDraftWidth(n);
+                  }}
+                  placeholder="Custom"
+                  className="w-16 rounded-md border border-[#D2D0CE] px-2 py-1 text-xs outline-none focus:border-[#106EBE]"
+                />
+                <span className="text-[11px] text-[#8A8886]">px</span>
+              </div>
+
+              {/* ===== প্লেসমেন্ট — ক্লিক করলেই সাথে সাথে অ্যাপ্লাই হয়ে যাবে ===== */}
+              <p className="mb-1 text-[10px] font-black uppercase tracking-wide text-[#8A8886]">Placement — click to apply</p>
+              <div className="mb-3 grid grid-cols-4 gap-1">
+                {placementOptions.map((opt) => {
+                  const Icon = opt.icon;
+                  return (
+                    <button
+                      key={opt.preset}
+                      type="button"
+                      title={opt.label}
+                      onClick={() => applyPlacement(opt.preset)}
+                      className="flex flex-col items-center gap-1 rounded-md border border-[#E1DFDD] px-2 py-2 text-[10px] text-[#323130] hover:border-[#106EBE] hover:bg-[#F4F9FD] hover:text-[#106EBE]"
+                    >
+                      <Icon size={16} />
+                      <span>{opt.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* ===== কালার — Theme / HEX / RGB / HSL ট্যাব ===== */}
+              <p className="mb-1 text-[10px] font-black uppercase tracking-wide text-[#8A8886]">Color</p>
+              <div className="mb-2 flex gap-1 rounded-md bg-[#F3F2F1] p-0.5">
+                {(["theme", "hex", "rgb", "hsl"] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setColorTab(tab)}
+                    className={`flex-1 rounded px-2 py-1 text-[11px] font-bold uppercase ${colorTab === tab ? "bg-white text-[#106EBE] shadow-sm" : "text-[#605E5C] hover:text-[#106EBE]"}`}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
+
+              {colorTab === "theme" && (
+                <div className="mb-1 grid grid-cols-10 gap-0.75">
+                  {THEME_COLOR_COLUMNS.flat().slice(0, 30).map((c, i) => (
+                    <button key={`bc-${i}`} type="button" title={c} onClick={() => { setDraftColor(c); setHexInput(c); }} className="h-4 w-4 rounded-sm border border-black/10 transition-transform hover:z-10 hover:scale-125 hover:border-[#106EBE]" style={{ backgroundColor: c }} />
+                  ))}
+                  {STANDARD_COLORS.map((c) => (
+                    <button key={`bc-std-${c}`} type="button" title={c} onClick={() => { setDraftColor(c); setHexInput(c); }} className="h-4 w-4 rounded-sm border border-black/10 transition-transform hover:z-10 hover:scale-125 hover:border-[#106EBE]" style={{ backgroundColor: c }} />
+                  ))}
+                </div>
+              )}
+
+              {colorTab === "hex" && (
+                <div className="flex items-center gap-2">
+                  <input type="color" value={/^#([0-9A-Fa-f]{6})$/.test(hexInput) ? hexInput : "#000000"} onChange={(e) => commitHex(e.target.value)} className="h-8 w-10 cursor-pointer rounded border border-[#D2D0CE]" />
+                  <input type="text" value={hexInput} onChange={(e) => commitHex(e.target.value)} placeholder="#RRGGBB" className="flex-1 rounded-md border border-[#D2D0CE] px-2 py-1 text-xs font-mono outline-none focus:border-[#106EBE]" />
+                </div>
+              )}
+
+              {colorTab === "rgb" && (
+                <div className="grid grid-cols-3 gap-2">
+                  {(["r", "g", "b"] as const).map((ch) => (
+                    <div key={ch}>
+                      <label className="mb-0.5 block text-[10px] font-bold uppercase text-[#8A8886]">{ch}</label>
+                      <input type="number" min={0} max={255} value={rgbInput[ch]} onChange={(e) => commitRgb({ ...rgbInput, [ch]: Math.max(0, Math.min(255, parseInt(e.target.value, 10) || 0)) })} className="w-full rounded-md border border-[#D2D0CE] px-2 py-1 text-xs outline-none focus:border-[#106EBE]" />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {colorTab === "hsl" && (
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="mb-0.5 block text-[10px] font-bold uppercase text-[#8A8886]">H</label>
+                    <input type="number" min={0} max={360} value={hslInput.h} onChange={(e) => commitHsl({ ...hslInput, h: Math.max(0, Math.min(360, parseInt(e.target.value, 10) || 0)) })} className="w-full rounded-md border border-[#D2D0CE] px-2 py-1 text-xs outline-none focus:border-[#106EBE]" />
+                  </div>
+                  <div>
+                    <label className="mb-0.5 block text-[10px] font-bold uppercase text-[#8A8886]">S%</label>
+                    <input type="number" min={0} max={100} value={hslInput.s} onChange={(e) => commitHsl({ ...hslInput, s: Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0)) })} className="w-full rounded-md border border-[#D2D0CE] px-2 py-1 text-xs outline-none focus:border-[#106EBE]" />
+                  </div>
+                  <div>
+                    <label className="mb-0.5 block text-[10px] font-bold uppercase text-[#8A8886]">L%</label>
+                    <input type="number" min={0} max={100} value={hslInput.l} onChange={(e) => commitHsl({ ...hslInput, l: Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0)) })} className="w-full rounded-md border border-[#D2D0CE] px-2 py-1 text-xs outline-none focus:border-[#106EBE]" />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ===== ফুটার — Clear ও Close ===== */}
+            <div className="flex items-center justify-between border-t border-[#E1DFDD] bg-[#F8F8F8] px-3 py-2">
+              <button type="button" onClick={() => applyPlacement("none")} className="rounded-md border border-[#C8C6C4] bg-white px-3 py-1.5 text-xs font-bold text-[#605E5C] hover:border-red-400 hover:text-red-600">
+                Clear Border
+              </button>
+              <button type="button" onClick={() => setOpen(false)} className="rounded-md border border-[#C8C6C4] bg-white px-3 py-1.5 text-xs font-bold hover:bg-[#F3F2F1]">
+                Close
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 function ToolbarSeparator() {
   return <span className="mx-0.5 h-6 w-px bg-[#C8C6C4]" aria-hidden="true" />;
@@ -13037,6 +12910,15 @@ function DeveloperMacroMenu({
           )}
         </>
       )}
+    </div>
+  );
+}
+
+function ToolGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-1 rounded-xl border border-[#D2D0CE] bg-[#F3F2F1] px-2 py-1 shadow-sm">
+      <span className="mr-1 hidden text-[10px] font-bold uppercase tracking-wide text-[#605E5C] lg:inline">{label}</span>
+      {children}
     </div>
   );
 }
@@ -13605,41 +13487,6 @@ function ShareLinkMenu({
   );
 }
 
-interface ContextMenuItemProps {
-  label: string;
-  shortcut?: string;
-  onClick: () => void;
-  onClose: () => void;
-  danger?: boolean;
-}
-
-/** Shared, stable menu item component; declared outside menu renders. */
-function ContextMenuItem({
-  label,
-  shortcut,
-  onClick,
-  onClose,
-  danger = false,
-}: ContextMenuItemProps) {
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        onClick();
-        onClose();
-      }}
-      className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-[13px] hover:bg-[#E5F1FB] ${danger ? "text-[#A80000] hover:text-[#A80000]" : "text-[#201F1E] hover:text-[#106EBE]"}`}
-    >
-      <span>{label}</span>
-      {shortcut && <span className="ml-6 text-[11px] text-[#8A8886]">{shortcut}</span>}
-    </button>
-  );
-}
-
-function ContextMenuDivider() {
-  return <div className="my-1 h-px bg-[#E1DFDD]" />;
-}
-
 /* ============================================================================
  * কলাম হেডার রাইট-ক্লিক কনটেক্সট মেনু — LibreOffice Calc স্টাইল
  * ========================================================================== */
@@ -13672,6 +13519,25 @@ function ColumnHeaderContextMenu({
   onSplit: () => void;
   onFormatCells: () => void;
 }) {
+  // মেনু আইটেম ক্লিক করলে কাজটি করে মেনু বন্ধ করে দেবে
+  const run = (fn: () => void) => {
+    fn();
+    onClose();
+  };
+
+  const Item = ({ label, shortcut, onClick, danger }: { label: string; shortcut?: string; onClick: () => void; danger?: boolean }) => (
+    <button
+      type="button"
+      onClick={() => run(onClick)}
+      className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-[13px] hover:bg-[#E5F1FB] ${danger ? "text-[#A80000] hover:text-[#A80000]" : "text-[#201F1E] hover:text-[#106EBE]"}`}
+    >
+      <span>{label}</span>
+      {shortcut && <span className="ml-6 text-[11px] text-[#8A8886]">{shortcut}</span>}
+    </button>
+  );
+
+  const Divider = () => <div className="my-1 h-px bg-[#E1DFDD]" />;
+
   return (
     <div
       ref={refObject}
@@ -13682,35 +13548,35 @@ function ColumnHeaderContextMenu({
       <div className="px-3 py-1.5 text-[11px] font-black uppercase tracking-wide text-[#8A8886]">
         Column {colToLetter(col)}
       </div>
-      <ContextMenuDivider />
+      <Divider />
 
       {/* ১. ক্লিপবোর্ড অপশন */}
-      <ContextMenuItem onClose={onClose} label="Cut" shortcut="Ctrl+X" onClick={onCut} />
-      <ContextMenuItem onClose={onClose} label="Copy" shortcut="Ctrl+C" onClick={onCopy} />
-      <ContextMenuItem onClose={onClose} label="Paste" shortcut="Ctrl+V" onClick={onPaste} />
-      <ContextMenuItem onClose={onClose} label="Paste Special: Values" shortcut="Ctrl+Shift+V" onClick={() => onPasteSpecial("values")} />
-      <ContextMenuItem onClose={onClose} label="Paste Special: Formatting" onClick={() => onPasteSpecial("formatting")} />
-      <ContextMenuItem onClose={onClose} label="Paste Special: Formulas" onClick={() => onPasteSpecial("formulas")} />
-      <ContextMenuDivider />
+      <Item label="Cut" shortcut="Ctrl+X" onClick={onCut} />
+      <Item label="Copy" shortcut="Ctrl+C" onClick={onCopy} />
+      <Item label="Paste" shortcut="Ctrl+V" onClick={onPaste} />
+      <Item label="Paste Special: Values" shortcut="Ctrl+Shift+V" onClick={() => onPasteSpecial("values")} />
+      <Item label="Paste Special: Formatting" onClick={() => onPasteSpecial("formatting")} />
+      <Item label="Paste Special: Formulas" onClick={() => onPasteSpecial("formulas")} />
+      <Divider />
 
       {/* ২. কলাম ইনসার্ট ও ডিলিট */}
-      <ContextMenuItem onClose={onClose} label="Insert Columns Before" onClick={onInsertBefore} />
-      <ContextMenuItem onClose={onClose} label="Insert Columns After" onClick={onInsertAfter} />
-      <ContextMenuItem onClose={onClose} label="Delete Columns" onClick={onDeleteColumn} danger />
-      <ContextMenuItem onClose={onClose} label="Clear Contents..." shortcut="Backspace" onClick={onClearContents} />
-      <ContextMenuDivider />
+      <Item label="Insert Columns Before" onClick={onInsertBefore} />
+      <Item label="Insert Columns After" onClick={onInsertAfter} />
+      <Item label="Delete Columns" onClick={onDeleteColumn} danger />
+      <Item label="Clear Contents..." shortcut="Backspace" onClick={onClearContents} />
+      <Divider />
 
       {/* ৩. কলাম অ্যাডজাস্টমেন্ট ও ভিজিবিলিটি */}
-      <ContextMenuItem onClose={onClose} label="Column Width..." onClick={onOpenWidthDialog} />
-      <ContextMenuItem onClose={onClose} label="Optimal Width..." onClick={onOptimalWidth} />
-      <ContextMenuItem onClose={onClose} label="Hide Columns" onClick={onHideColumns} />
-      <ContextMenuItem onClose={onClose} label="Show Columns" onClick={onShowColumns} />
-      <ContextMenuDivider />
+      <Item label="Column Width..." onClick={onOpenWidthDialog} />
+      <Item label="Optimal Width..." onClick={onOptimalWidth} />
+      <Item label="Hide Columns" onClick={onHideColumns} />
+      <Item label="Show Columns" onClick={onShowColumns} />
+      <Divider />
 
       {/* ৪. অ্যাডভান্সড ভিউ ও ফরম্যাটিং */}
-      <ContextMenuItem onClose={onClose} label="Freeze Rows and Columns" onClick={onFreeze} />
-      <ContextMenuItem onClose={onClose} label="Split Window" onClick={onSplit} />
-      <ContextMenuItem onClose={onClose} label="Format Cells..." shortcut="Ctrl+1" onClick={onFormatCells} />
+      <Item label="Freeze Rows and Columns" onClick={onFreeze} />
+      <Item label="Split Window" onClick={onSplit} />
+      <Item label="Format Cells..." shortcut="Ctrl+1" onClick={onFormatCells} />
     </div>
   );
 }
@@ -13747,6 +13613,24 @@ function RowHeaderContextMenu({
   onSplit: () => void;
   onFormatCells: () => void;
 }) {
+  const run = (fn: () => void) => {
+    fn();
+    onClose();
+  };
+
+  const Item = ({ label, shortcut, onClick, danger }: { label: string; shortcut?: string; onClick: () => void; danger?: boolean }) => (
+    <button
+      type="button"
+      onClick={() => run(onClick)}
+      className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-[13px] hover:bg-[#E5F1FB] ${danger ? "text-[#A80000] hover:text-[#A80000]" : "text-[#201F1E] hover:text-[#106EBE]"}`}
+    >
+      <span>{label}</span>
+      {shortcut && <span className="ml-6 text-[11px] text-[#8A8886]">{shortcut}</span>}
+    </button>
+  );
+
+  const Divider = () => <div className="my-1 h-px bg-[#E1DFDD]" />;
+
   return (
     <div
       ref={refObject}
@@ -13756,35 +13640,35 @@ function RowHeaderContextMenu({
       <div className="px-3 py-1.5 text-[11px] font-black uppercase tracking-wide text-[#8A8886]">
         Row {row + 1}
       </div>
-      <ContextMenuDivider />
+      <Divider />
 
       {/* ১. ক্লিপবোর্ড অপশন */}
-      <ContextMenuItem onClose={onClose} label="Cut" shortcut="Ctrl+X" onClick={onCut} />
-      <ContextMenuItem onClose={onClose} label="Copy" shortcut="Ctrl+C" onClick={onCopy} />
-      <ContextMenuItem onClose={onClose} label="Paste" shortcut="Ctrl+V" onClick={onPaste} />
-      <ContextMenuItem onClose={onClose} label="Paste Special: Values" shortcut="Ctrl+Shift+V" onClick={() => onPasteSpecial("values")} />
-      <ContextMenuItem onClose={onClose} label="Paste Special: Formatting" onClick={() => onPasteSpecial("formatting")} />
-      <ContextMenuItem onClose={onClose} label="Paste Special: Formulas" onClick={() => onPasteSpecial("formulas")} />
-      <ContextMenuDivider />
+      <Item label="Cut" shortcut="Ctrl+X" onClick={onCut} />
+      <Item label="Copy" shortcut="Ctrl+C" onClick={onCopy} />
+      <Item label="Paste" shortcut="Ctrl+V" onClick={onPaste} />
+      <Item label="Paste Special: Values" shortcut="Ctrl+Shift+V" onClick={() => onPasteSpecial("values")} />
+      <Item label="Paste Special: Formatting" onClick={() => onPasteSpecial("formatting")} />
+      <Item label="Paste Special: Formulas" onClick={() => onPasteSpecial("formulas")} />
+      <Divider />
 
       {/* ২. রো ইনসার্ট ও ডিলিট */}
-      <ContextMenuItem onClose={onClose} label="Insert Rows Above" onClick={onInsertAbove} />
-      <ContextMenuItem onClose={onClose} label="Insert Rows Below" onClick={onInsertBelow} />
-      <ContextMenuItem onClose={onClose} label="Delete Rows" onClick={onDeleteRow} danger />
-      <ContextMenuItem onClose={onClose} label="Clear Contents..." shortcut="Backspace" onClick={onClearContents} />
-      <ContextMenuDivider />
+      <Item label="Insert Rows Above" onClick={onInsertAbove} />
+      <Item label="Insert Rows Below" onClick={onInsertBelow} />
+      <Item label="Delete Rows" onClick={onDeleteRow} danger />
+      <Item label="Clear Contents..." shortcut="Backspace" onClick={onClearContents} />
+      <Divider />
 
       {/* ৩. রো অ্যাডজাস্টমেন্ট ও ভিজিবিলিটি */}
-      <ContextMenuItem onClose={onClose} label="Row Height..." onClick={onOpenHeightDialog} />
-      <ContextMenuItem onClose={onClose} label="Optimal Height..." onClick={onOptimalHeight} />
-      <ContextMenuItem onClose={onClose} label="Hide Rows" onClick={onHideRows} />
-      <ContextMenuItem onClose={onClose} label="Show Rows" onClick={onShowRows} />
-      <ContextMenuDivider />
+      <Item label="Row Height..." onClick={onOpenHeightDialog} />
+      <Item label="Optimal Height..." onClick={onOptimalHeight} />
+      <Item label="Hide Rows" onClick={onHideRows} />
+      <Item label="Show Rows" onClick={onShowRows} />
+      <Divider />
 
       {/* ৪. অ্যাডভান্সড ভিউ ও ফরম্যাটিং */}
-      <ContextMenuItem onClose={onClose} label="Freeze Rows and Columns" onClick={onFreeze} />
-      <ContextMenuItem onClose={onClose} label="Split Window" onClick={onSplit} />
-      <ContextMenuItem onClose={onClose} label="Format Cells..." shortcut="Ctrl+1" onClick={onFormatCells} />
+      <Item label="Freeze Rows and Columns" onClick={onFreeze} />
+      <Item label="Split Window" onClick={onSplit} />
+      <Item label="Format Cells..." shortcut="Ctrl+1" onClick={onFormatCells} />
     </div>
   );
 }
@@ -14223,6 +14107,7 @@ function ChartView({ type, data }: { type: ChartType; data: { label: string; val
   const width = 640;
   const height = 260;
   const max = Math.max(1, ...data.map((d) => Math.abs(d.value)));
+  const min = Math.min(0, ...data.map((d) => d.value));
   const colors = ["#106EBE", "#0078D4", "#00B294", "#FFB900", "#D83B01", "#E3008C", "#8764B8", "#00CC6A"];
 
   if (!data.length) return <div className="text-sm text-[#605E5C]">No chart data available.</div>;
@@ -14253,19 +14138,16 @@ function ChartView({ type, data }: { type: ChartType; data: { label: string; val
   /* ---------------------------------------------------------- PIE ---------------------------------------------------------- */
   if (type === "pie" || type === "ofpie") {
     const total = data.reduce((a, b) => a + Math.abs(b.value), 0) || 1;
-    const cumulativeValues = data.reduce<number[]>((values, item) => {
-      const previousTotal = values.length > 0 ? values[values.length - 1] : 0;
-      return [...values, previousTotal + Math.abs(item.value)];
-    }, []);
+    let acc = 0;
     const cx = type === "ofpie" ? 130 : 160;
     const cy = 125;
     const r = 90;
 
     const slices = data.map((d, i) => {
-      const startTotal = i === 0 ? 0 : cumulativeValues[i - 1];
-      const endTotal = cumulativeValues[i];
-      const start = (startTotal / total) * Math.PI * 2;
-      const end = (endTotal / total) * Math.PI * 2;
+      const value = Math.abs(d.value);
+      const start = (acc / total) * Math.PI * 2;
+      acc += value;
+      const end = (acc / total) * Math.PI * 2;
       const x1 = cx + r * Math.cos(start);
       const y1 = cy + r * Math.sin(start);
       const x2 = cx + r * Math.cos(end);
@@ -14287,15 +14169,11 @@ function ChartView({ type, data }: { type: ChartType; data: { label: string; val
         { label: `${smallest.label} (a)`, value: bTotal * 0.6 },
         { label: `${smallest.label} (b)`, value: bTotal * 0.4 },
       ];
-      const partTotals = parts.reduce<number[]>((totals, part) => {
-        const previousTotal = totals.length > 0 ? totals[totals.length - 1] : 0;
-        return [...totals, previousTotal + part.value];
-      }, []);
+      let bacc = 0;
       breakout = parts.map((p, i) => {
-        const startTotal = i === 0 ? 0 : partTotals[i - 1];
-        const endTotal = partTotals[i];
-        const start = (startTotal / bTotal) * Math.PI * 2;
-        const end = (endTotal / bTotal) * Math.PI * 2;
+        const start = (bacc / bTotal) * Math.PI * 2;
+        bacc += p.value;
+        const end = (bacc / bTotal) * Math.PI * 2;
         const x1 = bcx + br * Math.cos(start);
         const y1 = bcy + br * Math.sin(start);
         const x2 = bcx + br * Math.cos(end);
@@ -14525,6 +14403,46 @@ function ChartView({ type, data }: { type: ChartType; data: { label: string; val
   );
 }
 
+
+
+function formatLocaleNumber(value: number, locale: AppLocale): string {
+  const localeMap: Record<AppLocale, string> = {
+    en: "en-US",
+    bn: "bn-BD",
+    ar: "ar-SA",
+    hi: "hi-IN",
+    es: "es-ES",
+  };
+
+  try {
+    return new Intl.NumberFormat(localeMap[locale], {
+      maximumFractionDigits: 2,
+    }).format(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function formatLocaleDate(value: Date, locale: AppLocale): string {
+  const localeMap: Record<AppLocale, string> = {
+    en: "en-US",
+    bn: "bn-BD",
+    ar: "ar-SA",
+    hi: "hi-IN",
+    es: "es-ES",
+  };
+
+  try {
+    return new Intl.DateTimeFormat(localeMap[locale], {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    }).format(value);
+  } catch {
+    return value.toISOString().slice(0, 10);
+  }
+}
+
 const PRINT_PAPER_SIZES: Record<string, { w: number; h: number; label: string }> = {
   Letter: { w: 216, h: 279, label: "Letter (8.50in x 11.00in)" },
   Legal: { w: 216, h: 356, label: "Legal (8.50in x 14.00in)" },
@@ -14730,6 +14648,7 @@ function AdvancedPrintPreviewModal({
     marginDragRef.current = null;
     setDraggingEdge(null);
     window.removeEventListener("pointermove", onMarginDragMove);
+    window.removeEventListener("pointerup", onMarginDragEnd);
   }, [onMarginDragMove]);
 
   const onMarginDragStart = useCallback((edge: "top" | "right" | "bottom" | "left", e: React.PointerEvent) => {
@@ -14739,29 +14658,24 @@ function AdvancedPrintPreviewModal({
     marginDragRef.current = { edge, startClient: edge === "top" || edge === "bottom" ? e.clientY : e.clientX, startMargin };
     setDraggingEdge(edge);
     window.addEventListener("pointermove", onMarginDragMove);
-    window.addEventListener("pointerup", onMarginDragEnd, { once: true });
+    window.addEventListener("pointerup", onMarginDragEnd);
   }, [margins, onMarginDragMove, onMarginDragEnd]);
 
-  const totalPages = Math.max(1, pages.length);
-  const currentPageIndex = Math.max(0, Math.min(pageIndex, totalPages - 1));
-  const goToPage = useCallback((requestedIndex: number) => {
-    const nextIndex = Math.max(0, Math.min(totalPages - 1, requestedIndex));
-    setPageIndex(nextIndex);
-    setPageJumpInput(String(nextIndex + 1));
-  }, [totalPages]);
+  useEffect(() => {
+    if (pageIndex > pages.length - 1) setPageIndex(0);
+  }, [pages, pageIndex]);
 
-  // Clean up active pointer listeners if the preview closes during a margin drag.
-  useEffect(() => () => {
-    window.removeEventListener("pointermove", onMarginDragMove);
-    window.removeEventListener("pointerup", onMarginDragEnd);
-    marginDragRef.current = null;
-  }, [onMarginDragMove, onMarginDragEnd]);
+  useEffect(() => {
+    setPageJumpInput(String(pageIndex + 1));
+  }, [pageIndex]);
 
   const dims = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
   const pageWmm = orientation === "landscape" ? dims.h : dims.w;
   const pageHmm = orientation === "landscape" ? dims.w : dims.h;
   const pageWpx = pageWmm * PRINT_PX_PER_MM * (zoom / 100);
   const pageHpx = pageHmm * PRINT_PX_PER_MM * (zoom / 100);
+
+  const totalPages = pages.length;
 
   const resolveHeaderFooter = (template: string, pageNum: number) =>
     template.replace(/&P/g, String(pageNum)).replace(/&N/g, String(totalPages));
@@ -14927,10 +14841,10 @@ function AdvancedPrintPreviewModal({
 
         <div className="mx-1 h-6 w-px bg-white/20" />
 
-        <button type="button" onClick={() => goToPage(0)} disabled={currentPageIndex === 0} title="First Page" className="rounded-md p-1.5 hover:bg-white/10 disabled:opacity-30">
+        <button type="button" onClick={() => setPageIndex(0)} disabled={pageIndex === 0} title="First Page" className="rounded-md p-1.5 hover:bg-white/10 disabled:opacity-30">
           <Icons.ChevronsLeft size={16} />
         </button>
-        <button type="button" onClick={() => goToPage(currentPageIndex - 1)} disabled={currentPageIndex === 0} title="Previous Page" className="rounded-md p-1.5 hover:bg-white/10 disabled:opacity-30">
+        <button type="button" onClick={() => setPageIndex((p) => Math.max(0, p - 1))} disabled={pageIndex === 0} title="Previous Page" className="rounded-md p-1.5 hover:bg-white/10 disabled:opacity-30">
           <Icons.ChevronLeft size={16} />
         </button>
 
@@ -14941,23 +14855,23 @@ function AdvancedPrintPreviewModal({
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 const n = parseInt(pageJumpInput, 10);
-                if (Number.isFinite(n)) goToPage(n - 1);
+                if (Number.isFinite(n)) setPageIndex(Math.max(0, Math.min(totalPages - 1, n - 1)));
               }
             }}
             onBlur={() => {
               const n = parseInt(pageJumpInput, 10);
-              if (Number.isFinite(n)) goToPage(n - 1);
-              else setPageJumpInput(String(currentPageIndex + 1));
+              if (Number.isFinite(n)) setPageIndex(Math.max(0, Math.min(totalPages - 1, n - 1)));
+              else setPageJumpInput(String(pageIndex + 1));
             }}
             className="w-10 rounded-md border border-white/20 bg-white/10 px-1 py-1 text-center text-xs text-white outline-none focus:border-white"
           />
           <span className="text-white/70">/ {totalPages}</span>
         </div>
 
-        <button type="button" onClick={() => goToPage(currentPageIndex + 1)} disabled={currentPageIndex === totalPages - 1} title="Next Page" className="rounded-md p-1.5 hover:bg-white/10 disabled:opacity-30">
+        <button type="button" onClick={() => setPageIndex((p) => Math.min(totalPages - 1, p + 1))} disabled={pageIndex === totalPages - 1} title="Next Page" className="rounded-md p-1.5 hover:bg-white/10 disabled:opacity-30">
           <Icons.ChevronRight size={16} />
         </button>
-        <button type="button" onClick={() => goToPage(totalPages - 1)} disabled={currentPageIndex === totalPages - 1} title="Last Page" className="rounded-md p-1.5 hover:bg-white/10 disabled:opacity-30">
+        <button type="button" onClick={() => setPageIndex(totalPages - 1)} disabled={pageIndex === totalPages - 1} title="Last Page" className="rounded-md p-1.5 hover:bg-white/10 disabled:opacity-30">
           <Icons.ChevronsRight size={16} />
         </button>
 
@@ -15033,7 +14947,7 @@ function AdvancedPrintPreviewModal({
       {/* Page Canvas */}
       <div className="flex-1 overflow-auto px-8 py-8 awm-premium-scrollbar">
         {viewMode === "single" ? (
-          <div className="flex justify-center">{renderPage(pages[currentPageIndex])}</div>
+          <div className="flex justify-center">{renderPage(pages[pageIndex])}</div>
         ) : (
           <div>{pages.map((p) => renderPage(p))}</div>
         )}
@@ -15161,7 +15075,7 @@ function PageSetupDialog({
                   <LabeledInput label="Left (mm)" value={String(printMarginLeft)} onChange={(v) => setPrintMarginLeft(Number(v) || 0)} />
                   <LabeledInput label="Right (mm)" value={String(printMarginRight)} onChange={(v) => setPrintMarginRight(Number(v) || 0)} />
                 </div>
-                <p className="text-xs text-[#8A8886]">টিপ: Print Preview খুলে &quot;Show Margins&quot; চালু রেখে সরাসরি মাউস দিয়ে টেনে মার্জিন বদলানো যায়।</p>
+                <p className="text-xs text-[#8A8886]">টিপ: Print Preview খুলে "Show Margins" চালু রেখে সরাসরি মাউস দিয়ে টেনে মার্জিন বদলানো যায়।</p>
               </>
             )}
 
