@@ -1,7 +1,6 @@
 ALIMXL
 ├─ app
 │  ├─ api
-<<<<<<< HEAD
 │  │  ├─ auth
 │  │  │  ├─ forgot-password
 │  │  │  │  └─ route.ts
@@ -15,13 +14,10 @@ ALIMXL
 │  │  │  │  └─ route.ts
 │  │  │  └─ reset-password
 │  │  │     └─ route.ts
-=======
->>>>>>> f6408e5251dca3d7b05487bcdefdef6f3611e16e
 │  │  └─ route.ts
 │  ├─ favicon.ico
 │  ├─ globals.css
 │  ├─ layout.tsx
-<<<<<<< HEAD
 │  ├─ login
 │  │  └─ page.tsx
 │  ├─ manifest.ts
@@ -32,7 +28,9 @@ ALIMXL
 │  ├─ settings
 │  │  └─ page.tsx
 │  └─ sitemap.ts
+├─ backups
 ├─ components
+│  ├─ AccountMenu.tsx
 │  ├─ AlimxlHome.tsx
 │  ├─ MyFiles.tsx
 │  ├─ OfflineSetup.tsx
@@ -47,45 +45,27 @@ ALIMXL
 │  ├─ auth-db.ts
 │  ├─ auth-session.ts
 │  ├─ built-in-templates.ts
+│  ├─ chart-geometry.d.mts
+│  ├─ chart-geometry.mjs
 │  ├─ currency.ts
 │  ├─ device-files.ts
 │  └─ local-workbooks.ts
-├─ lint-report-latest.json
-├─ lint-report-latest.zip
-=======
-│  ├─ manifest.ts
-│  ├─ page.tsx
-│  ├─ robots.ts
-│  └─ sitemap.ts
-├─ backups
-│  └─ page-before-local-save-20261107-235117.tsx.bak
-├─ components
-│  ├─ AlimxlHome.tsx
-│  ├─ MyFiles.tsx
-│  └─ OfflineSetup.tsx
-├─ eslint.config.mjs
-├─ lib
-│  ├─ built-in-templates.ts
-│  ├─ device-files.ts
-│  └─ local-workbooks.ts
->>>>>>> f6408e5251dca3d7b05487bcdefdef6f3611e16e
 ├─ next.config.ts
 ├─ package-lock.json
 ├─ package.json
 ├─ public
 │  ├─ icons
-<<<<<<< HEAD
 │  │  ├─ banner.png
-=======
->>>>>>> f6408e5251dca3d7b05487bcdefdef6f3611e16e
 │  │  ├─ icon-192.png
 │  │  ├─ icon-512.png
 │  │  └─ icon-maskable-512.png
 │  └─ sw.js
 ├─ README.md
-<<<<<<< HEAD
+├─ tests
+│  └─ chart-geometry.test.mjs
 ├─ tsconfig.json
+├─ UPDATE-CHANGES.patch
+├─ UPDATE-COMPARISON.txt
+├─ UPDATE-NOTES.md
+├─ UPDATE-TEST-RESULTS.txt
 └─ WARNING-REMEDIATION-NOTES-BN.txt
-=======
-└─ tsconfig.json
->>>>>>> f6408e5251dca3d7b05487bcdefdef6f3611e16e
