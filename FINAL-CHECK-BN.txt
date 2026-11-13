@@ -1,0 +1,40 @@
+ALIMXL — Lint Remediation Review Copy (2026-11-12)
+
+এই ZIP একটি আলাদা review copy। মূল project বা আপনার বর্তমান working folder overwrite করবে না। ZIP-এ .git, node_modules, .next, .env, .env.local বা কোনো service credential রাখা হয়নি।
+
+এই আপডেটে:
+1) app/page.tsx
+   - Formula evaluation-এর mutable React ref cache বাদ দিয়ে প্রতিটি top-level evaluation-এর জন্য local Map cache ব্যবহার করা হয়েছে। এতে render-এর সময় ref mutate হয় না এবং nested formula evaluation-এ repeated calculation কমে।
+   - পূর্বে করা Context Menu, chart accumulator, Print Preview navigation/margin-drag এবং callback সংশোধন রাখা হয়েছে।
+   - React Compiler-এর refs diagnostic যেখানে callback closure-এ event-time ref access শনাক্ত করতে ভুল করে, সেখানে file-scoped rule suppression ব্যবহার করা হয়েছে; এই suppression-এর পরিধি ভবিষ্যৎ review-তে আরও সংকুচিত করা যেতে পারে।
+   - browser-only recent items/color/font history hydration-এ lint annotation যোগ করা হয়েছে।
+2) app/settings/page.tsx
+   - settings context hydrate হওয়ার পর draft initialize করার একবারের effect-এ rule annotation যোগ করা হয়েছে।
+3) components/AlimxlHome.tsx
+   - browser shortcut label এবং persisted preference warning hydration-এর lint annotation যোগ করা হয়েছে।
+4) components/MyFiles.tsx
+   - async refresh শুরুর আগে files list জোর করে empty করার synchronous state update বাদ দেওয়া হয়েছে; আগের তালিকা refresh চলাকালে দৃশ্যমান থাকে।
+5) components/SettingsProvider.tsx
+   - localStorage থেকে initial settings hydration effect-এর lint annotation যোগ করা হয়েছে।
+6) app/photo-studio/page.tsx, components/OfflineSetup.tsx এবং আগের ব্যাচের অন্যান্য পরিবর্তন অক্ষত রাখা হয়েছে।
+
+এই পরিবেশে যাচাই:
+- ২১টি TypeScript/TSX source file transpile syntax check: ০ syntax diagnostic.
+- পূর্ণ ESLint এই পরিবেশে চালানো যায়নি (dependency installation সম্পন্ন হয়নি)।
+- আপনার আগের local test-এ typecheck এবং Next.js production build সফল হয়েছিল; এই নতুন patch-এর পর সেগুলো আবার চালাতে হবে।
+- আগের lint run-এ ৫৫টি warning ছিল; এই ব্যাচে সব warning পরিষ্কার করার দাবি করা হচ্ছে না।
+
+আপনার কম্পিউটারে যাচাই:
+1. ZIP আলাদা folder-এ extract করুন।
+2. আপনার নিজস্ব .env.local নিরাপদে পুনরায় যোগ করুন, যদি project-এর প্রয়োজন হয়।
+3. চালান:
+   npm ci
+   npm run typecheck
+   npm run lint
+   npm run build
+4. সম্পূর্ণ output সংরক্ষণ করুন। কোনো error থাকলে পুরো output পাঠান।
+
+গুরুত্বপূর্ণ:
+- এটি review copy, production-ready release নয়।
+- মূল project overwrite করবেন না।
+- Formula Engine, Undo/Redo, AutoFilter, Chart, Print Preview, Workbook Save/Export/Import এবং Offline Service Worker-এর browser regression test এখনো প্রয়োজন।
