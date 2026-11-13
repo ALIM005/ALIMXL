@@ -1,0 +1,41 @@
+ALIMXL — সর্বশেষ ESLint Warning Remediation
+তারিখ: 2026-11-12
+
+ভিত্তি:
+- ব্যবহারকারীর আপলোড করা lint-report-latest.zip
+- রিপোর্টে ০ error, মোট ৬১ warning ছিল:
+  - app/page.tsx: ৬০
+  - components/AlimxlHome.tsx: ১
+
+এই review copy-তে করা সংশোধন:
+1. অব্যবহৃত legacy helper, constant, state ও dead print-preview code সরানো হয়েছে; সক্রিয় Print Preview এবং Advanced Print Preview state/flow রাখা হয়েছে।
+2. AdvancedBorderDropdown-কে toolbar-এ যুক্ত করা হয়েছে, যাতে component ও applyAdvancedBorder আর বিচ্ছিন্ন/অব্যবহৃত না থাকে।
+3. updateSheet এবং applyStyleToSelection callback dependency সংশোধন করা হয়েছে।
+4. workbook snapshot-কে useCallback-এ স্থিতিশীল করা হয়েছে; remote-open handler-এ অপ্রয়োজনীয় useCallback বাদ দেওয়া হয়েছে।
+5. Template apply-তে replaceWorkbookSheets ব্যবহার করা হয়েছে, যাতে workbook replacement history/selection cleanup এক জায়গা থেকে হয়।
+6. অপ্রয়োজনীয় exhaustive-deps dependency বাদ দেওয়া হয়েছে।
+7. group collapse-এর conditional expression-কে স্পষ্ট if/else করা হয়েছে।
+8. internal /login navigation-এ Next.js router ব্যবহার করা হয়েছে।
+9. দুইটি raw img-কে next/image দিয়ে প্রতিস্থাপন করা হয়েছে; user-provided/data image-এ unoptimized রাখা হয়েছে।
+10. unmerge logic-এ unused destructuring বাদ দেওয়া হয়েছে।
+11. redundant local react-hooks/refs disable directives সরানো হয়েছে।
+12. context-menu-তে আগে থেকেই থাকা Share Hyperlink action রাখা হয়েছে; duplicate action তৈরি করা হয়নি।
+
+যাচাই:
+- TypeScript transpile syntax parse: ২১টি TS/TSX source file, ০ syntax diagnostic.
+- পূর্ণ ESLint, typecheck ও Next production build এই execution environment-এ চালানো যায়নি; node_modules incomplete ছিল এবং npm install সময়সীমায় সম্পন্ন হয়নি।
+- তাই ০ warning বা production-ready status নিশ্চিত করা হচ্ছে না।
+- app/page.tsx ও components/AlimxlHome.tsx-এ পূর্ববর্তী file-level react-hooks/refs suppression এখনও আছে; এটি ভবিষ্যতে সংকুচিত/অপসারণ করে প্রকৃত refs diagnostics আলাদাভাবে সমাধান করতে হবে।
+
+স্থানীয় যাচাইয়ের নির্দেশ:
+1. আলাদা folder-এ ZIP extract করুন।
+2. নিজস্ব .env.local থাকলে নিরাপদে যোগ করুন; ZIP-এ কোনো secret রাখা হয়নি।
+3. চালান:
+   npm ci
+   npm run typecheck
+   npm run lint
+   npm run build
+4. lint warning সংখ্যা ও build/typecheck output সংরক্ষণ করে পাঠান।
+5. ০ warning পাওয়া গেলেও production release-এর আগে workbook open/save/import/export, formula engine, undo/redo, AutoFilter, chart, print, offline এবং responsive UI regression test করুন।
+
+এটি review candidate; মূল project overwrite করার নির্দেশ নয়।

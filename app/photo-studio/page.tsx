@@ -1,7 +1,10 @@
 "use client";
 
+<<<<<<< HEAD
 import Link from "next/link";
 
+=======
+>>>>>>> f6408e5251dca3d7b05487bcdefdef6f3611e16e
 import { useCallback, useEffect, useReducer, useRef, useState, type ChangeEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
 type Layer = {
@@ -562,7 +565,11 @@ export default function PhotoStudioPage() {
       <input ref={projectRef} type="file" accept=".json,application/json" className="hidden" aria-label="Open project" onChange={e=>inputLoad(e,true)}/>
       <input ref={logoRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" aria-label="Add image layer" onChange={e=>{const f=e.target.files?.[0]; e.target.value=""; void addImageLayer(f);}}/>
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[#0c1828] px-4 py-3 lg:px-6">
+<<<<<<< HEAD
         <div className="flex items-center gap-3"><Link href="/" onClick={e=>{if(dirty&&!window.confirm("Leave Photo Studio? Your autosave stays on this device, but save a project file for a backup."))e.preventDefault();}} className={`${btn} text-amber-200`}>ALIMXL / Home</Link><div><h1 className="text-lg font-bold tracking-tight">Photo Studio <span className="text-emerald-400">Pro</span></h1><p className="text-[10px] tracking-wider text-slate-500">LOCAL IMAGE WORKSPACE</p></div></div>
+=======
+        <div className="flex items-center gap-3"><a href="/" onClick={e=>{if(dirty&&!window.confirm("Leave Photo Studio? Your autosave stays on this device, but save a project file for a backup."))e.preventDefault();}} className={`${btn} text-amber-200`}>ALIMXL / Home</a><div><h1 className="text-lg font-bold tracking-tight">Photo Studio <span className="text-emerald-400">Pro</span></h1><p className="text-[10px] tracking-wider text-slate-500">LOCAL IMAGE WORKSPACE</p></div></div>
+>>>>>>> f6408e5251dca3d7b05487bcdefdef6f3611e16e
         <div className="flex flex-wrap gap-2"><button disabled={busy} className={btn} onClick={()=>fileRef.current?.click()}>Open image</button><button disabled={busy} className={btn} onClick={()=>projectRef.current?.click()}>Open project</button><button disabled={!asset||busy} className={btn} onClick={saveProject}>Save project</button><button disabled={!canUndo||busy} className={btn} onClick={()=>{dispatch({type:"undo"});setDirty(true);setCompare(false);}}>Undo</button><button disabled={!history.future.length||busy} className={btn} onClick={()=>{dispatch({type:"redo"});setDirty(true);setCompare(false);}}>Redo</button><button disabled={!asset||busy} className={btn} onClick={()=>{if(window.confirm("Reset all adjustments, crop and layers?")){edit({...INITIAL,layers:[]});setSelected(null);}}}>Reset</button></div>
       </header>
       {!!restore&&<div role="alert" className="flex shrink-0 flex-wrap items-center gap-3 border-b border-amber-300/30 bg-amber-300/10 px-4 py-2 text-xs text-amber-100">An autosaved session from your last visit was found on this device.<button className={btn} disabled={busy} onClick={()=>void restoreSession()}>Restore session</button><button className={btn} onClick={discardSession}>Discard</button></div>}

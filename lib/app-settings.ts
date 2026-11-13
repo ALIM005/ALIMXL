@@ -86,9 +86,15 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = Object.freeze({
 
 export const ACCENT_COLORS: Readonly<Record<AppAccent, string>> =
   Object.freeze({
+<<<<<<< HEAD
     green: "#0B8A4A",
     blue: "#1D4ED8",
     violet: "#6D3FD1",
+=======
+    green: "#107C41",
+    blue: "#175CD3",
+    violet: "#6941C6",
+>>>>>>> f6408e5251dca3d7b05487bcdefdef6f3611e16e
   });
 
 export type SettingsErrorCode =

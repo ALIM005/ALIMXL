@@ -187,8 +187,11 @@ export default function SettingsProvider({
 
     readyRef.current = true;
 
+<<<<<<< HEAD
     // Initial localStorage hydration is a one-time external-store synchronization.
     // eslint-disable-next-line react-hooks/set-state-in-effect
+=======
+>>>>>>> f6408e5251dca3d7b05487bcdefdef6f3611e16e
     setState((previous) => ({
       ...previous,
       settings: storedSettings,

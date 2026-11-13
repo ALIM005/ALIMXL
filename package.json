@@ -40,8 +40,13 @@
     "@types/react-dom": "^19",
     "concurrently": "^10.0.6",
     "electron": "^44.7.0",
+<<<<<<< HEAD
     "electron-builder": "^25.1.0",
     "eslint": "^9.39.5",
+=======
+    "electron-builder": "^26.15.3",
+    "eslint": "^9",
+>>>>>>> f6408e5251dca3d7b05487bcdefdef6f3611e16e
     "eslint-config-next": "16.4.0",
     "tailwindcss": "^4",
     "typescript": "^5.9.3",

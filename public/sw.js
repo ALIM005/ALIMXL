@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 /* global self, caches, fetch, Request, Response, URL, AbortController, setTimeout, clearTimeout, console */
 
 /**
@@ -21,10 +22,16 @@
  * This is separate from package.json's application version.
  */
 const APP_RELEASE = "v4-offline-2";
+=======
+/* eslint-env serviceworker */
+// প্রতিটি নতুন production release-এ এই version বদলাতে হবে।
+const APP_RELEASE = "v4";
+>>>>>>> f6408e5251dca3d7b05487bcdefdef6f3611e16e
 
 const CACHE_PREFIX = "alimxl-shell-";
 const CACHE_NAME = `${CACHE_PREFIX}${APP_RELEASE}`;
 
+<<<<<<< HEAD
 const PUBLIC_ROUTES = [
   "/",
   "/settings",
@@ -32,6 +39,10 @@ const PUBLIC_ROUTES = [
 ];
 
 const PUBLIC_FILES = [
+=======
+const INITIAL_FILES = [
+  "/",
+>>>>>>> f6408e5251dca3d7b05487bcdefdef6f3611e16e
   "/manifest.webmanifest",
   "/favicon.ico",
   "/icons/icon-192.png",
@@ -39,6 +50,7 @@ const PUBLIC_FILES = [
   "/icons/icon-maskable-512.png",
 ];
 
+<<<<<<< HEAD
 const ROUTE_SET = new Set(PUBLIC_ROUTES);
 const FILE_SET = new Set(PUBLIC_FILES);
 
@@ -68,6 +80,22 @@ self.addEventListener("install", (event) => {
       throw error;
     })
   );
+=======
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
+
+      await cache.addAll(
+        INITIAL_FILES.map(
+          (url) => new Request(url, { cache: "reload" })
+        )
+      );
+    })()
+  );
+
+  // নতুন সংস্করণ দিয়ে চলমান অ্যাপ জোর করে বদলানো হবে না।
+>>>>>>> f6408e5251dca3d7b05487bcdefdef6f3611e16e
 });
 
 self.addEventListener("activate", (event) => {
@@ -75,6 +103,7 @@ self.addEventListener("activate", (event) => {
     (async () => {
       const names = await caches.keys();
 
+<<<<<<< HEAD
       const obsolete = names.filter(
         (name) =>
           name.startsWith(CACHE_PREFIX) &&
@@ -103,10 +132,24 @@ self.addEventListener("activate", (event) => {
        *
        * OfflineSetup can still inspect registration.active.
        */
+=======
+      await Promise.all(
+        names
+                    .filter(
+            (name) =>
+              name.startsWith(CACHE_PREFIX) &&
+              name !== CACHE_NAME
+          )
+          .map((name) => caches.delete(name))
+      );
+
+      await self.clients.claim();
+>>>>>>> f6408e5251dca3d7b05487bcdefdef6f3611e16e
     })()
   );
 });
 
+<<<<<<< HEAD
 function isSuccessfulLocalResponse(response) {
   return (
     response.status === 200 &&
@@ -437,11 +480,17 @@ async function openPublicDocument(request, url) {
 
 async function openStaticAsset(request) {
   const cached = await readCached(request);
+=======
+async function cacheFirst(request) {
+  const cache = await caches.open(CACHE_NAME);
+  const cached = await cache.match(request);
+>>>>>>> f6408e5251dca3d7b05487bcdefdef6f3611e16e
 
   if (cached) {
     return cached;
   }
 
+<<<<<<< HEAD
   /*
    * Network failure is left as a resource failure.
    * Never return an HTML fallback as JavaScript or CSS.
@@ -461,6 +510,42 @@ async function openStaticAsset(request) {
       request,
       response.clone()
     );
+=======
+  const response = await fetch(request);
+
+  if (response.status === 200 && response.type === "basic") {
+    try {
+      await cache.put(request, response.clone());
+    } catch (error) {
+      console.warn("ALIMXL asset cache failed:", error);
+    }
+  }
+
+  return response;
+}
+
+async function openApp(request) {
+  const cache = await caches.open(CACHE_NAME);
+
+  // এই এক-পেজ অ্যাপে ক্যাশ করা HTML-ই একই সংস্করণে রাখছি।
+  const cached = await cache.match("/");
+
+  if (cached) {
+    return cached;
+  }
+
+  const response = await fetch(request);
+
+  if (
+    response.status === 200 &&
+    response.headers.get("content-type")?.includes("text/html")
+  ) {
+    try {
+      await cache.put("/", response.clone());
+    } catch (error) {
+      console.warn("ALIMXL page cache failed:", error);
+    }
+>>>>>>> f6408e5251dca3d7b05487bcdefdef6f3611e16e
   }
 
   return response;
@@ -470,12 +555,31 @@ self.addEventListener("fetch", (event) => {
   const request = event.request;
   const url = new URL(request.url);
 
+<<<<<<< HEAD
   if (isExcludedRequest(request, url)) {
+=======
+  if (
+    request.method !== "GET" ||
+    url.origin !== self.location.origin ||
+    request.headers.has("range")
+  ) {
+    return;
+  }
+
+  // API, authentication ও RSC request ক্যাশ করছি না।
+  if (
+    url.pathname === "/api" ||
+    url.pathname.startsWith("/api/") ||
+    request.headers.get("RSC") === "1" ||
+    url.searchParams.has("_rsc")
+  ) {
+>>>>>>> f6408e5251dca3d7b05487bcdefdef6f3611e16e
     return;
   }
 
   if (
     request.mode === "navigate" &&
+<<<<<<< HEAD
     isPublicDocumentURL(url)
   ) {
     event.respondWith(
@@ -642,4 +746,22 @@ self.addEventListener("message", (event) => {
       }
     })()
   );
+=======
+    url.pathname === "/"
+  ) {
+    event.respondWith(openApp(request));
+    return;
+  }
+
+  const isAppAsset =
+    url.pathname.startsWith("/_next/static/") ||
+    url.pathname.startsWith("/icons/") ||
+    url.pathname.startsWith("/fonts/") ||
+    url.pathname === "/favicon.ico" ||
+    url.pathname === "/manifest.webmanifest";
+
+  if (isAppAsset) {
+    event.respondWith(cacheFirst(request));
+  }
+>>>>>>> f6408e5251dca3d7b05487bcdefdef6f3611e16e
 });
