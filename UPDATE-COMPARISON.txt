@@ -1,0 +1,5 @@
+Original ZIP SHA256: 140d388fff8952fb6f9262b2a34a1a7e9ef0ea53ffd47a649af7fa83c90e1a4a
+Only existing application file changed: app/page.tsx
+Scope: chart import/data adapter/call site/renderer and wrapper.
+Other original files byte-identical; only private .env.local and generated tsconfig.tsbuildinfo intentionally omitted.
+No other original files missing.
