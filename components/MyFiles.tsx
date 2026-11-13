@@ -89,7 +89,6 @@ export default function MyFiles({
             return;
         }
 
-<<<<<<< HEAD
         let cancelled = false;
 
         // Start the refresh after the effect has completed. This keeps
@@ -103,12 +102,6 @@ export default function MyFiles({
 
         return () => {
             cancelled = true;
-=======
-        setFiles([]);
-        void refreshFiles();
-
-        return () => {
->>>>>>> f6408e5251dca3d7b05487bcdefdef6f3611e16e
             requestVersion.current += 1;
         };
     }, [open, refreshFiles]);
