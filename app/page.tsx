@@ -107,6 +107,55 @@ interface CellData {
 }
 
 type CellMap = Record<string, CellData>;
+interface WhatIfTableConfig {
+  formulaCell: string;
+  rowInputCell: string;
+  rowValues: string;
+  colInputCell: string;
+  colValues: string;
+  outputCell: string;
+}
+interface ScenarioChange {
+  cell: string;
+  value: string;
+}
+
+interface ScenarioItem {
+  id: string;
+  name: string;
+  changes: ScenarioChange[];
+  resultCells: string[];
+}
+interface SubtotalConfig {
+  groupColumn: string;
+  valueColumn: string;
+  func: "SUM" | "COUNT" | "AVERAGE" | "MIN" | "MAX" | "PRODUCT";
+  outputCell: string;
+}
+interface PivotChartConfig {
+  sourceRange: string;
+  rowField: string;
+  valueField: string;
+  aggregation: "SUM" | "COUNT" | "AVERAGE" | "MIN" | "MAX";
+  chartType: ChartType;
+  outputCell: string;
+  title: string;
+}
+interface ForecastSheetConfig {
+  timelineRange: string;
+  valuesRange: string;
+  periods: number;
+  confidence: number;
+  seasonalityPeriod: number;
+  outputCell: string;
+  chartType: ChartType;
+  title: string;
+}
+interface AnalyzeChartRequest {
+  range: string;
+  chartType: ChartType;
+  title: string;
+}
 
 interface GroupRange {
   id: string;
@@ -175,6 +224,7 @@ interface WorkbookSheet {
   gridCols: number;
   cells: CellMap;
   groups: GroupRange[];
+  colGroups?: GroupRange[];
   hiddenRows: number[];
   hiddenCols: number[];
   filters: Record<number, string>;
@@ -515,14 +565,23 @@ const EXCEL_MENU_DATA: MenuCategory[] = [
       { label: "Define Range...", action: "DATA_DEFINE_RANGE" },
       { label: "Select Range...", action: "DATA_SELECT_RANGE" },
       { label: "Pivot Table", action: "DATA_PIVOT_TABLE" },
+      { label: "PivotChart", action: "DATA_PIVOT_CHART" },
+      { label: "Forecast Sheet", action: "DATA_FORECAST_SHEET" },
+      { label: "Analyze Data", action: "DATA_ANALYZE_DATA" },
       { label: "Calculate", action: "DATA_CALCULATE" },
       { label: "Validity...", action: "DATA_VALIDITY" },
       { label: "Subtotals...", action: "DATA_SUBTOTALS" },
+      { label: "What-If Data Table...", action: "DATA_WHAT_IF_TABLE" },
+      { label: "Scenario Manager...", action: "DATA_SCENARIO_MANAGER" },
+      { label: "Data Analysis...", action: "DATA_ANALYSIS_TOOLPAK" },
       { label: "Form...", action: "DATA_FORM" },
       { label: "XML Source...", action: "DATA_XML_SOURCE" },
       { label: "Data Provider...", action: "DATA_DATA_PROVIDER" },
       { label: "Consolidate...", action: "DATA_CONSOLIDATE" },
-      { label: "Group and Outline", action: "DATA_GROUP_OUTLINE" },
+      { label: "Group and Outline", action: "DATA_GROUP_OUTLINE" }, { label: "Group Columns", action: "DATA_GROUP_COLUMNS" },
+      { label: "Ungroup Columns", action: "DATA_UNGROUP_COLUMNS" },
+      { label: "Collapse All Groups", action: "DATA_COLLAPSE_ALL_GROUPS" },
+      { label: "Expand All Groups", action: "DATA_EXPAND_ALL_GROUPS" },
       { label: "Statistics", action: "DATA_STATISTICS" }
     ]
   },
@@ -581,8 +640,8 @@ const EXCEL_MENU_DATA: MenuCategory[] = [
   }
 ];
 
-const DEFAULT_ROWS = 3000;
-const DEFAULT_COLS = 200;
+const DEFAULT_ROWS = 5000;
+const DEFAULT_COLS = 500;
 const MAX_ROWS = 100000;
 const MAX_COLS = 2000;
 const DEFAULT_COL_WIDTH = 120;
@@ -791,6 +850,39 @@ const FUNCTION_LIST: { name: string; usage: string; desc: string }[] = [
   { name: "COUNTIF", usage: 'COUNTIF(A1:A10,">3")', desc: "Counts cells that meet a condition." },
   { name: "SUMIF", usage: 'SUMIF(A1:A10,"x",B1:B10)', desc: "Adds cells that meet a condition." },
 
+  { name: "COUNTA", usage: "COUNTA(A1:A10)", desc: "Counts non-empty cells." },
+  { name: "PRODUCT", usage: "PRODUCT(A1:A5)", desc: "Multiplies the numbers in a range." },
+  { name: "STDEV", usage: "STDEV(A1:A10)", desc: "Sample standard deviation." },
+  { name: "STDEVP", usage: "STDEVP(A1:A10)", desc: "Population standard deviation." },
+  { name: "VAR", usage: "VAR(A1:A10)", desc: "Sample variance." },
+  { name: "VARP", usage: "VARP(A1:A10)", desc: "Population variance." },
+
+  { name: "IFERROR", usage: 'IFERROR(A1/B1,"Error")', desc: "Returns a fallback value when a formula returns an error." },
+  { name: "VLOOKUP", usage: 'VLOOKUP("A101",A2:C100,3,FALSE)', desc: "Finds a value in the first column and returns a value from another column." },
+  { name: "SUMIFS", usage: 'SUMIFS(C2:C100,A2:A100,"Dhaka",B2:B100,">1000")', desc: "Adds values that meet multiple conditions." },
+  { name: "COUNTIFS", usage: 'COUNTIFS(A2:A100,"Dhaka",B2:B100,">1000")', desc: "Counts rows that meet multiple conditions." },
+  { name: "MOD", usage: "MOD(10,3)", desc: "Returns the remainder after division." },
+  { name: "INT", usage: "INT(8.9)", desc: "Rounds a number down to the nearest integer." },
+  { name: "SQRT", usage: "SQRT(16)", desc: "Returns the positive square root." },
+  { name: "POWER", usage: "POWER(2,10)", desc: "Raises a number to a power." },
+  { name: "ROUNDUP", usage: "ROUNDUP(2.141,2)", desc: "Rounds a number away from zero." },
+  { name: "ROUNDDOWN", usage: "ROUNDDOWN(2.199,2)", desc: "Rounds a number toward zero." },
+  { name: "MEDIAN", usage: "MEDIAN(A1:A10)", desc: "Returns the median of numbers." },
+  { name: "NOT", usage: "NOT(A1>0)", desc: "Reverses a logical value." },
+  { name: "TEXT", usage: 'TEXT(0.155,"0.0%")', desc: "Formats a number as text." },
+  { name: "LEFT", usage: 'LEFT("Invoice",3)', desc: "Returns characters from the start of text." },
+  { name: "RIGHT", usage: 'RIGHT("Invoice",3)', desc: "Returns characters from the end of text." },
+  { name: "MID", usage: 'MID("Invoice",2,3)', desc: "Returns characters from the middle of text." },
+  { name: "TRIM", usage: 'TRIM("  text  ")', desc: "Removes extra spaces from text." },
+  { name: "XLOOKUP", usage: 'XLOOKUP(A2,B:B,C:C,"Not found")', desc: "Finds a value and returns a value from the same position in another range; works left or right." },
+  { name: "XMATCH", usage: 'XMATCH(A2,B:B)', desc: "Returns the relative position of a value in a range." },
+  { name: "FILTER", usage: 'FILTER(A1:A10,B1:B10=TRUE)', desc: "Returns the first value where all conditions are true (single-cell mode)." },
+  { name: "SORT", usage: 'SORT(A1:A10,1,1)', desc: "Returns the first value of the sorted range (single-cell mode)." },
+  { name: "UNIQUE", usage: 'UNIQUE(A1:A10)', desc: "Returns the first unique value from a range (single-cell mode)." },
+  { name: "SEQUENCE", usage: 'SEQUENCE(5)', desc: "Returns the first value of a sequence (single-cell mode)." },
+  { name: "TEXTJOIN", usage: 'TEXTJOIN(", ",TRUE,A1:A5)', desc: "Joins text values with a delimiter; can ignore empty cells." },
+  { name: "IFS", usage: 'IFS(A1>90,"A",A1>80,"B")', desc: "Checks multiple conditions and returns the value for the first true condition." },
+  { name: "SWITCH", usage: 'SWITCH(A1,1,"One",2,"Two","Other")', desc: "Compares an expression against a list of values and returns the first match; optional default." },
   {
     name: "CONVERT",
     usage: 'CONVERT(100,"USD","BDT")',
@@ -802,9 +894,19 @@ const FUNCTION_CATEGORIES: Record<string, string> = {
   CONVERT: "Financial",
   SUM: "Math", ROUND: "Math", ABS: "Math",
   AVERAGE: "Statistical", MIN: "Statistical", MAX: "Statistical", COUNT: "Statistical",
+  COUNTA: "Statistical", STDEV: "Statistical", STDEVP: "Statistical", VAR: "Statistical", VARP: "Statistical",
+  PRODUCT: "Math", COUNTIF: "Statistical", SUMIF: "Math",
   IF: "Logical", AND: "Logical", OR: "Logical",
   CONCAT: "Text", UPPER: "Text", LOWER: "Text", LEN: "Text",
   TODAY: "Date", NOW: "Date",
+  IFERROR: "Logical", NOT: "Logical",
+  VLOOKUP: "Lookup", SUMIFS: "Math", COUNTIFS: "Statistical",
+  MOD: "Math", INT: "Math", SQRT: "Math", POWER: "Math",
+  ROUNDUP: "Math", ROUNDDOWN: "Math", MEDIAN: "Statistical",
+  TEXT: "Text", LEFT: "Text", RIGHT: "Text", MID: "Text", TRIM: "Text",
+  XLOOKUP: "Lookup", XMATCH: "Lookup",
+  FILTER: "Dynamic", SORT: "Dynamic", UNIQUE: "Dynamic", SEQUENCE: "Dynamic",
+  TEXTJOIN: "Text", IFS: "Logical", SWITCH: "Logical",
 };
 
 const GALLERY_STAMPS = ["✔", "✖", "★", "⚠", "📌", "🏢", "💰", "📈", "📉", "🕒", "✍", "📎"];
@@ -1217,6 +1319,7 @@ function matchesCurrency(c: WorldCurrency, query: string): boolean {
 const EXCHANGE_RATE_SHEET_NAME = "Exchange Rates";
 
 const activeExchangeRates: Record<string, number> = {};
+let userExchangeRatesActive = false;
 
 const DEFAULT_EXCHANGE_RATES_TO_USD: Record<string, number> = {
   USD: 1,
@@ -1225,9 +1328,10 @@ const DEFAULT_EXCHANGE_RATES_TO_USD: Record<string, number> = {
   GBP: 1.27,
   INR: 0.0119,
   PKR: 0.0036,
-  SAR: 0.2666,
-  AED: 0.2723,
-  QAR: 0.2747,
+  // [স্টেপ ১] SAR/AED/QAR ডলারের সাথে স্থির (peg) — সঠিক অনুপাত: 3.75 / 3.6725 / 3.64
+  SAR: 1 / 3.75,
+  AED: 1 / 3.6725,
+  QAR: 1 / 3.64,
   KWD: 3.26,
   OMR: 2.6,
   JPY: 0.0067,
@@ -1302,9 +1406,8 @@ function syncExchangeRates(allSheets: WorkbookSheet[]): void {
     for (let row = 1; row < rateSheet.gridRows; row += 1) {
       const from = String(rateSheet.cells[cellKey(row, 0)]?.value ?? "").trim().toUpperCase();
       const to = String(rateSheet.cells[cellKey(row, 1)]?.value ?? "").trim().toUpperCase();
-      const rate = parseFloat(
-        String(rateSheet.cells[cellKey(row, 2)]?.value ?? "").replace(/,/g, "")
-      );
+      // [স্টেপ ১] বাংলা/আরবি অঙ্কে লেখা রেটও (যেমন "১২২.৫০") গ্রহণযোগ্য
+      const rate = strictNumber(String(rateSheet.cells[cellKey(row, 2)]?.value ?? "")) ?? NaN;
 
       if (from && to && Number.isFinite(rate) && rate > 0) {
         next[rateKey(from, to)] = rate;
@@ -1314,13 +1417,17 @@ function syncExchangeRates(allSheets: WorkbookSheet[]): void {
 
   Object.keys(activeExchangeRates).forEach((key) => delete activeExchangeRates[key]);
   Object.assign(activeExchangeRates, next);
+  userExchangeRatesActive = Object.keys(next).length > 0;
 }
 
 
-function formatCurrencyValue(numeric: number, currencyCode: string, decimals: number): string {
+function formatCurrencyValue(rawNumeric: number, currencyCode: string, decimals: number): string {
   const currency = findCurrency(currencyCode);
+  // [হিসাব-সংশোধন] -0.001 আগে "-$0.00" দেখাত; আগে রাউন্ড করলে "-0" থাকে না
+  const numeric = roundHalfAway(rawNumeric, Math.max(0, Math.min(Math.trunc(decimals) || 0, 20)));
   try {
-    return numeric.toLocaleString(currency.locale, {
+    const displayLocale = DISPLAY_SETTINGS.grouping === "bd" ? "en-IN" : currency.locale;
+    return numeric.toLocaleString(displayLocale, {
       style: "currency",
       currency: currency.code,
       minimumFractionDigits: decimals,
@@ -1358,6 +1465,7 @@ function createSheet(name = "Sheet 1", uniqueSuffix = "init"): WorkbookSheet {
     cells: {},
     groups: [],
     hiddenRows: [],
+    colGroups: [],
     hiddenCols: [],
     filters: {},
     colWidths: {},
@@ -1461,9 +1569,16 @@ function rangeTouchesMergedCells(
 
 
 function normalizeRange(range: string): { r1: number; c1: number; r2: number; c2: number } | null {
-  const [a, b] = range.split(":").map((x) => x.trim().toUpperCase());
-  const pa = parseKey(a);
-  const pb = parseKey(b || a);
+  // [স্টেপ ১] পুরো কলাম সমর্থিত: A:A, A1:A ইত্যাদি
+  const parts = range.split(":").map((x) => x.trim().toUpperCase());
+  const a = parts[0] ?? "";
+  const b = parts[1] ?? a;
+  const expand = (ref: string, isEnd: boolean): string => {
+    if (/^[A-Z]{1,3}$/.test(ref)) return `${ref}${isEnd ? MAX_ROWS : 1}`;
+    return ref;
+  };
+  const pa = parseKey(expand(a, false));
+  const pb = parseKey(expand(b, true));
   if (!pa || !pb) return null;
   return {
     r1: Math.min(pa.row, pb.row),
@@ -1471,6 +1586,288 @@ function normalizeRange(range: string): { r1: number; c1: number; r2: number; c2
     r2: Math.max(pa.row, pb.row),
     c2: Math.max(pa.col, pb.col),
   };
+}
+
+
+/* ============================================================================
+ * [হিসাব-সংশোধন] সংখ্যা পরিচ্ছন্নতা + ফর্মুলা রেফারেন্স রিরাইটার
+ * - cleanNumber: 0.1+0.2 = 0.30000000000000004 জাতীয় ভাসমান-বিন্দুর ভুল ১৫ অঙ্কে ঠিক করে
+ * - rewriteFormulaReferences: ফর্মুলার সেল রেফারেন্স ($ সহ, শিট-প্রিফিক্স সহ) নিরাপদে বদলায়
+ *   (কপি/পেস্ট, ফিল, সর্ট, সারি/কলাম ঢোকানো-মোছা, শিট রিনেম — সবখানে একই ইঞ্জিন)
+ * ========================================================================== */
+function cleanNumber(n: number): number {
+  if (!Number.isFinite(n)) return n;
+  if (n === 0) return 0;
+  return Number(n.toPrecision(15));
+}
+
+// ঠিক ১০ এর ঘাত ব্যবহার করে অর্ধেক-থেকে-দূরে (Excel-এর মতো) রাউন্ডিং: 1.005 → 1.01, 2.5 → 3, -2.5 → -3
+function roundHalfAway(value: number, digits: number): number {
+  if (!Number.isFinite(value)) return value;
+  const sign = value < 0 ? -1 : 1;
+  const abs = Math.abs(value);
+  const shift = (x: number, d: number): number => {
+    const [m, e = "0"] = String(x).split("e");
+    return Number(`${m}e${Number(e) + d}`);
+  };
+  const result = sign * shift(Math.round(shift(abs, digits)), -digits);
+  return Object.is(result, -0) ? 0 : result;
+}
+
+// [স্টেপ ২] বাংলাদেশি লাখ-কোটি গ্রুপিং ও বাংলা/আরবি অঙ্ক প্রদর্শন
+type DisplayGrouping = "western" | "bd";
+type DisplayDigits = "latin" | "bengali" | "arabic";
+
+const DISPLAY_SETTINGS: { grouping: DisplayGrouping; digits: DisplayDigits } = {
+  grouping: "western",
+  digits: "latin",
+};
+
+const BENGALI_DIGITS = ["০", "১", "২", "৩", "৪", "৫", "৬", "৭", "৮", "৯"];
+const ARABIC_DIGITS = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
+
+function toDisplayDigits(text: string): string {
+  if (DISPLAY_SETTINGS.digits === "latin") return text;
+  const map = DISPLAY_SETTINGS.digits === "bengali" ? BENGALI_DIGITS : ARABIC_DIGITS;
+  return text.replace(/[0-9]/g, (d) => map[Number(d)]);
+}
+
+function formatDisplayNumber(value: number, decimals: number | null = null): string {
+  const d = decimals === null ? undefined : Math.max(0, Math.min(Math.trunc(decimals), 10));
+  const locale = DISPLAY_SETTINGS.grouping === "bd" ? "en-IN" : "en-US";
+  let text: string;
+  try {
+    text = value.toLocaleString(locale, d === undefined ? { maximumFractionDigits: 10 } : { minimumFractionDigits: d, maximumFractionDigits: d });
+  } catch {
+    text = value.toLocaleString("en-US", d === undefined ? { maximumFractionDigits: 10 } : { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
+  return toDisplayDigits(text);
+}
+
+function excelDateToSerial(date: Date): number {
+  const utc = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+  return Math.round((utc - Date.UTC(1899, 11, 30)) / 86400000);
+}
+
+function parseDateTextToSerial(text: string): number | null {
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(text);
+  if (iso) {
+    const d = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+    return Number.isNaN(d.getTime()) ? null : excelDateToSerial(d);
+  }
+  const dmy = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/.exec(text);
+  if (dmy) {
+    const d = new Date(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
+    return Number.isNaN(d.getTime()) ? null : excelDateToSerial(d);
+  }
+  return null;
+}
+
+interface FormulaRefInfo {
+  sheet: string | null;
+  r1: number;
+  c1: number;
+  r2: number;
+  c2: number;
+  absR1: boolean;
+  absC1: boolean;
+  absR2: boolean;
+  absC2: boolean;
+  isRange: boolean;
+}
+
+const FORMULA_REF_PATTERN =
+  /(?<![A-Za-z0-9_.$!'])((?:'[^']+'|[A-Za-z_][A-Za-z0-9_]*)!)?(\$?)([A-Za-z]{1,3})(\$?)(\d{1,7})(?::(\$?)([A-Za-z]{1,3})(\$?)(\d{1,7}))?(?![A-Za-z0-9_(])/g;
+
+function formatSheetPrefix(name: string): string {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) ? `${name}!` : `'${name}'!`;
+}
+
+function formatFormulaRef(ref: FormulaRefInfo): string {
+  const prefix = ref.sheet ? formatSheetPrefix(ref.sheet) : "";
+  const a = `${ref.absC1 ? "$" : ""}${colToLetter(ref.c1)}${ref.absR1 ? "$" : ""}${ref.r1 + 1}`;
+  if (!ref.isRange) return `${prefix}${a}`;
+  const b = `${ref.absC2 ? "$" : ""}${colToLetter(ref.c2)}${ref.absR2 ? "$" : ""}${ref.r2 + 1}`;
+  return `${prefix}${a}:${b}`;
+}
+
+// rewrite() null ফেরত দিলে সেই রেফারেন্স #REF! হয়ে যায়
+function rewriteFormulaReferences(
+  formula: string,
+  rewrite: (ref: FormulaRefInfo) => FormulaRefInfo | null
+): string {
+  const parts = formula.split(/("[^"]*")/);
+  return parts
+    .map((part, index) => {
+      if (index % 2 === 1) return part; // স্ট্রিং লিটারেল অপরিবর্তিত
+      return part.replace(
+        FORMULA_REF_PATTERN,
+        (
+          match: string,
+          sheetPart: string | undefined,
+          a1: string,
+          col1: string,
+          b1: string,
+          row1: string,
+          a2: string | undefined,
+          col2: string | undefined,
+          b2: string | undefined,
+          row2: string | undefined
+        ) => {
+          const c1 = letterToCol(col1.toUpperCase());
+          const r1 = parseInt(row1, 10) - 1;
+          if (c1 >= MAX_COLS || r1 < 0 || r1 >= MAX_ROWS) return match;
+
+          let c2 = c1;
+          let r2 = r1;
+          const isRange = col2 !== undefined && row2 !== undefined;
+          if (isRange) {
+            c2 = letterToCol((col2 as string).toUpperCase());
+            r2 = parseInt(row2 as string, 10) - 1;
+            if (c2 >= MAX_COLS || r2 < 0 || r2 >= MAX_ROWS) return match;
+          }
+
+          let sheet: string | null = null;
+          if (sheetPart) {
+            const raw = sheetPart.slice(0, -1);
+            sheet = raw.startsWith("'") ? raw.slice(1, -1) : raw;
+          }
+
+          const next = rewrite({
+            sheet,
+            r1,
+            c1,
+            r2,
+            c2,
+            absR1: b1 === "$",
+            absC1: a1 === "$",
+            absR2: b2 === "$",
+            absC2: a2 === "$",
+            isRange,
+          });
+
+          return next ? formatFormulaRef(next) : "#REF!";
+        }
+      );
+    })
+    .join("");
+}
+
+interface StructuralChange {
+  axis: "row" | "col";
+  kind: "insert" | "delete";
+  at: number;
+  count?: number;
+}
+
+function adjustIndexSpan(lo: number, hi: number, change: StructuralChange): [number, number] | null {
+  const n = change.count ?? 1;
+  const at = change.at;
+  if (change.kind === "insert") {
+    return [lo >= at ? lo + n : lo, hi >= at ? hi + n : hi];
+  }
+  const deletedEnd = at + n - 1;
+  const newLo = lo > deletedEnd ? lo - n : lo >= at ? at : lo;
+  const newHi = hi > deletedEnd ? hi - n : hi >= at ? at - 1 : hi;
+  if (newHi < newLo) return null;
+  return [newLo, newHi];
+}
+
+function adjustRefForStructuralChange(ref: FormulaRefInfo, change: StructuralChange): FormulaRefInfo | null {
+  if (change.axis === "row") {
+    const span = adjustIndexSpan(ref.r1, ref.r2, change);
+    return span ? { ...ref, r1: span[0], r2: span[1] } : null;
+  }
+  const span = adjustIndexSpan(ref.c1, ref.c2, change);
+  return span ? { ...ref, c1: span[0], c2: span[1] } : null;
+}
+
+function sameSheetName(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+// ওয়ার্কবুকের সব শিটের সব ফর্মুলায় rewriteFor(মালিক-শিট) দিয়ে রেফারেন্স বদলায়
+function rewriteWorkbookFormulas(
+  allSheets: WorkbookSheet[],
+  rewriteFor: (owner: WorkbookSheet) => (ref: FormulaRefInfo) => FormulaRefInfo | null
+): WorkbookSheet[] {
+  return allSheets.map((owner) => {
+    const rewrite = rewriteFor(owner);
+    let nextCells: CellMap | null = null;
+
+    for (const [key, cell] of Object.entries(owner.cells)) {
+      if (!cell || typeof cell.value !== "string" || !cell.value.startsWith("=")) continue;
+      const updated = "=" + rewriteFormulaReferences(cell.value.slice(1), rewrite);
+      if (updated === cell.value) continue;
+      if (!nextCells) nextCells = { ...owner.cells };
+      nextCells[key] = { ...cell, value: updated };
+    }
+
+    return nextCells ? { ...owner, cells: nextCells } : owner;
+  });
+}
+
+// সারি/কলাম ঢোকানো বা মোছার পর সব ফর্মুলা, চার্ট, কন্ডিশনাল রুল, নামকরা রেঞ্জ ও স্পার্কলাইন ঠিক রাখে
+function applyStructuralChangeToWorkbook(
+  allSheets: WorkbookSheet[],
+  targetSheetId: string,
+  change: StructuralChange
+): WorkbookSheet[] {
+  const target = allSheets.find((item) => item.id === targetSheetId);
+  if (!target) return allSheets;
+
+  const rewritten = rewriteWorkbookFormulas(allSheets, (owner) => (ref) => {
+    const refSheet = ref.sheet ?? owner.name;
+    if (!sameSheetName(refSheet, target.name)) return ref;
+    return adjustRefForStructuralChange(ref, change);
+  });
+
+  const adjustPlainRange = (text: string | undefined): string | undefined => {
+    if (!text) return text;
+    let touched = false;
+    const next = rewriteFormulaReferences(text, (ref) => {
+      const adjusted = adjustRefForStructuralChange(ref, change);
+      if (!adjusted) return ref; // পুরো রেঞ্জ মুছে গেলে আগেরটাই থাক, যাতে চার্ট/রুল ভেঙে না যায়
+      touched = true;
+      return adjusted;
+    });
+    return touched ? next : text;
+  };
+
+  return rewritten.map((item) => {
+    if (item.id !== targetSheetId) return item;
+
+    const nextCells: CellMap = { ...item.cells };
+    for (const [key, cell] of Object.entries(item.cells)) {
+      if (cell?.sparkline) {
+        const sparkline = adjustPlainRange(cell.sparkline);
+        if (sparkline !== cell.sparkline) nextCells[key] = { ...cell, sparkline };
+      }
+    }
+
+    const namedRanges: Record<string, string> = {};
+    for (const [name, range] of Object.entries(item.namedRanges || {})) {
+      namedRanges[name] = adjustPlainRange(range) ?? range;
+    }
+
+    return {
+      ...item,
+      cells: nextCells,
+      namedRanges,
+      charts: (item.charts || []).map((chart) => ({
+        ...chart,
+        range: adjustPlainRange(chart.range) ?? chart.range,
+        series: chart.series?.map((series) => ({
+          ...series,
+          range: adjustPlainRange(series.range) ?? series.range,
+        })),
+      })),
+      conditionalRules: (item.conditionalRules || []).map((rule) => ({
+        ...rule,
+        range: adjustPlainRange(rule.range) ?? rule.range,
+      })),
+    };
+  });
 }
 
 function getShapeAnchorPoint(shape: DrawShape, side: ConnectorSide): { x: number; y: number } {
@@ -1527,7 +1924,44 @@ interface Token {
   value: string;
 }
 
-function tokenize(src: string): Token[] {
+// $A$1 / A$1 / $A1 — absolute চিহ্ন হিসাবের সময় অপ্রয়োজনীয়; স্ট্রিং ও 'শিট নাম'-এর বাইরের $ সরানো হয়
+function stripAbsoluteMarkers(src: string): string {
+  let out = "";
+  let quote: string | null = null;
+  for (const ch of src) {
+    if (quote) {
+      if (ch === quote) quote = null;
+      out += ch;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      out += ch;
+      continue;
+    }
+    if (ch !== "$") out += ch;
+  }
+  return out;
+}
+
+// [স্টেপ ১] ফর্মুলার "টেক্সট" ও 'শিট নাম'-এর বাইরের বাংলা/আরবি/ফার্সি অঙ্ক ইংরেজি অঙ্কে বদলায়
+function normalizeDigitsOutsideQuotes(src: string): string {
+  return src
+    .split(/("(?:[^"]|"")*"|'[^']*')/)
+    .map((part, index) =>
+      index % 2 === 1
+        ? part
+        : normalizeLocalizedDigits(part)
+          // [স্টেপ ১] আরবি কীবোর্ডের চিহ্ন: ، (কমা) ؛ (সেমিকোলন) ٫ (দশমিক) ٪ (শতাংশ); ; আর , একই আর্গুমেন্ট-বিভাজক
+          .replace(/[\u060C\u061B;]/g, ",")
+          .replace(/\u066B/g, ".")
+          .replace(/\u066A/g, "%")
+    )
+    .join("");
+}
+
+function tokenize(rawSrc: string): Token[] {
+  const src = normalizeDigitsOutsideQuotes(stripAbsoluteMarkers(rawSrc));
   const tokens: Token[] = [];
   let i = 0;
   while (i < src.length) {
@@ -1536,10 +1970,33 @@ function tokenize(src: string): Token[] {
       i++;
       continue;
     }
+    // #REF!, #DIV/0! ইত্যাদি এরর লিটারেল (রেফারেন্স মুছে গেলে এটাই থাকে)
+    if (ch === "#") {
+      const errorMatch = /^#(?:REF!|DIV\/0!|NAME\?|VALUE!|N\/A|NUM!|ERROR!|CIRCULAR!)/i.exec(src.slice(i));
+      if (errorMatch) {
+        tokens.push({ type: "str", value: errorMatch[0].toUpperCase() });
+        i += errorMatch[0].length;
+        continue;
+      }
+    }
     if (ch === '"') {
       let j = i + 1;
       let out = "";
-      while (j < src.length && src[j] !== '"') out += src[j++];
+      let closed = false;
+      while (j < src.length) {
+        if (src[j] === '"') {
+          // Excel-এর মতো "" মানে লিটারেল "
+          if (src[j + 1] === '"') {
+            out += '"';
+            j += 2;
+            continue;
+          }
+          closed = true;
+          break;
+        }
+        out += src[j++];
+      }
+      if (!closed) throw new Error("Unterminated string");
       tokens.push({ type: "str", value: out });
       i = j + 1;
       continue;
@@ -1548,6 +2005,14 @@ function tokenize(src: string): Token[] {
       let j = i;
       let out = "";
       while (j < src.length && /[0-9.]/.test(src[j])) out += src[j++];
+      // বৈজ্ঞানিক সংখ্যা: 1E5, 2.5e-3
+      const exponent = /^[eE][+-]?\d+/.exec(src.slice(j));
+      if (exponent) {
+        out += exponent[0];
+        j += exponent[0].length;
+      }
+      // [হিসাব-সংশোধন] "1.2.3" বা "." আগে চুপচাপ 1.2 / NaN হতো — এখন এরর
+      if (!/^(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(out)) throw new Error("Invalid number");
       tokens.push({ type: "num", value: out });
       i = j;
       continue;
@@ -1578,7 +2043,7 @@ function tokenize(src: string): Token[] {
     if (/[A-Za-z]/.test(ch)) {
       let j = i;
       let out = "";
-      while (j < src.length && /[A-Za-z0-9]/.test(src[j])) out += src[j++];
+      while (j < src.length && /[A-Za-z0-9_]/.test(src[j])) out += src[j++];
 
       if (src[j] === "!") {
         let k = j + 1;
@@ -1614,14 +2079,15 @@ function tokenize(src: string): Token[] {
           continue;
         }
       }
-      tokens.push(/^[A-Za-z]+\d+$/.test(out) ? { type: "ref", value: out.toUpperCase() } : { type: "ident", value: out.toUpperCase() });
+      // [স্টেপ ১] "LOG10(" জাতীয় নাম রেফারেন্স (A1) নয়, ফাংশন — পরে ( থাকলে ident
+      tokens.push(/^[A-Za-z]+\d+$/.test(out) && src[j] !== "(" ? { type: "ref", value: out.toUpperCase() } : { type: "ident", value: out.toUpperCase() });
       i = j;
       continue;
     }
     if (ch === "(") tokens.push({ type: "lparen", value: ch });
     else if (ch === ")") tokens.push({ type: "rparen", value: ch });
     else if (ch === ",") tokens.push({ type: "comma", value: ch });
-    else if ("+-*/^&".includes(ch)) tokens.push({ type: "op", value: ch });
+    else if ("+-*/^&%".includes(ch)) tokens.push({ type: "op", value: ch });
     else if (ch === "<" || ch === ">" || ch === "=") {
       let op = ch;
       if (src[i + 1] === "=" && (ch === "<" || ch === ">")) {
@@ -1632,6 +2098,9 @@ function tokenize(src: string): Token[] {
         i++;
       }
       tokens.push({ type: "op", value: op });
+    } else {
+      // [হিসাব-সংশোধন] অচেনা চিহ্ন আগে চুপচাপ বাদ পড়ত (ভুল হিসাব আসত) — এখন এরর
+      throw new Error("Unexpected character");
     }
     i++;
   }
@@ -1661,7 +2130,12 @@ class FormulaParser {
     return this.tokens[this.pos++];
   }
   parse(): Node {
-    return this.parseCompare();
+    // খালি ফর্মুলা ("=") আগের মতোই ০
+    if (this.peek().type === "end") return { kind: "num", value: 0 };
+    const node = this.parseCompare();
+    // [হিসাব-সংশোধন] "=1 2" বা "=SUM(A1) )" আগে অবশিষ্ট অংশ ফেলে দিয়ে ভুল ফল দিত — এখন এরর
+    if (this.peek().type !== "end") throw new Error("Unexpected token");
+    return node;
   }
   parseCompare(): Node {
     let left = this.parseConcat();
@@ -1708,7 +2182,18 @@ class FormulaParser {
       this.next();
       return { kind: "neg", node: this.parseUnary() };
     }
-    return this.parsePrimary();
+    // [স্টেপ ১] =+5 (Excel-এর মতো ইউনারি প্লাস) আগে #ERROR! দিত
+    if (this.peek().type === "op" && this.peek().value === "+") {
+      this.next();
+      return this.parseUnary();
+    }
+    let node = this.parsePrimary();
+    // পোস্টফিক্স শতাংশ: 50% = 0.5, A1% = A1/100
+    while (this.peek().type === "op" && this.peek().value === "%") {
+      this.next();
+      node = { kind: "bin", op: "/", left: node, right: { kind: "num", value: 100 } };
+    }
+    return node;
   }
   parsePrimary(): Node {
     const t = this.peek();
@@ -1741,31 +2226,75 @@ class FormulaParser {
             args.push(this.parseCompare());
           }
         }
-        if (this.peek().type === "rparen") this.next();
+        // [হিসাব-সংশোধন] বন্ধনী না বন্ধ হলে এরর (আগে চুপচাপ ধরে নিত)
+        if (this.peek().type !== "rparen") throw new Error("Missing )");
+        this.next();
       }
       return { kind: "call", name, args };
     }
     if (t.type === "lparen") {
       this.next();
       const inner = this.parseCompare();
-      if (this.peek().type === "rparen") this.next();
+      if (this.peek().type !== "rparen") throw new Error("Missing )");
+      this.next();
       return inner;
     }
-    this.next();
-    return { kind: "num", value: 0 };
+    throw new Error("Unexpected token");
   }
 }
 
+// UI-র হিসাবে (পিভট, কনসোলিডেট, গোল-সিক) ব্যবহৃত: শুধু পুরো-সংখ্যা টেক্সট সংখ্যা হয়, "2nd floor" ০ হয়
 function toNumber(v: EvalResult): number {
-  if (typeof v === "number") return v;
+  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
   if (typeof v === "boolean") return v ? 1 : 0;
-  const n = parseFloat(String(v).replace(/,/g, ""));
-  return Number.isFinite(n) ? n : 0;
+  const parsed = strictNumber(v);
+  return parsed === null ? 0 : parsed;
+}
+
+// পুরো টেক্সটটাই সংখ্যা হলে সংখ্যা, নাহলে null ("12abc" আর আংশিকভাবে ১২ হয় না)
+function strictNumber(v: EvalResult): number | null {
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  if (typeof v === "boolean") return v ? 1 : 0;
+  // [স্টেপ ১] বাংলা/আরবি/ফার্সি অঙ্কও সংখ্যা হিসেবে চেনা হয় ("১২৫" = 125)
+  // [স্টেপ ১] আরবি দশমিক (٫) ও হাজার-বিভাজক (٬ ،) এবং বাংলাদেশি গ্রুপিং (১২,৫০,০০০) সমর্থিত
+  const text = normalizeLocalizedDigits(String(v).trim()).replace(/\u066B/g, ".").replace(/[\u066C\u060C]/g, ",");
+  if (text === "") return null;
+  const percentMatch = /^([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:,\d{3})*(?:,\d{2,3})*)\s*%$/.exec(text);
+  if (percentMatch) {
+    const base = strictNumber(percentMatch[1]);
+    return base === null ? null : base / 100;
+  }
+  const currencyText = text
+    .replace(/^\s*(?:৳|টাকা|tk\.?|bdt|usd|\$|€|£|¥|₹)\s*/i, "")
+    .replace(/\s*(?:টাকা|taka|bdt|usd)\s*$/i, "")
+    .trim();
+  if (currencyText && currencyText !== text) {
+    const currencyNumber = strictNumber(currencyText);
+    if (currencyNumber !== null) return currencyNumber;
+  }
+  if (NUMERIC_RE.test(text)) return Number(text.replace(/,/g, ""));
+  if (INDIAN_GROUPED_RE.test(text)) return Number(text.replace(/,/g, ""));
+  if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(text)) {
+    const n = Number(text);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+// ফর্মুলার গাণিতিক অপারেটরের জন্য: ফাঁকা = ০, সংখ্যা-টেক্সট = সংখ্যা, অন্য টেক্সট = #VALUE! (Excel-এর মতো)
+function operandNumber(v: EvalResult): number | "#VALUE!" {
+  if (typeof v === "number") return Number.isFinite(v) ? v : "#VALUE!";
+  if (typeof v === "boolean") return v ? 1 : 0;
+  if (v === "" || (typeof v === "string" && v.trim() === "")) return 0;
+  const parsed = strictNumber(v);
+  return parsed === null ? "#VALUE!" : parsed;
 }
 
 const NUMERIC_RE = /^-?(?:(?:0|[1-9]\d*|[1-9]\d{0,2}(?:,\d{3})+)(?:\.\d+)?|\.\d+)$/;
+// ভারতীয়/বাংলাদেশি গ্রুপিং: 1,25,000 / 12,50,000.50 / 1,00,00,000
+const INDIAN_GROUPED_RE = /^-?[1-9]\d{0,1}(?:,\d{2})+,\d{3}(?:\.\d+)?$/;
 
-const FORMULA_ERRORS = new Set<string>(["#DIV/0!", "#NAME?", "#ERROR!", "#CIRCULAR!", "#VALUE!", "#REF!", "#N/A"]);
+const FORMULA_ERRORS = new Set<string>(["#DIV/0!", "#NAME?", "#ERROR!", "#CIRCULAR!", "#VALUE!", "#REF!", "#N/A", "#NUM!"]);
 
 // শুধু http(s)/mailto/tel এবং সাইটের নিজস্ব পাথ (/...) অনুমোদিত; javascript:, data: ইত্যাদি বাতিল
 function sanitizeUrl(input: unknown): string | null {
@@ -1779,14 +2308,18 @@ function sanitizeUrl(input: unknown): string | null {
 
 // শুধু আসল সংখ্যা হলে number ফেরত দেয়; "2nd floor", "2024-01-01", "01712345678" টেক্সটই থাকে
 function parseNumericCell(raw: string): number | string {
-  const s = raw.trim();
-  return NUMERIC_RE.test(s) ? Number(s.replace(/,/g, "")) : raw;
+  // [স্টেপ ১] "১২৫", "১,২৫,০০০"-এর মতো বাংলা অঙ্কের সেলও সংখ্যা; টেক্সট হলে মূল লেখাই থাকে
+  const s = normalizeLocalizedDigits(raw.trim()).replace(/\u066B/g, ".").replace(/[\u066C\u060C]/g, ",");
+  if (NUMERIC_RE.test(s)) return Number(s.replace(/,/g, ""));
+  // ভারতীয়/বাংলাদেশি গ্রুপিং: 1,25,000
+  if (INDIAN_GROUPED_RE.test(s)) return Number(s.replace(/,/g, ""));
+  return raw;
 }
 
 // COUNTIF/SUMIF-এর মানদণ্ড: "text", 5, ">3", "<=10", "<>x", "=x", "<>"
 function matchesCriterion(value: EvalResult, criterion: EvalResult): boolean {
-  const text = String(criterion).trim();
-  const valueText = String(value).trim();
+  const text = normalizeLocalizedDigits(String(criterion).trim());
+  const valueText = normalizeLocalizedDigits(String(value).trim());
 
   if (text === "") return valueText === "";
   if (text === "<>") return valueText !== "";
@@ -1801,6 +2334,19 @@ function matchesCriterion(value: EvalResult, criterion: EvalResult): boolean {
     if (isNumber) {
       if (typeof value === "number") return value === operandNumber;
       return valueText !== "" && Number(valueText) === operandNumber;
+    }
+    // [স্টেপ ১] Excel-এর মতো * ও ? ওয়াইল্ডকার্ড ("আলী*", "A?C"); ~ দিয়ে আক্ষরিক * ?
+    if (/[*?]/.test(operand.replace(/~[*?~]/g, ""))) {
+      let pattern = "";
+      for (let k = 0; k < operand.length; k++) {
+        const c = operand[k];
+        if (c === "~" && /[*?~]/.test(operand[k + 1] ?? "")) {
+          pattern += "\\" + operand[++k];
+        } else if (c === "*") pattern += "[\\s\\S]*";
+        else if (c === "?") pattern += "[\\s\\S]";
+        else pattern += c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+      }
+      return new RegExp(`^${pattern}$`, "i").test(valueText);
     }
     return valueText.toLowerCase() === operand.toLowerCase();
   };
@@ -1842,7 +2388,9 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
         return value;
       }
 
-      return -toNumber(value);
+      const negated = operandNumber(value);
+      if (negated === "#VALUE!") return "#VALUE!";
+      return negated === 0 ? 0 : -negated;
     }
     case "bin": {
       const l = evalNode(node.left, getCell, expandRange);
@@ -1854,7 +2402,10 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
       if (typeof r === "string" && FORMULA_ERRORS.has(r)) {
         return r;
       }
-      if (node.op === "&") return `${l}${r}`;
+      if (node.op === "&") {
+        const asText = (v: EvalResult): string => (typeof v === "boolean" ? (v ? "TRUE" : "FALSE") : String(v));
+        return `${asText(l)}${asText(r)}`;
+      }
       if (["<", ">", "<=", ">=", "=", "<>"].includes(node.op)) {
         if (typeof l === "string" && FORMULA_ERRORS.has(l)) {
           return l;
@@ -1887,7 +2438,9 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
             return "#VALUE!";
           }
 
-          comparison = left === right ? 0 : left < right ? -1 : 1;
+          const cl = cleanNumber(left);
+          const cr = cleanNumber(right);
+          comparison = cl === cr ? 0 : cl < cr ? -1 : 1;
         } else if (
           typeof left === "string" &&
           typeof right === "string"
@@ -1931,14 +2484,25 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
             return "#ERROR!";
         }
       }
-      const ln = toNumber(l);
-      const rn = toNumber(r);
-      if (node.op === "+") return ln + rn;
-      if (node.op === "-") return ln - rn;
-      if (node.op === "*") return ln * rn;
-      if (node.op === "/") return rn === 0 ? "#DIV/0!" : ln / rn;
-      if (node.op === "^") return Math.pow(ln, rn);
-      return 0;
+      const ln = operandNumber(l);
+      const rn = operandNumber(r);
+      if (ln === "#VALUE!" || rn === "#VALUE!") return "#VALUE!";
+      let arithmetic: number;
+      if (node.op === "+") arithmetic = ln + rn;
+      else if (node.op === "-") arithmetic = ln - rn;
+      else if (node.op === "*") arithmetic = ln * rn;
+      else if (node.op === "/") {
+        if (rn === 0) return "#DIV/0!";
+        arithmetic = ln / rn;
+      } else if (node.op === "^") {
+        if (ln === 0 && rn === 0) return "#NUM!";
+        if (ln === 0 && rn < 0) return "#DIV/0!";
+        arithmetic = Math.pow(ln, rn);
+      } else return 0;
+      if (!Number.isFinite(arithmetic)) return "#NUM!";
+      // [স্টেপ ১] আগে প্রতিটি ধাপে ১৫ অঙ্কে কাটা হতো: 1/3*3 = 0.999999999999999 আসত।
+      // এখন শুধু যোগ-বিয়োগে পরিষ্কার করা হয়; গুণ/ভাগ/ঘাতের চূড়ান্ত ফল evaluateFormula-তে পরিষ্কার হয়।
+      return node.op === "+" || node.op === "-" ? cleanNumber(arithmetic) : arithmetic;
     }
     case "call": {
       const collect = () => {
@@ -1948,11 +2512,12 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
       };
       switch (node.name) {
         case "CONVERT": {
-          if (node.args.length !== 3) return "VALUE!";
+          if (node.args.length !== 3) return "#VALUE!";
 
-          const amount = toNumber(
-            evalNode(node.args[0], getCell, expandRange)
-          );
+          const amountRaw = evalNode(node.args[0], getCell, expandRange);
+          if (typeof amountRaw === "string" && FORMULA_ERRORS.has(amountRaw)) return amountRaw;
+          const amount = operandNumber(amountRaw);
+          if (amount === "#VALUE!") return "#VALUE!";
 
           const fromCurrency = String(
             evalNode(node.args[1], getCell, expandRange)
@@ -1968,26 +2533,32 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
 
           const rate = getExchangeRate(fromCurrency, toCurrency);
 
-          if (!Number.isFinite(rate)) return "VALUE!";
+          if (!Number.isFinite(rate)) return "#VALUE!";
 
-          return amount * rate;
+          return cleanNumber(amount * rate);
         }
         case "SUM": {
-          const values = collect();
+          // Excel-এর নিয়ম: রেঞ্জ/সেল-রেফারেন্সের টেক্সট ও TRUE/FALSE বাদ; সরাসরি আর্গুমেন্টের সংখ্যা-টেক্সট গোনা হয়
+          let total = 0;
 
-          const error = values.find(
-            (value) =>
-              typeof value === "string" &&
-              FORMULA_ERRORS.has(value)
-          );
+          for (const arg of node.args) {
+            if (arg.kind === "range" || arg.kind === "ref") {
+              const cellValues = arg.kind === "range" ? expandRange(arg.value) : [getCell(arg.value)];
+              for (const value of cellValues) {
+                if (typeof value === "string" && FORMULA_ERRORS.has(value)) return value;
+                if (typeof value === "number" && Number.isFinite(value)) total += value;
+              }
+              continue;
+            }
 
-          if (typeof error === "string") {
-            return error;
+            const direct = evalNode(arg, getCell, expandRange);
+            if (typeof direct === "string" && FORMULA_ERRORS.has(direct)) return direct;
+            const numeric = operandNumber(direct);
+            if (numeric === "#VALUE!") return "#VALUE!";
+            total += numeric;
           }
 
-          return values
-            .map(toNumber)
-            .reduce((total, value) => total + value, 0);
+          return cleanNumber(total);
         }
         case "AVERAGE":
         case "MIN":
@@ -2020,7 +2591,7 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
               0
             );
 
-            return total / numbers.length;
+            return cleanNumber(total / numbers.length);
           }
 
           if (node.name === "MIN") {
@@ -2113,7 +2684,13 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
           ) {
             return cond;
           }
-          const ok = typeof cond === "boolean" ? cond : toNumber(cond) !== 0;
+          let ok: boolean;
+          if (typeof cond === "boolean") ok = cond;
+          else {
+            const condNumber = operandNumber(cond);
+            if (condNumber === "#VALUE!") return "#VALUE!";
+            ok = condNumber !== 0;
+          }
           return ok ? (node.args[1] ? evalNode(node.args[1], getCell, expandRange) : "") : node.args[2] ? evalNode(node.args[2], getCell, expandRange) : "";
         }
         case "ROUND": {
@@ -2156,22 +2733,12 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
               return input ? 1 : 0;
             }
 
-            const text = input.trim();
-
-            if (text === "") {
+            if (input.trim() === "") {
               return 0;
             }
 
-            const numericPattern =
-              /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
-
-            if (!numericPattern.test(text)) {
-              return null;
-            }
-
-            const numeric = Number(text);
-
-            return Number.isFinite(numeric) ? numeric : null;
+            // [স্টেপ ১] "১২.৫৫", "1,25,000" ইত্যাদি টেক্সটও সংখ্যা (আগে #VALUE! আসত)
+            return strictNumber(input);
           };
 
           const numeric = parseArgument(value);
@@ -2182,26 +2749,19 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
           }
 
           const digits = Math.trunc(parsedDigits);
-          const factor = Math.pow(10, digits);
 
-          if (!Number.isFinite(factor) || factor === 0) {
+          if (Math.abs(digits) > 300) {
             return "#VALUE!";
           }
 
-          const scaled = Math.abs(numeric) * factor;
-
-          if (!Number.isFinite(scaled)) {
-            return "#VALUE!";
-          }
-
-          const result =
-            Math.sign(numeric) * (Math.round(scaled) / factor);
+          // 1.005 → 1.01 (আগে Math.round(100.49999…) এর কারণে 1 আসত)
+          const result = roundHalfAway(numeric, digits);
 
           if (!Number.isFinite(result)) {
             return "#VALUE!";
           }
 
-          return Object.is(result, -0) ? 0 : result;
+          return result;
         }
         case "ABS": {
           if (node.args.length !== 1) {
@@ -2231,33 +2791,38 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
             return value ? 1 : 0;
           }
 
-          const text = value.trim();
-
-          if (text === "") {
+          if (value.trim() === "") {
             return 0;
           }
 
-          const numericPattern =
-            /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+          const numeric = strictNumber(value);
 
-          if (!numericPattern.test(text)) {
-            return "#VALUE!";
-          }
-
-          const numeric = Number(text);
-
-          return Number.isFinite(numeric)
-            ? Math.abs(numeric)
-            : "#VALUE!";
+          return numeric === null ? "#VALUE!" : Math.abs(numeric);
         }
         case "CONCAT":
-          return collect().map(String).join("");
+          return collect().map((v) => (typeof v === "boolean" ? (v ? "TRUE" : "FALSE") : String(v))).join("");
         case "AND":
-          return collect().every((v) => (typeof v === "boolean" ? v : toNumber(v) !== 0));
+          {
+            const values = collect();
+            const failed = values.find((v) => typeof v === "string" && FORMULA_ERRORS.has(v));
+            if (typeof failed === "string") return failed;
+            return values.every((v) => (typeof v === "boolean" ? v : toNumber(v) !== 0));
+          }
         case "OR":
-          return collect().some((v) => (typeof v === "boolean" ? v : toNumber(v) !== 0));
+          {
+            const values = collect();
+            const failed = values.find((v) => typeof v === "string" && FORMULA_ERRORS.has(v));
+            if (typeof failed === "string") return failed;
+            return values.some((v) => (typeof v === "boolean" ? v : toNumber(v) !== 0));
+          }
+        case "TRUE":
+          return true;
+        case "FALSE":
+          return false;
         case "TODAY":
-          return new Date().toISOString().split("T")[0];
+          {
+            return excelDateToSerial(new Date());
+          }
         case "NOW":
           return new Date().toLocaleString();
         case "UPPER":
@@ -2297,8 +2862,444 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
           );
 
           return Number.isFinite(result)
-            ? result
-            : "#VALUE!";
+            ? cleanNumber(result)
+            : "#NUM!";
+        }
+        case "IFERROR": {
+          if (node.args.length !== 2) return "#VALUE!";
+          const value = evalNode(node.args[0], getCell, expandRange);
+          if (typeof value === "string" && FORMULA_ERRORS.has(value)) {
+            return evalNode(node.args[1], getCell, expandRange);
+          }
+          return value;
+        }
+        case "NOT": {
+          if (node.args.length !== 1) return "#VALUE!";
+          const value = evalNode(node.args[0], getCell, expandRange);
+          if (typeof value === "string" && FORMULA_ERRORS.has(value)) return value;
+          const numeric = typeof value === "boolean" ? (value ? 1 : 0) : operandNumber(value);
+          if (numeric === "#VALUE!") return numeric;
+          return numeric === 0;
+        }
+        case "MOD": {
+          if (node.args.length !== 2) return "#VALUE!";
+          const a = operandNumber(evalNode(node.args[0], getCell, expandRange));
+          const b = operandNumber(evalNode(node.args[1], getCell, expandRange));
+          if (a === "#VALUE!" || b === "#VALUE!") return "#VALUE!";
+          if (b === 0) return "#DIV/0!";
+          return cleanNumber(a - b * Math.floor(a / b));
+        }
+        case "INT": {
+          if (node.args.length !== 1) return "#VALUE!";
+          const value = operandNumber(evalNode(node.args[0], getCell, expandRange));
+          if (value === "#VALUE!") return value;
+          return Math.floor(value);
+        }
+        case "SQRT": {
+          if (node.args.length !== 1) return "#VALUE!";
+          const value = operandNumber(evalNode(node.args[0], getCell, expandRange));
+          if (value === "#VALUE!") return value;
+          if (value < 0) return "#NUM!";
+          return cleanNumber(Math.sqrt(value));
+        }
+        case "POWER": {
+          if (node.args.length !== 2) return "#VALUE!";
+          const base = operandNumber(evalNode(node.args[0], getCell, expandRange));
+          const exponent = operandNumber(evalNode(node.args[1], getCell, expandRange));
+          if (base === "#VALUE!" || exponent === "#VALUE!") return "#VALUE!";
+          const result = Math.pow(base, exponent);
+          return Number.isFinite(result) ? cleanNumber(result) : "#NUM!";
+        }
+        case "ROUNDUP":
+        case "ROUNDDOWN": {
+          if (node.args.length < 1 || node.args.length > 2) return "#VALUE!";
+          const value = operandNumber(evalNode(node.args[0], getCell, expandRange));
+          const digits = node.args[1] ? operandNumber(evalNode(node.args[1], getCell, expandRange)) : 0;
+          if (value === "#VALUE!" || digits === "#VALUE!") return "#VALUE!";
+          const d = Math.max(-15, Math.min(Math.trunc(digits), 15));
+          const factor = Math.pow(10, d);
+          const scaled = Math.abs(value) * factor;
+          const rounded = node.name === "ROUNDUP" ? Math.ceil(scaled - 1e-10) : Math.floor(scaled + 1e-10);
+          return cleanNumber((value < 0 ? -1 : 1) * rounded / factor);
+        }
+        case "MEDIAN": {
+          const values = collect();
+          const error = values.find((v) => typeof v === "string" && FORMULA_ERRORS.has(v));
+          if (typeof error === "string") return error;
+          const numbers = values.filter((v): v is number => typeof v === "number" && Number.isFinite(v)).sort((a, b) => a - b);
+          if (numbers.length === 0) return "#NUM!";
+          const mid = Math.floor(numbers.length / 2);
+          return numbers.length % 2 ? numbers[mid] : cleanNumber((numbers[mid - 1] + numbers[mid]) / 2);
+        }
+        case "TEXT": {
+          if (node.args.length !== 2) return "#VALUE!";
+          const value = evalNode(node.args[0], getCell, expandRange);
+          const format = String(evalNode(node.args[1], getCell, expandRange));
+          if (typeof value === "string" && FORMULA_ERRORS.has(value)) return value;
+          const numeric = typeof value === "number" ? value : strictNumber(value);
+          if (numeric === null || numeric === undefined) return String(value);
+          if (/%/.test(format)) {
+            const decimals = format.split(".")[1]?.match(/0/g)?.length ?? 0;
+            return toDisplayDigits(`${roundHalfAway(numeric * 100, decimals).toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}%`);
+          }
+          const decimalMatch = /\.(0+)/.exec(format);
+          const decimals = decimalMatch ? decimalMatch[1].length : 0;
+          return toDisplayDigits(roundHalfAway(numeric, decimals).toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals }));
+        }
+        case "LEFT": {
+          if (node.args.length < 1 || node.args.length > 2) return "#VALUE!";
+          const text = String(evalNode(node.args[0], getCell, expandRange));
+          const count = node.args[1] ? operandNumber(evalNode(node.args[1], getCell, expandRange)) : 1;
+          if (count === "#VALUE!") return count;
+          return text.slice(0, Math.max(0, Math.trunc(count)));
+        }
+        case "RIGHT": {
+          if (node.args.length < 1 || node.args.length > 2) return "#VALUE!";
+          const text = String(evalNode(node.args[0], getCell, expandRange));
+          const count = node.args[1] ? operandNumber(evalNode(node.args[1], getCell, expandRange)) : 1;
+          if (count === "#VALUE!") return count;
+          return count <= 0 ? "" : text.slice(-Math.trunc(count));
+        }
+        case "MID": {
+          if (node.args.length !== 3) return "#VALUE!";
+          const text = String(evalNode(node.args[0], getCell, expandRange));
+          const start = operandNumber(evalNode(node.args[1], getCell, expandRange));
+          const length = operandNumber(evalNode(node.args[2], getCell, expandRange));
+          if (start === "#VALUE!" || length === "#VALUE!") return "#VALUE!";
+          if (start < 1 || length < 0) return "#VALUE!";
+          return text.slice(Math.trunc(start) - 1, Math.trunc(start) - 1 + Math.trunc(length));
+        }
+        case "TRIM": {
+          if (node.args.length !== 1) return "#VALUE!";
+          return String(evalNode(node.args[0], getCell, expandRange)).trim().replace(/\s+/g, " ");
+        }
+        case "SUMIFS": {
+          if (node.args.length < 3 || (node.args.length - 1) % 2 !== 0) return "#VALUE!";
+          const toList = (arg: typeof node.args[number]): EvalResult[] =>
+            arg.kind === "range" ? expandRange(arg.value) : arg.kind === "ref" ? [getCell(arg.value)] : [];
+          const sumRange = toList(node.args[0]);
+          const pairs: Array<[EvalResult[], EvalResult]> = [];
+          for (let i = 1; i < node.args.length; i += 2) {
+            const range = toList(node.args[i]);
+            const criterion = evalNode(node.args[i + 1], getCell, expandRange);
+            if (typeof criterion === "string" && FORMULA_ERRORS.has(criterion)) return criterion;
+            if (range.length !== sumRange.length) {
+              const maxLen = Math.max(range.length, sumRange.length);
+              while (sumRange.length < maxLen) sumRange.push("");
+              while (range.length < maxLen) range.push("");
+            }
+            pairs.push([range, criterion]);
+          }
+          let total = 0;
+          for (let i = 0; i < sumRange.length; i++) {
+            if (pairs.every(([range, criterion]) => matchesCriterion(range[i], criterion))) {
+              const amount = sumRange[i];
+              if (typeof amount === "string" && FORMULA_ERRORS.has(amount)) return amount;
+              if (typeof amount === "number" && Number.isFinite(amount)) total += amount;
+            }
+          }
+          return cleanNumber(total);
+        }
+        case "COUNTIFS": {
+          if (node.args.length < 2 || node.args.length % 2 !== 0) return "#VALUE!";
+          const toList = (arg: typeof node.args[number]): EvalResult[] =>
+            arg.kind === "range" ? expandRange(arg.value) : arg.kind === "ref" ? [getCell(arg.value)] : [];
+          const first = toList(node.args[0]);
+          const pairs: Array<[EvalResult[], EvalResult]> = [];
+          for (let i = 0; i < node.args.length; i += 2) {
+            const range = toList(node.args[i]);
+            const criterion = evalNode(node.args[i + 1], getCell, expandRange);
+            if (typeof criterion === "string" && FORMULA_ERRORS.has(criterion)) return criterion;
+            if (range.length !== first.length) {
+              const maxLen = Math.max(range.length, first.length);
+              while (first.length < maxLen) first.push("");
+              while (range.length < maxLen) range.push("");
+            }
+            pairs.push([range, criterion]);
+          }
+          let count = 0;
+          for (let i = 0; i < first.length; i++) {
+            if (pairs.every(([range, criterion]) => matchesCriterion(range[i], criterion))) count++;
+          }
+          return count;
+        }
+        case "VLOOKUP": {
+          if (node.args.length < 3 || node.args.length > 4) return "#VALUE!";
+          const lookup = evalNode(node.args[0], getCell, expandRange);
+          if (typeof lookup === "string" && FORMULA_ERRORS.has(lookup)) return lookup;
+          const tableArg = node.args[1];
+          if (tableArg.kind !== "range") return "#VALUE!";
+          const nr = normalizeRange(tableArg.value);
+          if (!nr) return "#REF!";
+          const colIndex = operandNumber(evalNode(node.args[2], getCell, expandRange));
+          if (colIndex === "#VALUE!") return colIndex;
+          const col = Math.trunc(colIndex);
+          if (col < 1 || col > nr.c2 - nr.c1 + 1) return "#REF!";
+          const approximate = node.args[3] ? evalNode(node.args[3], getCell, expandRange) : true;
+          const exact = typeof approximate === "boolean" ? !approximate : Number(approximate) === 0;
+
+          const tableRef = splitSheetReference(tableArg.value);
+          const tableSheetName = tableRef.sheetName;
+
+          const contextSheet = tableSheetName
+            ? currentEvalContext?.allSheets?.find(
+              (s) => sameSheetName(s.name, tableSheetName)
+            ) ?? null
+            : currentEvalContext?.sheet ?? null;
+          const tableLastRow = contextSheet ? getLastUsedRow(contextSheet.cells) : nr.r2;
+          const endRow = Math.min(nr.r2, Math.max(nr.r1, tableLastRow));
+          const firstColumn: EvalResult[] = [];
+          const resultColumn: EvalResult[] = [];
+          for (let r = nr.r1; r <= endRow; r++) {
+            firstColumn.push(getCell(cellKey(r, nr.c1)));
+            resultColumn.push(getCell(cellKey(r, nr.c1 + col - 1)));
+          }
+          if (exact) {
+            const index = firstColumn.findIndex((value) => matchesCriterion(value, lookup));
+            return index === -1 ? "#N/A" : resultColumn[index];
+          }
+          const lookupNumber = typeof lookup === "number" ? lookup : strictNumber(lookup);
+          let best = -1;
+          for (let i = 0; i < firstColumn.length; i++) {
+            const value = typeof firstColumn[i] === "number" ? firstColumn[i] : strictNumber(firstColumn[i]);
+            if (typeof value === "number" && lookupNumber !== null && value <= lookupNumber) best = i;
+          }
+          return best === -1 ? "#N/A" : resultColumn[best];
+        }
+        case "XLOOKUP": {
+          if (node.args.length < 3 || node.args.length > 6) return "#VALUE!";
+          const lookup = evalNode(node.args[0], getCell, expandRange);
+          if (typeof lookup === "string" && FORMULA_ERRORS.has(lookup)) return lookup;
+          const lookupArg = node.args[1];
+          const returnArg = node.args[2];
+          if (lookupArg.kind !== "range" || returnArg.kind !== "range") return "#VALUE!";
+          const lookupNr = normalizeRange(lookupArg.value);
+          const returnNr = normalizeRange(returnArg.value);
+          if (!lookupNr || !returnNr) return "#REF!";
+          const lookupVals: EvalResult[] = [];
+          const returnVals: EvalResult[] = [];
+          const isVertical = lookupNr.c1 === lookupNr.c2;
+          if (isVertical) {
+            for (let r = lookupNr.r1; r <= lookupNr.r2; r++) lookupVals.push(getCell(cellKey(r, lookupNr.c1)));
+            for (let r = returnNr.r1; r <= returnNr.r2; r++) returnVals.push(getCell(cellKey(r, returnNr.c1)));
+          } else {
+            for (let c = lookupNr.c1; c <= lookupNr.c2; c++) lookupVals.push(getCell(cellKey(lookupNr.r1, c)));
+            for (let c = returnNr.c1; c <= returnNr.c2; c++) returnVals.push(getCell(cellKey(returnNr.r1, c)));
+          }
+          if (lookupVals.length !== returnVals.length) return "#VALUE!";
+          const ifNotFound = node.args[3] ? evalNode(node.args[3], getCell, expandRange) : "#N/A";
+          const matchModeRaw = node.args[4] ? operandNumber(evalNode(node.args[4], getCell, expandRange)) : 0;
+          const searchModeRaw = node.args[5] ? operandNumber(evalNode(node.args[5], getCell, expandRange)) : 1;
+          if (matchModeRaw === "#VALUE!" || searchModeRaw === "#VALUE!") return "#VALUE!";
+          const matchMode = Math.trunc(matchModeRaw as number);
+          const searchMode = Math.trunc(searchModeRaw as number);
+          let index = -1;
+          if (matchMode === 0) {
+            if (searchMode === -1) {
+              for (let i = lookupVals.length - 1; i >= 0; i--) {
+                if (matchesCriterion(lookupVals[i], lookup)) { index = i; break; }
+              }
+            } else {
+              index = lookupVals.findIndex((v) => matchesCriterion(v, lookup));
+            }
+          } else {
+            const lookupNum = typeof lookup === "number" ? lookup : strictNumber(lookup);
+            if (lookupNum === null) return "#VALUE!";
+            let best = -1;
+            let bestVal: number | null = null;
+            const order = searchMode === -1 ? -1 : 1;
+            const start = order === 1 ? 0 : lookupVals.length - 1;
+            const end = order === 1 ? lookupVals.length : -1;
+            for (let i = start; order === 1 ? i < end : i > end; i += order) {
+              const value = typeof lookupVals[i] === "number" ? lookupVals[i] : strictNumber(lookupVals[i]);
+              if (typeof value !== "number") continue;
+              if (matchMode === -1 && value <= lookupNum) {
+                if (best === -1 || value > (bestVal ?? -Infinity)) { best = i; bestVal = value; }
+              } else if (matchMode === 1 && value >= lookupNum) {
+                if (best === -1 || value < (bestVal ?? Infinity)) { best = i; bestVal = value; }
+              }
+            }
+            index = best;
+          }
+          if (index === -1) return ifNotFound;
+          return returnVals[index];
+        }
+        case "XMATCH": {
+          if (node.args.length < 2 || node.args.length > 4) return "#VALUE!";
+          const lookup = evalNode(node.args[0], getCell, expandRange);
+          if (typeof lookup === "string" && FORMULA_ERRORS.has(lookup)) return lookup;
+          const lookupArg = node.args[1];
+          if (lookupArg.kind !== "range") return "#VALUE!";
+          const lookupNr = normalizeRange(lookupArg.value);
+          if (!lookupNr) return "#REF!";
+          const lookupVals: EvalResult[] = [];
+          if (lookupNr.c1 === lookupNr.c2) {
+            for (let r = lookupNr.r1; r <= lookupNr.r2; r++) lookupVals.push(getCell(cellKey(r, lookupNr.c1)));
+          } else {
+            for (let c = lookupNr.c1; c <= lookupNr.c2; c++) lookupVals.push(getCell(cellKey(lookupNr.r1, c)));
+          }
+          const matchModeRaw = node.args[2] ? operandNumber(evalNode(node.args[2], getCell, expandRange)) : 0;
+          const searchModeRaw = node.args[3] ? operandNumber(evalNode(node.args[3], getCell, expandRange)) : 1;
+          if (matchModeRaw === "#VALUE!" || searchModeRaw === "#VALUE!") return "#VALUE!";
+          const matchMode = Math.trunc(matchModeRaw as number);
+          const searchMode = Math.trunc(searchModeRaw as number);
+          let index = -1;
+          if (matchMode === 0) {
+            if (searchMode === -1) {
+              for (let i = lookupVals.length - 1; i >= 0; i--) {
+                if (matchesCriterion(lookupVals[i], lookup)) { index = i; break; }
+              }
+            } else {
+              index = lookupVals.findIndex((v) => matchesCriterion(v, lookup));
+            }
+          } else {
+            const lookupNum = typeof lookup === "number" ? lookup : strictNumber(lookup);
+            if (lookupNum === null) return "#VALUE!";
+            let best = -1;
+            let bestVal: number | null = null;
+            const order = searchMode === -1 ? -1 : 1;
+            const start = order === 1 ? 0 : lookupVals.length - 1;
+            const end = order === 1 ? lookupVals.length : -1;
+            for (let i = start; order === 1 ? i < end : i > end; i += order) {
+              const value = typeof lookupVals[i] === "number" ? lookupVals[i] : strictNumber(lookupVals[i]);
+              if (typeof value !== "number") continue;
+              if (matchMode === -1 && value <= lookupNum) {
+                if (best === -1 || value > (bestVal ?? -Infinity)) { best = i; bestVal = value; }
+              } else if (matchMode === 1 && value >= lookupNum) {
+                if (best === -1 || value < (bestVal ?? Infinity)) { best = i; bestVal = value; }
+              }
+            }
+            index = best;
+          }
+          return index === -1 ? "#N/A" : index + 1;
+        }
+        case "FILTER": {
+          if (node.args.length < 2) return "#VALUE!";
+          const rangeArg = node.args[0];
+          if (rangeArg.kind !== "range") return "#VALUE!";
+          const nr = normalizeRange(rangeArg.value);
+          if (!nr) return "#REF!";
+          const values: EvalResult[] = [];
+          for (let r = nr.r1; r <= nr.r2; r++) {
+            for (let c = nr.c1; c <= nr.c2; c++) values.push(getCell(cellKey(r, c)));
+          }
+          const include: boolean[] = values.map(() => true);
+          for (let a = 1; a < node.args.length; a++) {
+            const condArg = node.args[a];
+            if (condArg.kind !== "range") return "#VALUE!";
+            const cnr = normalizeRange(condArg.value);
+            if (!cnr) return "#REF!";
+            const condVals: EvalResult[] = [];
+            for (let r = cnr.r1; r <= cnr.r2; r++) {
+              for (let c = cnr.c1; c <= cnr.c2; c++) condVals.push(getCell(cellKey(r, c)));
+            }
+            if (condVals.length !== values.length) return "#VALUE!";
+            for (let i = 0; i < values.length; i++) {
+              const cv = condVals[i];
+              const isTrue = typeof cv === "boolean" ? cv : (typeof cv === "number" ? cv !== 0 : String(cv).toUpperCase() === "TRUE");
+              if (!isTrue) include[i] = false;
+            }
+          }
+          const filtered = values.filter((_, i) => include[i]);
+          return filtered.length > 0 ? filtered[0] : "#CALC!";
+        }
+        case "SORT": {
+          if (node.args.length < 1 || node.args.length > 4) return "#VALUE!";
+          const rangeArg = node.args[0];
+          if (rangeArg.kind !== "range") return "#VALUE!";
+          const nr = normalizeRange(rangeArg.value);
+          if (!nr) return "#REF!";
+          const values: EvalResult[] = [];
+          for (let r = nr.r1; r <= nr.r2; r++) {
+            for (let c = nr.c1; c <= nr.c2; c++) values.push(getCell(cellKey(r, c)));
+          }
+          const orderRaw = node.args[2] ? operandNumber(evalNode(node.args[2], getCell, expandRange)) : 1;
+          if (orderRaw === "#VALUE!") return "#VALUE!";
+          const order = Math.trunc(orderRaw as number);
+          const sorted = [...values].sort((a, b) => {
+            const an = typeof a === "number" ? a : strictNumber(a);
+            const bn = typeof b === "number" ? b : strictNumber(b);
+            if (typeof an === "number" && typeof bn === "number") return order === -1 ? bn - an : an - bn;
+            const as = String(a); const bs = String(b);
+            return order === -1 ? bs.localeCompare(as) : as.localeCompare(bs);
+          });
+          return sorted.length > 0 ? sorted[0] : "#CALC!";
+        }
+        case "UNIQUE": {
+          if (node.args.length < 1 || node.args.length > 3) return "#VALUE!";
+          const rangeArg = node.args[0];
+          if (rangeArg.kind !== "range") return "#VALUE!";
+          const nr = normalizeRange(rangeArg.value);
+          if (!nr) return "#REF!";
+          const values: EvalResult[] = [];
+          for (let r = nr.r1; r <= nr.r2; r++) {
+            for (let c = nr.c1; c <= nr.c2; c++) values.push(getCell(cellKey(r, c)));
+          }
+          const seen = new Set<string>();
+          const unique: EvalResult[] = [];
+          for (const v of values) {
+            const k = String(v);
+            if (!seen.has(k)) { seen.add(k); unique.push(v); }
+          }
+          return unique.length > 0 ? unique[0] : "#CALC!";
+        }
+        case "SEQUENCE": {
+          if (node.args.length < 1 || node.args.length > 4) return "#VALUE!";
+          const rowsRaw = operandNumber(evalNode(node.args[0], getCell, expandRange));
+          if (rowsRaw === "#VALUE!") return "#VALUE!";
+          const rows = Math.trunc(rowsRaw as number);
+          const colsRaw = node.args[1] ? operandNumber(evalNode(node.args[1], getCell, expandRange)) : 1;
+          if (colsRaw === "#VALUE!") return "#VALUE!";
+          const cols = Math.trunc(colsRaw as number);
+          const startRaw = node.args[2] ? operandNumber(evalNode(node.args[2], getCell, expandRange)) : 1;
+          if (startRaw === "#VALUE!") return "#VALUE!";
+          const start = startRaw as number;
+          const stepRaw = node.args[3] ? operandNumber(evalNode(node.args[3], getCell, expandRange)) : 1;
+          if (stepRaw === "#VALUE!") return "#VALUE!";
+          const step = stepRaw as number;
+          if (rows < 1 || cols < 1) return "#VALUE!";
+          return start;
+        }
+        case "TEXTJOIN": {
+          if (node.args.length < 3) return "#VALUE!";
+          const delimiter = String(evalNode(node.args[0], getCell, expandRange));
+          const ignoreEmptyRaw = evalNode(node.args[1], getCell, expandRange);
+          const ignoreEmpty = typeof ignoreEmptyRaw === "boolean" ? ignoreEmptyRaw : (typeof ignoreEmptyRaw === "number" ? ignoreEmptyRaw !== 0 : String(ignoreEmptyRaw).toUpperCase() === "TRUE");
+          const parts: string[] = [];
+          for (let i = 2; i < node.args.length; i++) {
+            const a = node.args[i];
+            const vals = a.kind === "range" ? expandRange(a.value) : [evalNode(a, getCell, expandRange)];
+            for (const v of vals) {
+              if (typeof v === "string" && FORMULA_ERRORS.has(v)) return v;
+              const text = String(v);
+              if (ignoreEmpty && text.trim() === "") continue;
+              parts.push(text);
+            }
+          }
+          return parts.join(delimiter);
+        }
+        case "IFS": {
+          if (node.args.length < 2 || node.args.length % 2 !== 0) return "#VALUE!";
+          for (let i = 0; i < node.args.length; i += 2) {
+            const cond = evalNode(node.args[i], getCell, expandRange);
+            if (typeof cond === "string" && FORMULA_ERRORS.has(cond)) return cond;
+            const ok = typeof cond === "boolean" ? cond : (operandNumber(cond) !== 0);
+            if (ok) return evalNode(node.args[i + 1], getCell, expandRange);
+          }
+          return "#N/A";
+        }
+        case "SWITCH": {
+          if (node.args.length < 3) return "#VALUE!";
+          const expr = evalNode(node.args[0], getCell, expandRange);
+          if (typeof expr === "string" && FORMULA_ERRORS.has(expr)) return expr;
+          let i = 1;
+          while (i + 1 < node.args.length) {
+            const val = evalNode(node.args[i], getCell, expandRange);
+            if (matchesCriterion(expr, val)) return evalNode(node.args[i + 1], getCell, expandRange);
+            i += 2;
+          }
+          if (i < node.args.length) return evalNode(node.args[i], getCell, expandRange);
+          return "#N/A";
         }
         case "STDEV":
         case "STDEVP":
@@ -2361,7 +3362,7 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
             : variance;
 
           return Number.isFinite(result)
-            ? result
+            ? cleanNumber(result)
             : "#VALUE!";
         }
         default:
@@ -2373,11 +3374,17 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
   }
 }
 
+let formulaEvalDepth = 0;
+
 function evaluateFormula(formula: string, getCell: (key: string) => EvalResult, expandRange: (range: string) => EvalResult[]): EvalResult {
+  formulaEvalDepth += 1;
   try {
-    return evalNode(new FormulaParser(formula).parse(), getCell, expandRange);
+    const result = evalNode(new FormulaParser(formula).parse(), getCell, expandRange);
+    return typeof result === "number" ? cleanNumber(result) : result;
   } catch {
     return "#ERROR!";
+  } finally {
+    formulaEvalDepth -= 1;
   }
 }
 
@@ -2390,7 +3397,7 @@ function evaluateFormula(formula: string, getCell: (key: string) => EvalResult, 
 const splitSheetReference = (
   reference: string
 ): { sheetName: string | null; reference: string } => {
-  const match = reference.match(/^([A-Za-z0-9_ ]+)!([A-Za-z0-9:]+)$/);
+  const match = reference.match(/^(.+)!([A-Za-z0-9:]+)$/);
 
   if (!match) {
     return {
@@ -2404,10 +3411,13 @@ const splitSheetReference = (
     reference: match[2].trim(),
   };
 };
+let currentEvalContext: { sheet: WorkbookSheet; allSheets: WorkbookSheet[] } | null = null;
+
 function getCellValueInSheet(
   targetSheet: WorkbookSheet,
   key: string,
-  visiting: Set<string> = new Set()
+  visiting: Set<string> = new Set(),
+  allSheets: WorkbookSheet[] = [targetSheet]
 ): EvalResult {
   const cell = targetSheet.cells[key];
   const raw = cell?.value ?? "";
@@ -2421,23 +3431,50 @@ function getCellValueInSheet(
   }
 
   if (!raw.startsWith("=")) {
+    if (formulaEvalDepth > 0) {
+      const dateSerial = parseDateTextToSerial(raw.trim());
+      if (dateSerial !== null) return dateSerial;
+    }
     return parseNumericCell(raw);
   }
   // সার্কুলার রেফারেন্স প্রতিরোধ — একই cell বারবার resolve হতে থাকলে থামিয়ে দেয়
-  if (visiting.has(key)) return "#CIRCULAR!";
+  const visitKey = `${targetSheet.id}!${key}`;
+  if (visiting.has(visitKey)) return "#CIRCULAR!";
   const nextVisiting = new Set(visiting);
-  nextVisiting.add(key);
-  const getCell = (ref: string) => getCellValueInSheet(targetSheet, ref, nextVisiting);
-  const expandRange = (range: string) => {
-    const nr = normalizeRange(range);
+  nextVisiting.add(visitKey);
+
+  const findSheet = (name: string): WorkbookSheet | undefined =>
+    allSheets.find((item) => sameSheetName(item.name, name));
+
+  // [হিসাব-সংশোধন] আগে 'Sheet2!A1' মূল শিটের সেল ধরে "" ফেরত দিত — এখন সঠিক শিটে খোঁজে (এক্সপোর্টে ভুল মান আসত)
+  const getCell = (ref: string): EvalResult => {
+    const { sheetName, reference } = splitSheetReference(ref);
+    if (!sheetName) return getCellValueInSheet(targetSheet, reference, nextVisiting, allSheets);
+    const other = findSheet(sheetName);
+    if (!other) return "#REF!";
+    return getCellValueInSheet(other, reference, nextVisiting, allSheets);
+  };
+  const expandRange = (range: string): EvalResult[] => {
+    const { sheetName, reference } = splitSheetReference(range);
+    const rangeSheet = sheetName ? findSheet(sheetName) : targetSheet;
+    if (!rangeSheet) return ["#REF!"];
+    const nr = normalizeRange(reference);
     if (!nr) return [];
+    const usedLastRow = getLastUsedRow(rangeSheet.cells);
+    const endRow = Math.min(nr.r2, Math.max(nr.r1, usedLastRow));
     const out: EvalResult[] = [];
-    for (let r = nr.r1; r <= nr.r2; r++)
+    for (let r = nr.r1; r <= endRow; r++)
       for (let c = nr.c1; c <= nr.c2; c++)
-        out.push(getCellValueInSheet(targetSheet, cellKey(r, c), nextVisiting));
+        out.push(getCellValueInSheet(rangeSheet, cellKey(r, c), nextVisiting, allSheets));
     return out;
   };
-  return evaluateFormula(raw.slice(1), getCell, expandRange);
+  const previousContext = currentEvalContext;
+  currentEvalContext = { sheet: targetSheet, allSheets };
+  try {
+    return evaluateFormula(raw.slice(1), getCell, expandRange);
+  } finally {
+    currentEvalContext = previousContext;
+  }
 }
 
 function createRefreshTick(): number {
@@ -2490,57 +3527,17 @@ function safeRefreshWorkbookState(snapshot: {
  * Main component
  * ========================================================================== */
 
+// কপি/ফিল/সর্টে সেল সরলে আপেক্ষিক (relative) রেফারেন্স সরে; $ দেওয়া অংশ স্থির থাকে।
+// সীমার বাইরে গেলে Excel-এর মতো #REF! হয়।
 function shiftFormulaRefs(formula: string, dr: number, dc: number): string {
-  const tokens = tokenize(formula);
-
-  const shiftRef = (ref: string) => {
-    const pos = parseKey(ref);
-    if (!pos) return ref;
-
-    const newRow = pos.row + dr;
-    const newCol = pos.col + dc;
-
-    if (newRow < 0 || newCol < 0) return ref;
-
-    return cellKey(newRow, newCol);
-  };
-
-  const shiftQualified = (value: string): string => {
-    const bang = value.lastIndexOf("!");
-
-    if (bang < 0) {
-      return value.split(":").map(shiftRef).join(":");
-    }
-
-    const sheetName = value.slice(0, bang);
-    const shifted = value
-      .slice(bang + 1)
-      .split(":")
-      .map(shiftRef)
-      .join(":");
-
-    const name = /^[A-Za-z0-9]+$/.test(sheetName)
-      ? sheetName
-      : `'${sheetName}'`;
-
-    return `${name}!${shifted}`;
-  };
-
-  let out = "";
-
-  for (const t of tokens) {
-    if (t.type === "end") continue;
-
-    if (t.type === "ref" || t.type === "range") {
-      out += shiftQualified(t.value);
-    } else if (t.type === "str") {
-      out += `"${t.value}"`;
-    } else {
-      out += t.value;
-    }
-  }
-
-  return out;
+  return rewriteFormulaReferences(formula, (ref) => {
+    const r1 = ref.absR1 ? ref.r1 : ref.r1 + dr;
+    const c1 = ref.absC1 ? ref.c1 : ref.c1 + dc;
+    const r2 = ref.absR2 ? ref.r2 : ref.r2 + dr;
+    const c2 = ref.absC2 ? ref.c2 : ref.c2 + dc;
+    if (Math.min(r1, r2, c1, c2) < 0 || Math.max(r1, r2) >= MAX_ROWS || Math.max(c1, c2) >= MAX_COLS) return null;
+    return { ...ref, r1, c1, r2, c2 };
+  });
 }
 
 function parseFillDate(v: string): Date | null {
@@ -2563,21 +3560,13 @@ function detectDigitScript(value: string): DigitScript {
 }
 
 function normalizeLocalizedDigits(value: string): string {
-  const bengali = "০১২৩৪৫৬৭৮৯";
-  const arabic = "٠١٢٣٤٥٦٧٨٩";
-  const persian = "۰۱۲۳۴۵۶۷۸۹";
-
-  return value.replace(/[0-9\-\u09E6-\u09EF]+/g, (ch) => {
-    const b = bengali.indexOf(ch);
-    if (b >= 0) return String(b);
-
-    const a = arabic.indexOf(ch);
-    if (a >= 0) return String(a);
-
-    const p = persian.indexOf(ch);
-    if (p >= 0) return String(p);
-
-    return ch;
+  // [হিসাব-সংশোধন] আগে পুরো সংখ্যার টুকরোকে একটি অঙ্ক ধরে খোঁজা হতো ("১২" → "1", "৩৪৫" → "3")।
+  // এখন প্রতিটি অঙ্ক আলাদাভাবে রূপান্তরিত হয় (বাংলা, আরবি, ফার্সি)।
+  return value.replace(/[\u09E6-\u09EF\u0660-\u0669\u06F0-\u06F9]/g, (ch) => {
+    const code = ch.charCodeAt(0);
+    if (code >= 0x09e6 && code <= 0x09ef) return String(code - 0x09e6);
+    if (code >= 0x0660 && code <= 0x0669) return String(code - 0x0660);
+    return String(code - 0x06f0);
   });
 }
 
@@ -2640,7 +3629,8 @@ function formatSeriesNumber(value: number, sample: string): string {
 function extractTrailingNumber(
   value: string
 ): { prefix: string; num: number; digits: number; script: DigitScript } | null {
-  const match = value.match(/(^.*?)(([0-9\-\u09E6-\u09EF]+))+$/);
+  // [হিসাব-সংশোধন] হাইফেন সংখ্যার অংশ ছিল বলে "INV-001" → -1 হয়ে "INV0000" আসত; এখন শুধু অঙ্ক ধরা হয়।
+  const match = value.match(/^([\s\S]*?)([0-9\u09E6-\u09EF\u0660-\u0669\u06F0-\u06F9]+)$/);
   if (!match) return null;
 
   const script = detectDigitScript(match[2]);
@@ -2676,7 +3666,7 @@ function applyCustomNumberFormat(numeric: number, pattern: string): string {
   const decimals = decimalMatch ? decimalMatch[1].length : 0;
   const prefixMatch = pattern.match(/^([^\d#0]*)/);
   const prefix = prefixMatch ? prefixMatch[1] : "";
-  const value = hasPercent ? numeric * 100 : numeric;
+  const value = roundHalfAway(hasPercent ? cleanNumber(numeric * 100) : numeric, decimals);
   const formatted = hasGrouping
     ? value.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
     : value.toFixed(decimals);
@@ -2684,17 +3674,19 @@ function applyCustomNumberFormat(numeric: number, pattern: string): string {
 }
 
 function evaluateConditionalRule(rule: ConditionalRule, rawValue: EvalResult): boolean {
-  const numeric = typeof rawValue === "number" ? rawValue : parseFloat(String(rawValue));
-  const target = parseFloat(rule.value);
+  // [হিসাব-সংশোধন] parseFloat("12abc") = 12 ধরার ভুল বাদ — শুধু পুরো-সংখ্যা মান তুলনা হয়
+  const numeric = strictNumber(typeof rawValue === "boolean" ? String(rawValue) : rawValue) ?? NaN;
+  const target = strictNumber(rule.value) ?? NaN;
   switch (rule.condition) {
     case "greater":
       return Number.isFinite(numeric) && Number.isFinite(target) && numeric > target;
     case "less":
       return Number.isFinite(numeric) && Number.isFinite(target) && numeric < target;
     case "equal":
-      return Number.isFinite(numeric) && Number.isFinite(target) && numeric === target;
+      if (Number.isFinite(numeric) && Number.isFinite(target)) return numeric === target;
+      return String(rawValue).trim().toLowerCase() === rule.value.trim().toLowerCase() && rule.value.trim() !== "";
     case "between": {
-      const t2 = parseFloat(rule.value2 || "");
+      const t2 = strictNumber(rule.value2 || "") ?? NaN;
       return Number.isFinite(numeric) && Number.isFinite(target) && Number.isFinite(t2) && numeric >= Math.min(target, t2) && numeric <= Math.max(target, t2);
     }
     case "textContains":
@@ -2830,12 +3822,9 @@ function matchStandardAutoFilter(
   const display = displayValue.toLowerCase();
   const needle = target.toLowerCase();
 
-  const numeric =
-    typeof rawValue === "number"
-      ? rawValue
-      : parseFloat(String(rawValue).replace(/,/g, ""));
+  const numeric = strictNumber(typeof rawValue === "boolean" ? String(rawValue) : rawValue) ?? NaN;
 
-  const targetNumeric = parseFloat(target.replace(/,/g, ""));
+  const targetNumeric = strictNumber(target) ?? NaN;
 
   switch (operator) {
     case "contains":
@@ -2845,9 +3834,11 @@ function matchStandardAutoFilter(
       return !display.includes(needle);
 
     case "equals":
+      if (Number.isFinite(numeric) && Number.isFinite(targetNumeric)) return numeric === targetNumeric;
       return displayValue === target;
 
     case "notEquals":
+      if (Number.isFinite(numeric) && Number.isFinite(targetNumeric)) return numeric !== targetNumeric;
       return displayValue !== target;
 
     case "startsWith":
@@ -2873,106 +3864,44 @@ function matchStandardAutoFilter(
   }
 }
 
-function computeSeriesValue(values: string[], overallIndex: number): string {
+function computeSeriesValue(values: string[], overallIndex: number, seriesMode: boolean = true): string {
   const n = values.length;
   const trimmed = values.map((v) => v.trim());
-
-  /*
-   * 1) Date series
-   * Example:
-   * 2024-01-01 -> 2024-01-02 -> 2024-01-03
-   */
+  const repeatPattern = () => values[((overallIndex % n) + n) % n];
   const asDates = trimmed.map((v) => parseFillDate(v));
-
   if (asDates.every((d) => d !== null)) {
+    if (!seriesMode) return repeatPattern();
     const dates = asDates as Date[];
     const dayMs = 24 * 60 * 60 * 1000;
-    const step =
-      n >= 2
-        ? (dates[n - 1].getTime() - dates[0].getTime()) / dayMs / (n - 1)
-        : 1;
-
-    const value = new Date(dates[0].getTime() + step * overallIndex * dayMs);
-    return value.toLocaleDateString("en-US");
+    const step = n >= 2 ? (dates[n - 1].getTime() - dates[0].getTime()) / dayMs / (n - 1) : 1;
+    return new Date(dates[0].getTime() + step * overallIndex * dayMs).toLocaleDateString("en-US");
   }
-
-  /*
-   * 2) Pure number series
-   *
-   * Single source:
-   * 1 -> 2 -> 3
-   * ১ -> ২ -> ৩
-   * 001 -> 002 -> 003
-   *
-   * Multiple source:
-   * 1, 3 -> 5, 7, 9
-   * 10, 20 -> 30, 40
-   */
   const asNums = trimmed.map((v) => parseSeriesNumber(v));
-
   if (asNums.every((v) => v !== null)) {
     const nums = asNums as number[];
-
     if (n === 1) {
+      if (!seriesMode) return trimmed[0];
       return formatSeriesNumber(nums[0] + overallIndex, trimmed[0]);
     }
-
+    if (!seriesMode) return repeatPattern();
     const step = (nums[n - 1] - nums[0]) / (n - 1);
-    const nextValue = nums[0] + step * overallIndex;
-
-    /*
-     * Last selected item is used as formatting sample.
-     * Example: 1.0, 1.5 -> 2.0
-     */
-    return formatSeriesNumber(nextValue, trimmed[n - 1]);
+    return formatSeriesNumber(nums[0] + step * overallIndex, trimmed[n - 1]);
   }
-
-  /*
-   * 3) Text with trailing number
-   *
-   * Single:
-   * Item 1 -> Item 2
-   * INV-001 -> INV-002
-   * আইটেম ১ -> আইটেম ২
-   *
-   * Multiple:
-   * Item 1, Item 3 -> Item 5
-   */
   const trailingNumbers = trimmed.map((v) => extractTrailingNumber(v));
-
   if (trailingNumbers.every((item) => item !== null)) {
     const items = trailingNumbers as NonNullable<ReturnType<typeof extractTrailingNumber>>[];
-
     const samePrefix = items.every((item) => item.prefix === items[0].prefix);
-
     if (samePrefix) {
       if (n === 1) {
-        return formatTrailingNumber(
-          items[0].prefix,
-          items[0].num + overallIndex,
-          items[0].digits,
-          items[0].script
-        );
+        if (!seriesMode) return repeatPattern();
+        return formatTrailingNumber(items[0].prefix, items[0].num + overallIndex, items[0].digits, items[0].script);
       }
-
+      if (!seriesMode) return repeatPattern();
       const step = (items[n - 1].num - items[0].num) / (n - 1);
-      const nextValue = items[0].num + step * overallIndex;
-
-      return formatTrailingNumber(
-        items[0].prefix,
-        nextValue,
-        items[n - 1].digits,
-        items[n - 1].script
-      );
+      return formatTrailingNumber(items[0].prefix, items[0].num + step * overallIndex, items[n - 1].digits, items[n - 1].script);
     }
   }
-
-  /*
-   * 4) Fallback pattern repeat
-   *
-   * A, B -> A, B, A, B...
-   */
-  return values[((overallIndex % n) + n) % n];
+  return repeatPattern();
 }
 
 /* ============================================================================
@@ -3032,8 +3961,8 @@ function calculatePredictiveAnalytics(
 
   const sum = values.reduce((a, b) => a + b, 0);
   const average = sum / count;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  const min = values.reduce((lowest: number, v: number) => Math.min(lowest, v), Infinity);
+  const max = values.reduce((highest: number, v: number) => Math.max(highest, v), -Infinity);
 
   const xValues = values.map((_, i) => i + 1);
   const xMean = xValues.reduce((a, b) => a + b, 0) / count;
@@ -3058,11 +3987,12 @@ function calculatePredictiveAnalytics(
 
   const residuals = values.map((y, i) => y - predictedExisting[i]);
   const residualMean = residuals.reduce((a, b) => a + b, 0) / count;
+  // রিগ্রেশনের স্ট্যান্ডার্ড এরর: স্বাধীনতার মাত্রা n-2 (দুটি প্যারামিটার slope ও intercept অনুমান করা হয়েছে)
   const residualStd =
-    count > 1
+    count > 2
       ? Math.sqrt(
         residuals.reduce((acc, r) => acc + Math.pow(r - residualMean, 2), 0) /
-        (count - 1)
+        (count - 2)
       )
       : 0;
 
@@ -3166,6 +4096,12 @@ export default function ExcelStudioPage() {
     onConfirm: (value: string) => void;
   } | null>(null);
   const [promptValue, setPromptValue] = useState("");
+  const [showWhatIfTable, setShowWhatIfTable] = useState(false);
+  const [showScenarioManager, setShowScenarioManager] = useState(false);
+  const [scenarios, setScenarios] = useState<ScenarioItem[]>([]);
+  const [scenarioSummary, setScenarioSummary] = useState<string | null>(null);
+  const [showDataAnalysis, setShowDataAnalysis] = useState(false);
+  const [showSubtotalDialog, setShowSubtotalDialog] = useState(false);
 
   const requestPrompt = useCallback(
     (title: string, message: string, onConfirm: (value: string) => void, defaultValue = "") => {
@@ -3189,6 +4125,9 @@ export default function ExcelStudioPage() {
 
   const [activeCell, setActiveCell] = useState("A1");
   const [selection, setSelection] = useState<SelectionRange>({ r1: 0, c1: 0, r2: 0, c2: 0 });
+  const [ctrlSelectedRows, setCtrlSelectedRows] = useState<number[]>([]);
+  const [ctrlSelectedCols, setCtrlSelectedCols] = useState<number[]>([]);
+  const [ctrlSelectedCells, setCtrlSelectedCells] = useState<string[]>([]);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [clipboard, setClipboard] = useState<ClipboardData | null>(null);
@@ -3207,6 +4146,9 @@ export default function ExcelStudioPage() {
   const [showFindReplace, setShowFindReplace] = useState(false);
   const [showChartDialog, setShowChartDialog] = useState(false);
   const [showPivotDialog, setShowPivotDialog] = useState(false);
+  const [showPivotChart, setShowPivotChart] = useState(false);
+  const [showForecastSheet, setShowForecastSheet] = useState(false);
+  const [showAnalyzeData, setShowAnalyzeData] = useState(false);
   const [showSpellCheck, setShowSpellCheck] = useState(false);
 
   const [openToolbarMenu, setOpenToolbarMenu] = useState<"new" | "open" | "save" | null>(null);
@@ -3293,8 +4235,10 @@ export default function ExcelStudioPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const dragging = useRef(false);
+  const draggingHeader = useRef<"row" | "col" | null>(null);
   const menuBarRef = useRef<HTMLDivElement>(null);
   const isFilling = useRef(false);
+  const fillSeriesMode = useRef(false);
   const fillBaseSelection = useRef<SelectionRange | null>(null);
   const [fillPreview, setFillPreview] = useState<SelectionRange | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; row: number; col: number } | null>(null);
@@ -3347,6 +4291,8 @@ export default function ExcelStudioPage() {
   const [zoomLevel, setZoomLevel] = useState(100);
   const [darkMode, setDarkMode] = useState(false);
   const [showStatusBar, setShowStatusBar] = useState(true);
+  const [displayGrouping, setDisplayGrouping] = useState<DisplayGrouping>(DISPLAY_SETTINGS.grouping);
+  const [displayDigits, setDisplayDigits] = useState<DisplayDigits>(DISPLAY_SETTINGS.digits);
   const [showPredictiveAnalytics, setShowPredictiveAnalytics] = useState(false);
   const [predictivePeriods, setPredictivePeriods] = useState(5);
   const [predictiveResult, setPredictiveResult] = useState<PredictiveAnalyticsResult | null>(null);
@@ -3354,6 +4300,8 @@ export default function ExcelStudioPage() {
   // Enterprise Menu State
   const [activeMenuIndex, setActiveMenuIndex] = useState<number | null>(null);
   const [focusedMenuItemIndex, setFocusedMenuItemIndex] = useState<number | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileOpenCategory, setMobileOpenCategory] = useState<number | null>(null);
 
   const sheet = sheets[activeSheetIndex] || sheets[0];
 
@@ -3607,6 +4555,18 @@ export default function ExcelStudioPage() {
       })
     );
   }, [activeSheetIndex, setSheets]);
+  // সারি/কলাম ঢোকানো-মোছার সময়: সেল সরানোর পাশাপাশি ওয়ার্কবুকের সব ফর্মুলার রেফারেন্সও ঠিক করে
+  const updateSheetStructural = useCallback(
+    (patch: (s: WorkbookSheet) => Partial<WorkbookSheet>, change: StructuralChange) => {
+      setSheets((prev) => {
+        const target = prev[activeSheetIndex];
+        if (!target) return prev;
+        const patched = prev.map((item, index) => (index === activeSheetIndex ? { ...item, ...patch(item) } : item));
+        return applyStructuralChangeToWorkbook(patched, target.id, change);
+      });
+    },
+    [activeSheetIndex, setSheets]
+  );
   const focusActiveGridCell = useCallback(() => {
     requestAnimationFrame(() => {
       cellRefs.current.get(activeCell)?.focus({
@@ -3704,27 +4664,49 @@ export default function ExcelStudioPage() {
     const c1 = Math.min(selection.c1, selection.c2);
     const c2 = Math.max(selection.c1, selection.c2);
     const total = (r2 - r1 + 1) * (c2 - c1 + 1);
-
-    const out: string[] = [];
-
+    const set = new Set<string>();
     if (total > MAX_SELECTION_CELLS) {
-      // বড় selection — শুধু প্রথম MAX_SELECTION_CELLS সেল নিন
       const maxRows = Math.max(1, Math.floor(MAX_SELECTION_CELLS / (c2 - c1 + 1)));
       for (let r = r1; r < r1 + maxRows; r++) {
-        for (let c = c1; c <= c2; c++) out.push(cellKey(r, c));
+        for (let c = c1; c <= c2; c++) set.add(cellKey(r, c));
       }
-      return out;
+    } else {
+      for (let r = r1; r <= r2; r++) {
+        for (let c = c1; c <= c2; c++) set.add(cellKey(r, c));
+      }
     }
-
-    for (let r = r1; r <= r2; r++) {
-      for (let c = c1; c <= c2; c++) out.push(cellKey(r, c));
+    for (const r of ctrlSelectedRows) {
+      if (set.size >= MAX_SELECTION_CELLS) break;
+      for (let c = 0; c < sheet.gridCols; c++) {
+        if (set.size >= MAX_SELECTION_CELLS) break;
+        set.add(cellKey(r, c));
+      }
     }
-    return out;
-  }, [selection]);
+    for (const c of ctrlSelectedCols) {
+      if (set.size >= MAX_SELECTION_CELLS) break;
+      for (let r = 0; r < sheet.gridRows; r++) {
+        if (set.size >= MAX_SELECTION_CELLS) break;
+        set.add(cellKey(r, c));
+      }
+    }
+    for (const k of ctrlSelectedCells) {
+      if (set.size >= MAX_SELECTION_CELLS) break;
+      set.add(k);
+    }
+    return Array.from(set);
+  }, [selection, ctrlSelectedRows, ctrlSelectedCols, ctrlSelectedCells, sheet.gridRows, sheet.gridCols]);
 
   const hiddenRows = useMemo(() => new Set(sheet.hiddenRows), [sheet.hiddenRows]);
   // কোন কোন কলাম হাইড করা আছে — দ্রুত লুকআপের জন্য Set-এ রাখা হলো
-  const hiddenCols = useMemo(() => new Set(sheet.hiddenCols || []), [sheet.hiddenCols]);
+  const hiddenCols = useMemo(() => {
+    const set = new Set(sheet.hiddenCols || []);
+    (sheet.colGroups || []).forEach((group) => {
+      if (group.collapsed) {
+        for (let col = group.start + 1; col <= group.end; col++) set.add(col);
+      }
+    });
+    return set;
+  }, [sheet.hiddenCols, sheet.colGroups]);
 
 
   const rowsArr = useMemo(() => Array.from({ length: sheet.gridRows }, (_, i) => i), [sheet.gridRows]);
@@ -3911,34 +4893,56 @@ export default function ExcelStudioPage() {
     if (numberFormat === "text") return String(rawValue);
 
     if (numberFormat === "date") {
-      const date = new Date(String(rawValue));
+      // [হিসাব-সংশোধন] সংখ্যা (যেমন 5) আর তারিখ ধরা হয় না; YYYY-MM-DD স্থানীয় তারিখ হিসেবে পড়া হয়
+      // (আগে UTC ধরায় UTC-র পিছনের টাইমজোনে একদিন আগের তারিখ দেখাত)
+      if (typeof rawValue !== "string") return String(rawValue);
+      const text = rawValue.trim();
+      const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+      if (iso) {
+        const y = Number(iso[1]);
+        const m = Number(iso[2]);
+        const d = Number(iso[3]);
+        const local = new Date(y, m - 1, d);
+        if (local.getFullYear() === y && local.getMonth() === m - 1 && local.getDate() === d) {
+          return local.toLocaleDateString();
+        }
+        return rawValue;
+      }
+      if (!/[\/\-]|[A-Za-z]/.test(text)) return rawValue;
+      const date = new Date(text);
       if (!Number.isNaN(date.getTime())) return date.toLocaleDateString();
-      return String(rawValue);
+      return rawValue;
     }
 
     const numeric =
       typeof rawValue === "number" ? rawValue : NaN;
     if (Number.isFinite(numeric)) {
       if (numberFormat === "currency") {
-        return formatCurrencyValue(numeric, style?.currencyCode || "USD", decimals);
+        return toDisplayDigits(formatCurrencyValue(numeric, style?.currencyCode || "USD", decimals));
       }
       if (numberFormat === "percentage") {
-        return `${(numeric * 100).toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}%`;
+        return `${formatDisplayNumber(roundHalfAway(cleanNumber(numeric * 100), decimals), decimals)}%`;
       }
       if (numberFormat === "number") {
-        return numeric.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+        return formatDisplayNumber(roundHalfAway(numeric, decimals), decimals);
       }
       if (numberFormat === "scientific") {
         return numeric.toExponential(decimals);
       }
       if (numberFormat === "accounting") {
-        const abs = Math.abs(numeric).toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-        return numeric === 0 ? "$ -" : numeric < 0 ? `(${abs})` : `${abs}`;
+        const abs = formatDisplayNumber(roundHalfAway(Math.abs(numeric), decimals), decimals);
+        return numeric === 0 ? "-" : numeric < 0 ? `(${abs})` : `${abs}`;
       }
       if (numberFormat === "custom" && style?.customFormat) {
         return applyCustomNumberFormat(numeric, style.customFormat);
       }
-      return Number.isInteger(numeric) ? numeric.toLocaleString("en-US") : numeric.toFixed(Math.max(0, Math.min(decimals, 10)));
+      if (Number.isInteger(numeric)) return formatDisplayNumber(numeric, null);
+      // [হিসাব-সংশোধন] General ফরম্যাটে দশমিক সংখ্যা আর জোর করে ২ ঘরে কাটা হয় না (1/3 → 0.333333333333, 0.001 → 0.001)।
+      // স্পষ্টভাবে দশমিক-সংখ্যা ঠিক করা থাকলে সেটিই মানা হয়।
+      if (typeof style?.decimals === "number") {
+        return formatDisplayNumber(roundHalfAway(numeric, Math.max(0, Math.min(decimals, 10))), Math.max(0, Math.min(decimals, 10)));
+      }
+      return formatDisplayNumber(cleanNumber(numeric), null);
     }
 
     return String(rawValue);
@@ -4077,13 +5081,14 @@ export default function ExcelStudioPage() {
     // onContextMenu হ্যান্ডলার ঠিকই নতুন সিলেকশন বসাবে।
     if (e?.button === 2) return;
     const key = cellKey(row, col);
-    if (e?.shiftKey) {
+    if (e && (e.ctrlKey || e.metaKey)) {
       dragging.current = false;
-      setSelection((prev) => ({ ...prev, r2: row, c2: col }));
-      setActiveCell(key);
+      setCtrlSelectedCells((prev) => prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]);
       return;
     }
-
+    setCtrlSelectedRows([]);
+    setCtrlSelectedCols([]);
+    setCtrlSelectedCells([]);
     if (e?.shiftKey) {
       dragging.current = false;
       setSelection((prev) => ({ ...prev, r2: row, c2: col }));
@@ -4127,29 +5132,40 @@ export default function ExcelStudioPage() {
     const sr2 = Math.max(source.r1, source.r2);
     const sc1 = Math.min(source.c1, source.c2);
     const sc2 = Math.max(source.c1, source.c2);
-    const tr2 = Math.max(target.r2, sr2);
-    const tc2 = Math.max(target.c2, sc2);
-    const fillingDown = tr2 > sr2;
-    const fillingRight = !fillingDown && tc2 > sc2;
-    if (!fillingDown && !fillingRight) return;
-
+    const tr1 = Math.min(target.r1, target.r2);
+    const tr2 = Math.max(target.r1, target.r2);
+    const tc1 = Math.min(target.c1, target.c2);
+    const tc2 = Math.max(target.c1, target.c2);
+    const down = tr2 - sr2;
+    const up = sr1 - tr1;
+    const right = tc2 - sc2;
+    const left = sc1 - tc1;
+    const vertical = Math.max(down, up);
+    const horizontal = Math.max(right, left);
+    let direction: "down" | "up" | "right" | "left" | null = null;
+    if (vertical >= horizontal && (down > 0 || up > 0)) direction = down >= up ? "down" : "up";
+    else if (right > 0 || left > 0) direction = right >= left ? "right" : "left";
+    if (!direction) return;
+    const seriesMode = fillSeriesMode.current;
     updateSheet((s) => {
       const nextCells = { ...s.cells };
-      if (fillingDown) {
+      if (direction === "down" || direction === "up") {
         const rows: number[] = [];
         for (let r = sr1; r <= sr2; r++) rows.push(r);
         const n = rows.length;
+        const start = direction === "down" ? sr2 + 1 : tr1;
+        const end = direction === "down" ? tr2 : sr1 - 1;
         for (let c = sc1; c <= sc2; c++) {
           const values = rows.map((r) => s.cells[cellKey(r, c)]?.value ?? "");
-          for (let r = sr2 + 1; r <= tr2; r++) {
-            const offset = r - sr2;
-            const srcIdx = (offset - 1) % n;
+          for (let r = start; r <= end; r++) {
+            const overallIndex = r - sr1;
+            const srcIdx = ((overallIndex % n) + n) % n;
             const srcRow = rows[srcIdx];
             const srcVal = values[srcIdx];
             const srcStyle = s.cells[cellKey(srcRow, c)]?.style;
             const newVal = srcVal.startsWith("=")
-              ? "=" + shiftFormulaRefs(srcVal.slice(1), r - srcRow, 0)
-              : computeSeriesValue(values, n - 1 + offset);
+              ? "=" + shiftFormulaRefs(srcVal.slice(1), overallIndex, 0)
+              : computeSeriesValue(values, overallIndex, seriesMode);
             nextCells[cellKey(r, c)] = { ...(nextCells[cellKey(r, c)] || { value: "" }), value: newVal, style: srcStyle };
           }
         }
@@ -4157,30 +5173,33 @@ export default function ExcelStudioPage() {
         const cols: number[] = [];
         for (let c = sc1; c <= sc2; c++) cols.push(c);
         const n = cols.length;
+        const start = direction === "right" ? sc2 + 1 : tc1;
+        const end = direction === "right" ? tc2 : sc1 - 1;
         for (let r = sr1; r <= sr2; r++) {
           const values = cols.map((c) => s.cells[cellKey(r, c)]?.value ?? "");
-          for (let c = sc2 + 1; c <= tc2; c++) {
-            const offset = c - sc2;
-            const srcIdx = (offset - 1) % n;
+          for (let c = start; c <= end; c++) {
+            const overallIndex = c - sc1;
+            const srcIdx = ((overallIndex % n) + n) % n;
             const srcCol = cols[srcIdx];
             const srcVal = values[srcIdx];
             const srcStyle = s.cells[cellKey(r, srcCol)]?.style;
             const newVal = srcVal.startsWith("=")
-              ? "=" + shiftFormulaRefs(srcVal.slice(1), 0, c - srcCol)
-              : computeSeriesValue(values, n - 1 + offset);
+              ? "=" + shiftFormulaRefs(srcVal.slice(1), 0, overallIndex)
+              : computeSeriesValue(values, overallIndex, seriesMode);
             nextCells[cellKey(r, c)] = { ...(nextCells[cellKey(r, c)] || { value: "" }), value: newVal, style: srcStyle };
           }
         }
       }
       return { cells: nextCells };
     });
-    showToast("Fill applied.");
+    showToast(seriesMode ? "Series fill applied." : "Copied fill applied.");
   }, [updateSheet, showToast]);
 
   const startFillDrag = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     isFilling.current = true;
+    fillSeriesMode.current = Boolean(e.ctrlKey || e.metaKey);
     fillBaseSelection.current = { ...selection };
     setFillPreview({ ...selection });
   }, [selection]);
@@ -4192,12 +5211,12 @@ export default function ExcelStudioPage() {
     const br2 = Math.max(base.r1, base.r2);
     const bc1 = Math.min(base.c1, base.c2);
     const bc2 = Math.max(base.c1, base.c2);
-    const dr = row - br2;
-    const dc = col - bc2;
-    if (Math.abs(dr) >= Math.abs(dc)) {
-      setFillPreview({ r1: br1, c1: bc1, r2: Math.max(br2, row), c2: bc2 });
+    const verticalDistance = row < br1 ? br1 - row : row - br2;
+    const horizontalDistance = col < bc1 ? bc1 - col : col - bc2;
+    if (verticalDistance >= horizontalDistance) {
+      setFillPreview({ r1: Math.min(br1, row), c1: bc1, r2: Math.max(br2, row), c2: bc2 });
     } else {
-      setFillPreview({ r1: br1, c1: bc1, r2: br2, c2: Math.max(bc2, col) });
+      setFillPreview({ r1: br1, c1: Math.min(bc1, col), r2: br2, c2: Math.max(bc2, col) });
     }
   }, []);
 
@@ -4212,9 +5231,53 @@ export default function ExcelStudioPage() {
     });
   }, [commitFill]);
 
+  // [মাউস ফিক্স] দ্রুত ড্র্যাগে সেল স্কিপ না হয় — pointer position থেকে সেল/হেডার নির্ধারণ
+  useEffect(() => {
+    const move = (e: MouseEvent) => {
+      const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+      if (!el) return;
+      if (isFilling.current) {
+        const cell = el.closest("td[data-row]") as HTMLElement | null;
+        if (!cell) return;
+        const r = Number(cell.dataset.row);
+        const c = Number(cell.dataset.col);
+        if (Number.isFinite(r) && Number.isFinite(c)) dragFillTo(r, c);
+        return;
+      }
+      if (dragging.current) {
+        const cell = el.closest("td[data-row]") as HTMLElement | null;
+        if (!cell) return;
+        const r = Number(cell.dataset.row);
+        const c = Number(cell.dataset.col);
+        if (Number.isFinite(r) && Number.isFinite(c)) {
+          setSelection((prev) => ({ ...prev, r2: r, c2: c }));
+        }
+        return;
+      }
+      if (draggingHeader.current === "row") {
+        const header = el.closest("td[data-row-header]") as HTMLElement | null;
+        if (header) {
+          const r = Number(header.dataset.rowHeader);
+          if (Number.isFinite(r)) selectEntireRow(r);
+        }
+        return;
+      }
+      if (draggingHeader.current === "col") {
+        const header = el.closest("th[data-col-header]") as HTMLElement | null;
+        if (header) {
+          const c = Number(header.dataset.colHeader);
+          if (Number.isFinite(c)) selectEntireColumn(c);
+        }
+      }
+    };
+    window.addEventListener("mousemove", move);
+    return () => window.removeEventListener("mousemove", move);
+  }, [dragFillTo, selectEntireRow, selectEntireColumn]);
+
   useEffect(() => {
     const up = () => {
       dragging.current = false;
+      draggingHeader.current = null;
       endFillDrag();
     };
     window.addEventListener("mouseup", up);
@@ -5070,13 +6133,40 @@ export default function ExcelStudioPage() {
       }
     }
 
+    const pasteRowShift = destinationRow - copied.origin.row;
+    const pasteColShift = destinationCol - copied.origin.col;
+    const cutAcrossSheets = copied.mode === "cut" && sourceIndex !== destinationIndex;
+    const sourceSheetName = sourceIndex >= 0 ? currentSheets[sourceIndex].name : "";
+
     for (const { row, col, data } of copiedCells) {
+      let pasted = data;
+
+      if (typeof data.value === "string" && data.value.startsWith("=")) {
+        if (copied.mode !== "cut") {
+          // Copy: সূত্রের আপেক্ষিক রেফারেন্স নতুন জায়গা অনুযায়ী সরে (=A1+B1 নিচের ঘরে হয় =A2+B2)
+          pasted = {
+            ...data,
+            value: "=" + shiftFormulaRefs(data.value.slice(1), pasteRowShift, pasteColShift),
+          };
+        } else if (cutAcrossSheets) {
+          // Cut অন্য শিটে: সূত্র একই ঘরগুলোকেই দেখবে, তাই মূল শিটের নাম বসাই
+          pasted = {
+            ...data,
+            value:
+              "=" +
+              rewriteFormulaReferences(data.value.slice(1), (ref) =>
+                ref.sheet ? ref : { ...ref, sheet: sourceSheetName }
+              ),
+          };
+        }
+      }
+
       targetCells[
         cellKey(
           destinationRow + row,
           destinationCol + col
         )
-      ] = data;
+      ] = pasted;
     }
 
     nextSheets[destinationIndex] = {
@@ -5084,8 +6174,34 @@ export default function ExcelStudioPage() {
       cells: targetCells,
     };
 
+    let finalSheets = nextSheets;
+
+    if (copied.mode === "cut" && sourceIndex >= 0) {
+      // Cut: অন্য যেসব সূত্র কাটা ঘরগুলোকে দেখছিল, সেগুলো নতুন জায়গাকে দেখবে (Excel-এর মতো)
+      const sourceName = nextSheets[sourceIndex].name;
+      const destinationName = nextSheets[destinationIndex].name;
+      const cutR1 = copied.origin.row;
+      const cutC1 = copied.origin.col;
+      const cutR2 = copied.origin.row + copied.rows - 1;
+      const cutC2 = copied.origin.col + copied.cols - 1;
+
+      finalSheets = rewriteWorkbookFormulas(nextSheets, (owner) => (ref) => {
+        const refSheet = ref.sheet ?? owner.name;
+        if (!sameSheetName(refSheet, sourceName)) return ref;
+        if (ref.r1 < cutR1 || ref.r2 > cutR2 || ref.c1 < cutC1 || ref.c2 > cutC2) return ref;
+        return {
+          ...ref,
+          r1: ref.r1 + pasteRowShift,
+          r2: ref.r2 + pasteRowShift,
+          c1: ref.c1 + pasteColShift,
+          c2: ref.c2 + pasteColShift,
+          sheet: sameSheetName(destinationName, owner.name) ? null : destinationName,
+        };
+      });
+    }
+
     // দুই শিটের পরিবর্তন একই Undo step-এ রাখি।
-    setSheets(nextSheets);
+    setSheets(finalSheets);
 
 
 
@@ -5113,7 +6229,7 @@ export default function ExcelStudioPage() {
   // নির্দিষ্ট ইনডেক্সে (atCol) একটি নতুন খালি কলাম ঢুকিয়ে দেওয়া হচ্ছে —
   // atCol এবং তার ডানে থাকা সব কলামের ডাটা একঘর ডানে শিফট হয়ে যাবে
   const insertColumnAtIndex = useCallback((atCol: number) => {
-    updateSheet((s) => {
+    updateSheetStructural((s) => {
       const nextCells: CellMap = {};
       // প্রতিটি সেল স্ক্যান করে, atCol বা তার ডানে থাকা সেলগুলো এক ঘর ডানে সরানো হচ্ছে
       Object.entries(s.cells).forEach(([key, data]) => {
@@ -5150,9 +6266,9 @@ export default function ExcelStudioPage() {
         hiddenCols: nextHiddenCols,
         gridCols: Math.min(s.gridCols + 1, MAX_COLS),
       };
-    });
+    }, { axis: "col", kind: "insert", at: atCol });
     showToast("নতুন কলাম যুক্ত করা হয়েছে।");
-  }, [updateSheet, showToast]);
+  }, [updateSheetStructural, showToast]);
 
   // নির্বাচিত (রাইট-ক্লিক করা) কলামের বামে নতুন কলাম বসানো
   const insertColumnsBeforeTarget = useCallback((col: number) => {
@@ -5171,7 +6287,7 @@ export default function ExcelStudioPage() {
       showToast("অন্তত একটি কলাম থাকা আবশ্যক।");
       return;
     }
-    updateSheet((s) => {
+    updateSheetStructural((s) => {
       const nextCells: CellMap = {};
       Object.entries(s.cells).forEach(([key, data]) => {
         const pos = parseKey(key);
@@ -5209,9 +6325,9 @@ export default function ExcelStudioPage() {
         hiddenCols: nextHiddenCols,
         gridCols: Math.max(1, s.gridCols - 1),
       };
-    });
+    }, { axis: "col", kind: "delete", at: atCol });
     showToast("কলাম মুছে ফেলা হয়েছে।");
-  }, [sheet.gridCols, updateSheet, showToast]);
+  }, [sheet.gridCols, updateSheetStructural, showToast]);
 
   // কলামটি নিজে থাকবে, শুধু ভেতরের সব ডাটা (Contents) খালি হয়ে যাবে
   const clearColumnContentsAtIndex = useCallback((atCol: number) => {
@@ -5269,7 +6385,7 @@ export default function ExcelStudioPage() {
   // নির্দিষ্ট ইনডেক্সে (atRow) একটি নতুন খালি রো ঢুকিয়ে দেওয়া হচ্ছে —
   // atRow এবং তার নিচে থাকা সব রো-এর ডাটা একঘর নিচে শিফট হয়ে যাবে
   const insertRowAtIndex = useCallback((atRow: number) => {
-    updateSheet((s) => {
+    updateSheetStructural((s) => {
       const nextCells: CellMap = {};
       // প্রতিটি সেল স্ক্যান করে, atRow বা তার নিচে থাকা সেলগুলো এক ঘর নিচে সরানো হচ্ছে
       Object.entries(s.cells).forEach(([key, data]) => {
@@ -5306,9 +6422,9 @@ export default function ExcelStudioPage() {
         groups: nextGroups,
         gridRows: Math.min(s.gridRows + 1, MAX_ROWS),
       };
-    });
+    }, { axis: "row", kind: "insert", at: atRow });
     showToast("নতুন রো যুক্ত করা হয়েছে।");
-  }, [updateSheet, showToast]);
+  }, [updateSheetStructural, showToast]);
 
   // নির্বাচিত (রাইট-ক্লিক করা) রো-এর উপরে নতুন রো বসানো
   const insertRowsAboveTarget = useCallback((row: number) => {
@@ -5327,7 +6443,7 @@ export default function ExcelStudioPage() {
       showToast("অন্তত একটি রো থাকা আবশ্যক।");
       return;
     }
-    updateSheet((s) => {
+    updateSheetStructural((s) => {
       const nextCells: CellMap = {};
       Object.entries(s.cells).forEach(([key, data]) => {
         const pos = parseKey(key);
@@ -5366,9 +6482,9 @@ export default function ExcelStudioPage() {
         groups: nextGroups,
         gridRows: Math.max(1, s.gridRows - 1),
       };
-    });
+    }, { axis: "row", kind: "delete", at: atRow });
     showToast("রো মুছে ফেলা হয়েছে।");
-  }, [sheet.gridRows, updateSheet, showToast]);
+  }, [sheet.gridRows, updateSheetStructural, showToast]);
 
   // রোটি নিজে থাকবে, শুধু ভেতরের সব ডাটা (Contents) খালি হয়ে যাবে
   const clearRowContentsAtIndex = useCallback((atRow: number) => {
@@ -5648,9 +6764,16 @@ export default function ExcelStudioPage() {
               const sourceIsText =
                 source?.data.style?.numberFormat === "text";
 
+              // Paste Special (Formulas): আপেক্ষিক রেফারেন্স নতুন ঘর অনুযায়ী সরে
+              const sourceValue = source?.data.value ?? "";
+              const shiftedValue =
+                sourceValue.startsWith("=") && !sourceIsText
+                  ? "=" + shiftFormulaRefs(sourceValue.slice(1), activePos.row - copied.origin.row, activePos.col - copied.origin.col)
+                  : sourceValue;
+
               next[targetKey] = {
                 ...existing,
-                value: source?.data.value ?? "",
+                value: shiftedValue,
                 style: {
                   ...existing.style,
                   numberFormat: sourceIsText
@@ -5858,12 +6981,26 @@ export default function ExcelStudioPage() {
   }, []);
 
   const selectionStats = useMemo(() => {
-  // Formula evaluation helper is render-safe; its internal cache ref is read-only during evaluation.
-    const nums = selectionCells.map((k) => getCellValue(k)).filter((v): v is number => typeof v === "number");
-    const sum = nums.reduce((a, b) => a + b, 0);
-    const avg = nums.length ? sum / nums.length : 0;
-    return { count: selectionCells.length, numericCount: nums.length, sum, avg };
-  }, [selectionCells, getCellValue]);
+    // Formula evaluation helper is render-safe; its internal cache ref is read-only during evaluation.
+    const nums = selectionCells.map((k) => getCellValue(k)).filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+    // cleanNumber: 0.1 + 0.2 স্ট্যাটাস বারে 0.30000000000000004 দেখানোর ভুল বাদ
+    const sum = cleanNumber(nums.reduce((a, b) => a + b, 0));
+    const avg = nums.length ? cleanNumber(sum / nums.length) : 0;
+    const min = nums.length ? nums.reduce((lowest: number, v: number) => Math.min(lowest, v), Infinity) : 0;
+    const max = nums.length ? nums.reduce((highest: number, v: number) => Math.max(highest, v), -Infinity) : 0;
+    // বিশাল সিলেকশনে শুধু প্রথম MAX_SELECTION_CELLS ঘর গোনা হয় — তখন ব্যবহারকারীকে জানানো হয়
+    const totalSelected =
+      (Math.abs(selection.r2 - selection.r1) + 1) * (Math.abs(selection.c2 - selection.c1) + 1);
+    return {
+      count: selectionCells.length,
+      numericCount: nums.length,
+      sum,
+      avg,
+      min,
+      max,
+      truncated: totalSelected > selectionCells.length,
+    };
+  }, [selectionCells, getCellValue, selection]);
 
   const hasRowMerges = useMemo(() => Object.values(sheet.cells).some((c) => (c.rowSpan || 1) > 1), [sheet.cells]);
   const virtualizeRows = !hasRowMerges && sheet.gridRows > 150;
@@ -6030,9 +7167,22 @@ export default function ExcelStudioPage() {
         return;
       }
 
-      const rowsData = Array.from({ length: lastRow + 1 }, (_, row) => ({
-        row,
-        val: getCellValue(cellKey(row, col)),
+      // হেডার সারি (যেমন "Amount") সর্টের ভেতরে ঢুকে যেত — এখন টেক্সট-হেডার + নিচে সংখ্যা থাকলে বাদ যায়
+      const firstValue = getCellValue(cellKey(0, col));
+      const hasNumbersBelow = Array.from({ length: lastRow }, (_, i) => getCellValue(cellKey(i + 1, col))).some(
+        (v) => typeof v === "number"
+      );
+      const headerBold = Boolean(sheet.cells[cellKey(0, col)]?.style?.bold) && !sheet.cells[cellKey(1, col)]?.style?.bold;
+      const looksLikeHeader =
+        typeof firstValue === "string" &&
+        firstValue !== "" &&
+        !FORMULA_ERRORS.has(firstValue) &&
+        (hasNumbersBelow || headerBold);
+      const startRow = looksLikeHeader ? 1 : 0;
+
+      const rowsData = Array.from({ length: lastRow + 1 - startRow }, (_, index) => ({
+        row: index + startRow,
+        val: getCellValue(cellKey(index + startRow, col)),
       }));
 
       const sorted = [...rowsData].sort((a, b) => {
@@ -6064,18 +7214,26 @@ export default function ExcelStudioPage() {
       });
 
       updateSheet((s) => {
-        const snapshot = sorted.map(({ row }) =>
-          Array.from({ length: s.gridCols }, (_, c) => s.cells[cellKey(row, c)])
-        );
-
         const next = { ...s.cells };
 
-        snapshot.forEach((rowCells, r) => {
-          rowCells.forEach((data, c) => {
-            const k = cellKey(r, c);
-            if (data) next[k] = data;
-            else delete next[k]; // খালি সেলের অবজেক্ট জমা হবে না
-          });
+        sorted.forEach(({ row: sourceRow }, index) => {
+          const targetRow = index + startRow;
+
+          for (let c = 0; c < s.gridCols; c++) {
+            const data = s.cells[cellKey(sourceRow, c)];
+            const k = cellKey(targetRow, c);
+
+            if (!data) {
+              delete next[k]; // খালি সেলের অবজেক্ট জমা হবে না
+              continue;
+            }
+
+            // সারি সরলে সূত্রের আপেক্ষিক রেফারেন্সও সরে, নাহলে =A2*B2 অন্য সারির মান দেখাত
+            next[k] =
+              targetRow !== sourceRow && typeof data.value === "string" && data.value.startsWith("=")
+                ? { ...data, value: "=" + shiftFormulaRefs(data.value.slice(1), targetRow - sourceRow, 0) }
+                : data;
+          }
         });
 
         return { cells: next };
@@ -6126,19 +7284,16 @@ export default function ExcelStudioPage() {
       });
 
       updateSheet((s) => {
-        const snapshot = sorted.map(({ row }) =>
-          Array.from(
-            { length: s.gridCols },
-            (_, c) => s.cells[cellKey(row, c)] || { value: "" }
-          )
-        );
-
         const next = { ...s.cells };
 
-        snapshot.forEach((rowCells, r) => {
-          rowCells.forEach((data, c) => {
-            next[cellKey(r, c)] = data;
-          });
+        sorted.forEach(({ row: sourceRow }, targetRow) => {
+          for (let c = 0; c < s.gridCols; c++) {
+            const data = s.cells[cellKey(sourceRow, c)] || { value: "" };
+            next[cellKey(targetRow, c)] =
+              targetRow !== sourceRow && typeof data.value === "string" && data.value.startsWith("=")
+                ? { ...data, value: "=" + shiftFormulaRefs(data.value.slice(1), targetRow - sourceRow, 0) }
+                : data;
+          }
         });
 
         return { cells: next };
@@ -6230,10 +7385,7 @@ export default function ExcelStudioPage() {
         for (let r = 0; r < sheet.gridRows; r++) {
           const raw = getCellValue(cellKey(r, col));
 
-          const numeric =
-            typeof raw === "number"
-              ? raw
-              : parseFloat(String(raw).replace(/,/g, ""));
+          const numeric = strictNumber(typeof raw === "boolean" ? String(raw) : raw) ?? NaN;
 
           if (Number.isFinite(numeric)) {
             numericRows.push({ row: r, value: numeric });
@@ -6516,6 +7668,66 @@ export default function ExcelStudioPage() {
       return { groups, hiddenRows: Array.from(hidden) };
     });
   };
+  const groupColumnsSelection = () => {
+    const c1 = Math.min(selection.c1, selection.c2);
+    const c2 = Math.max(selection.c1, selection.c2);
+    if (c1 === c2) {
+      showToast("Select multiple columns to group.");
+      return;
+    }
+    updateSheet((s) => ({ colGroups: [...(s.colGroups || []), { id: `cg_${Date.now()}`, start: c1, end: c2, collapsed: false }] }));
+    showToast("Columns grouped.");
+  };
+
+  const ungroupColumnsSelection = () => {
+    const c1 = Math.min(selection.c1, selection.c2);
+    const c2 = Math.max(selection.c1, selection.c2);
+    updateSheet((s) => ({ colGroups: (s.colGroups || []).filter((group) => !(group.start === c1 && group.end === c2)) }));
+    showToast("Columns ungrouped.");
+  };
+
+  const toggleColGroupCollapse = (id: string) => {
+    updateSheet((s) => ({
+      colGroups: (s.colGroups || []).map((group) => (group.id === id ? { ...group, collapsed: !group.collapsed } : group)),
+    }));
+  };
+
+  const collapseAllGroups = () => {
+    updateSheet((s) => {
+      const groups = s.groups.map((group) => ({ ...group, collapsed: true }));
+      const hidden = new Set(s.hiddenRows);
+      groups.forEach((group) => {
+        for (let row = group.start + 1; row <= group.end; row++) hidden.add(row);
+      });
+      const colGroups = (s.colGroups || []).map((group) => ({ ...group, collapsed: true }));
+      const hiddenColumnSet = new Set(s.hiddenCols || []);
+      colGroups.forEach((group) => {
+        for (let col = group.start + 1; col <= group.end; col++) hiddenColumnSet.add(col);
+      });
+      return { groups, hiddenRows: Array.from(hidden), colGroups, hiddenCols: Array.from(hiddenColumnSet) };
+    });
+  };
+
+  const expandAllGroups = () => {
+    updateSheet((s) => {
+      const expandedGroups = s.groups.map((group) => ({ ...group, collapsed: false }));
+      const groupRows = new Set<number>();
+      expandedGroups.forEach((group) => {
+        for (let row = group.start + 1; row <= group.end; row++) groupRows.add(row);
+      });
+      const expandedColGroups = (s.colGroups || []).map((group) => ({ ...group, collapsed: false }));
+      const groupCols = new Set<number>();
+      expandedColGroups.forEach((group) => {
+        for (let col = group.start + 1; col <= group.end; col++) groupCols.add(col);
+      });
+      return {
+        groups: expandedGroups,
+        hiddenRows: s.hiddenRows.filter((row) => !groupRows.has(row)),
+        colGroups: expandedColGroups,
+        hiddenCols: (s.hiddenCols || []).filter((col) => !groupCols.has(col)),
+      };
+    });
+  };
 
   const applyValidity = () => {
     const options = validityInput.split(",").map((s) => s.trim()).filter(Boolean);
@@ -6565,62 +7777,97 @@ export default function ExcelStudioPage() {
   const runGoalSeek = () => {
     const targetKey = goalTargetCell.toUpperCase().trim();
     const changeKey = goalChangingCell.toUpperCase().trim();
-    const desired = parseFloat(goalValue);
-    if (!parseKey(targetKey) || !parseKey(changeKey) || Number.isNaN(desired)) {
+    const desired = strictNumber(goalValue.trim());
+    if (!parseKey(targetKey) || !parseKey(changeKey) || desired === null) {
       showToast("Enter valid cell references and target value.");
       return;
     }
-    let bestX = toNumber(getRawValue(changeKey)) || 0;
-    let lo = -1e7;
-    let hi = 1e7;
+    if (targetKey === changeKey) {
+      showToast("Target cell and changing cell must be different.");
+      return;
+    }
+    if (sheet.cells[targetKey]?.value?.startsWith("=") !== true) {
+      showToast("Target cell must contain a formula that depends on the changing cell.");
+      return;
+    }
+    if (sheet.cells[changeKey]?.value?.startsWith("=")) {
+      showToast("Changing cell must contain a plain value, not a formula.");
+      return;
+    }
 
-    const estimateValue = (x: number) => {
+    // [হিসাব-সংশোধন] আগের ভার্সন: ফিক্সড ±১কোটি সীমা, সমাধান আছে কিনা না দেখেই ফলাফল বসাত, ২ দশমিকে রাউন্ড করত।
+    // এখন: সমাধান-সীমা (bracket) খোঁজে, bisection-এ প্রায় নিখুঁত মান বের করে, না পেলে কিছু বদলায় না।
+    const estimate = (x: number): number => {
       const tempCells = { ...sheet.cells, [changeKey]: { ...(sheet.cells[changeKey] || { value: "" }), value: String(x) } };
-      const getTempCellValue = (key: string, visiting = new Set<string>()): EvalResult => {
-        const cell = tempCells[key];
-        const raw = cell?.value ?? "";
-
-        if (raw === "") {
-          return "";
-        }
-
-        if (cell?.style?.numberFormat === "text") {
-          return raw;
-        }
-
-        if (!raw.startsWith("=")) {
-          return parseNumericCell(raw);
-        }
-        if (visiting.has(key)) return "#CIRCULAR!";
-        const nv = new Set(visiting);
-        nv.add(key);
-        return evaluateFormula(
-          raw.slice(1),
-          (ref) => getTempCellValue(ref, nv),
-          (range) => {
-            const nr = normalizeRange(range);
-            if (!nr) return [];
-            const out: EvalResult[] = [];
-            for (let rr = nr.r1; rr <= nr.r2; rr++) for (let cc = nr.c1; cc <= nr.c2; cc++) out.push(getTempCellValue(cellKey(rr, cc), nv));
-            return out;
-          }
-        );
-      };
-      return toNumber(getTempCellValue(targetKey));
+      const tempSheet: WorkbookSheet = { ...sheet, cells: tempCells };
+      const tempAll = sheets.map((item) => (item.id === sheet.id ? tempSheet : item));
+      const value = getCellValueInSheet(tempSheet, targetKey, new Set<string>(), tempAll);
+      return typeof value === "number" && Number.isFinite(value) ? value : NaN;
     };
 
-    for (let i = 0; i < 60; i++) {
-      const mid = (lo + hi) / 2;
-      const val = estimateValue(mid);
-      const valLo = estimateValue(lo);
-      bestX = mid;
-      if (Math.abs(val - desired) < 0.0001) break;
-      if ((val - desired > 0 && valLo - desired > 0) || (val - desired < 0 && valLo - desired < 0)) lo = mid;
-      else hi = mid;
+    const gap = (x: number): number => estimate(x) - desired;
+    const tolerance = 1e-9 * Math.max(1, Math.abs(desired));
+
+    const startRaw = strictNumber(getRawValue(changeKey));
+    const start = startRaw ?? 0;
+
+    let lo = NaN;
+    let hi = NaN;
+    let gapLo = NaN;
+    let gapHi = NaN;
+
+    const startGap = gap(start);
+    if (Number.isFinite(startGap) && Math.abs(startGap) <= tolerance) {
+      showToast("Goal already satisfied by the current value.");
+      setShowGoalSeek(false);
+      return;
     }
-    setCellValue(changeKey, String(Math.round(bestX * 100) / 100));
+
+    for (let step = 1; step <= 1e12 && Number.isNaN(lo); step *= 10) {
+      const left = start - step;
+      const right = start + step;
+      const gapLeft = gap(left);
+      const gapRight = gap(right);
+      if (Number.isFinite(gapLeft) && Number.isFinite(startGap) && Math.sign(gapLeft) * Math.sign(startGap) <= 0) {
+        lo = left; hi = start; gapLo = gapLeft; gapHi = startGap;
+      } else if (Number.isFinite(gapRight) && Number.isFinite(startGap) && Math.sign(gapRight) * Math.sign(startGap) <= 0) {
+        lo = start; hi = right; gapLo = startGap; gapHi = gapRight;
+      } else if (Number.isFinite(gapLeft) && Number.isFinite(gapRight) && Math.sign(gapLeft) * Math.sign(gapRight) <= 0) {
+        lo = left; hi = right; gapLo = gapLeft; gapHi = gapRight;
+      }
+    }
+
+    if (Number.isNaN(lo) || Number.isNaN(gapLo) || Number.isNaN(gapHi)) {
+      showToast("Goal Seek could not find a solution. The target may not be reachable by changing this cell.");
+      return;
+    }
+
+    let best = Math.abs(gapLo) <= Math.abs(gapHi) ? lo : hi;
+    for (let i = 0; i < 200; i++) {
+      const mid = (lo + hi) / 2;
+      const gapMid = gap(mid);
+      if (!Number.isFinite(gapMid)) break;
+      best = mid;
+      if (Math.abs(gapMid) <= tolerance || mid === lo || mid === hi) break;
+      if (Math.sign(gapMid) === Math.sign(gapLo)) {
+        lo = mid;
+        gapLo = gapMid;
+      } else {
+        hi = mid;
+        gapHi = gapMid;
+      }
+    }
+
+    const solution = cleanNumber(best);
+    const achieved = estimate(solution);
+    if (!Number.isFinite(achieved) || Math.abs(achieved - desired) > Math.max(1e-6, 1e-6 * Math.abs(desired))) {
+      showToast("Goal Seek could not reach the target value; no cell was changed.");
+      return;
+    }
+
+    setCellValue(changeKey, String(solution));
     setShowGoalSeek(false);
-    showToast("Goal seek completed.");
+    showToast(`Goal seek completed: ${changeKey} = ${solution}`);
   };
 
   const runConsolidate = () => {
@@ -6630,12 +7877,32 @@ export default function ExcelStudioPage() {
       return;
     }
     let total = 0;
+    let invalidRange = "";
+    let errorValue = "";
     consolidateRanges.split(",").map((s) => s.trim()).filter(Boolean).forEach((range) => {
       const nr = normalizeRange(range.includes(":") ? range : `${range}:${range}`);
-      if (!nr) return;
-      for (let r = nr.r1; r <= nr.r2; r++) for (let c = nr.c1; c <= nr.c2; c++) total += toNumber(getCellValue(cellKey(r, c)));
+      if (!nr) {
+        invalidRange = invalidRange || range;
+        return;
+      }
+      for (let r = nr.r1; r <= nr.r2; r++) {
+        for (let c = nr.c1; c <= nr.c2; c++) {
+          const value = getCellValue(cellKey(r, c));
+          // শুধু আসল সংখ্যা যোগ হয়; টেক্সট/ফাঁকা বাদ, এররে থামে (আগে "2nd" → ২ ও এরর → ০ ধরা হতো)
+          if (typeof value === "number" && Number.isFinite(value)) total += value;
+          else if (typeof value === "string" && FORMULA_ERRORS.has(value)) errorValue = errorValue || value;
+        }
+      }
     });
-    setCellValue(targetKey, String(total));
+    if (invalidRange) {
+      showToast(`Invalid range: ${invalidRange}`);
+      return;
+    }
+    if (errorValue) {
+      showToast(`Consolidation stopped: a source cell contains ${errorValue}`);
+      return;
+    }
+    setCellValue(targetKey, String(cleanNumber(total)));
     setShowConsolidate(false);
     showToast("Consolidation completed.");
   };
@@ -7314,28 +8581,62 @@ export default function ExcelStudioPage() {
             raw.startsWith("=") &&
             cell.style?.numberFormat !== "text"
           ) {
-            const evaluated = getCellValueInSheet(sourceSheet, key);
+            const evaluated = getCellValueInSheet(sourceSheet, key, new Set<string>(), sheets);
 
-            worksheet[address] = {
-              t:
-                typeof evaluated === "number"
-                  ? "n"
-                  : typeof evaluated === "boolean"
-                    ? "b"
-                    : "s",
-              v: evaluated,
-              f: raw.slice(1),
-            };
+            // [স্টেপ ১] এক্সেলে বাংলা/আরবি অঙ্ক ও ; ، চিহ্নযুক্ত ফর্মুলা চলে না — ইংরেজি অঙ্ক/কমায় বদলে লেখা হয়।
+            // CONVERT (মুদ্রা) এক্সেলের CONVERT (একক) থেকে আলাদা, তাই শুধু মান লেখা হয়; ভুল ফর্মুলা নয়।
+            const excelFormula = normalizeDigitsOutsideQuotes(raw.slice(1));
+            const usesAppOnlyFunction = /\bCONVERT\s*\(/i.test(excelFormula);
+            const isErrorValue = typeof evaluated === "string" && FORMULA_ERRORS.has(evaluated);
+            const errorCodes: Record<string, number> = { "#NULL!": 0, "#DIV/0!": 7, "#VALUE!": 15, "#REF!": 23, "#NAME?": 29, "#NUM!": 36, "#N/A": 42 };
+            const cellObject: { t: string; v: string | number | boolean; f?: string; z?: string } = isErrorValue
+              ? { t: "e", v: errorCodes[evaluated as string] ?? 15 }
+              : {
+                t:
+                  typeof evaluated === "number"
+                    ? "n"
+                    : typeof evaluated === "boolean"
+                      ? "b"
+                      : "s",
+                v: evaluated,
+              };
+            if (!usesAppOnlyFunction) cellObject.f = excelFormula;
+            if (/\bTODAY\s*\(/i.test(excelFormula)) {
+              cellObject.z = "yyyy-mm-dd";
+            } else if (/\bNOW\s*\(/i.test(excelFormula)) {
+              cellObject.z = "yyyy-mm-dd hh:mm:ss";
+            }
+            if (cell.style?.numberFormat === "percentage") {
+              const exportDecimals = Math.max(0, Math.min(cell.style.decimals ?? 0, 10));
+              cellObject.z = `0${exportDecimals ? "." + "0".repeat(exportDecimals) : ""}%`;
+            } else if (cell.style?.numberFormat === "currency") {
+              const exportCurrency = findCurrency(cell.style.currencyCode || "USD");
+              const exportDecimals = Math.max(0, Math.min(cell.style.decimals ?? 2, 10));
+              cellObject.z = `"${exportCurrency.symbol}"#,##0${exportDecimals ? "." + "0".repeat(exportDecimals) : ""}`;
+            }
+            worksheet[address] = cellObject;
           } else {
             const value =
               cell.style?.numberFormat === "text"
                 ? raw
-                : parseNumericCell(raw);
+                : (parseDateTextToSerial(raw.trim()) ?? strictNumber(raw) ?? raw);
 
-            worksheet[address] =
+            const exportedCell: { t: string; v: string | number | boolean; z?: string } =
               typeof value === "number"
                 ? { t: "n", v: value }
                 : { t: "s", v: value };
+            if (typeof value === "number" && parseDateTextToSerial(raw.trim()) !== null) {
+              exportedCell.z = "yyyy-mm-dd";
+            }
+            if (cell.style?.numberFormat === "percentage") {
+              const exportDecimals = Math.max(0, Math.min(cell.style.decimals ?? 0, 10));
+              exportedCell.z = `0${exportDecimals ? "." + "0".repeat(exportDecimals) : ""}%`;
+            } else if (cell.style?.numberFormat === "currency") {
+              const exportCurrency = findCurrency(cell.style.currencyCode || "USD");
+              const exportDecimals = Math.max(0, Math.min(cell.style.decimals ?? 2, 10));
+              exportedCell.z = `"${exportCurrency.symbol}"#,##0${exportDecimals ? "." + "0".repeat(exportDecimals) : ""}`;
+            }
+            worksheet[address] = exportedCell;
           }
 
           lastRow = Math.max(lastRow, position.row);
@@ -7834,7 +9135,7 @@ export default function ExcelStudioPage() {
     if (!normalizedRange) return [];
 
     if (normalizedRange.r1 < 0 || normalizedRange.c1 < 0 ||
-        normalizedRange.r2 >= targetSheet.gridRows || normalizedRange.c2 >= targetSheet.gridCols) return [];
+      normalizedRange.r2 >= targetSheet.gridRows || normalizedRange.c2 >= targetSheet.gridCols) return [];
     return collectChartRows(
       normalizedRange,
       (row, col) => getCellValue(cellKey(row, col), new Set(), targetSheet, sheets),
@@ -7926,7 +9227,7 @@ export default function ExcelStudioPage() {
     const headers: string[] = [];
     for (let c = nr.c1; c <= nr.c2; c++) {
       // Display helper reads workbook state; no ref is mutated by this render.
-          const label = getDisplayValue(cellKey(nr.r1, c));
+      const label = getDisplayValue(cellKey(nr.r1, c));
       if (label) headers.push(label);
     }
     return headers;
@@ -7947,30 +9248,74 @@ export default function ExcelStudioPage() {
       showToast("Pivot fields must match the header row.");
       return;
     }
-    const map = new Map<string, Map<string, number[]>>();
+
+    // [হিসাব-সংশোধন] আগে ফাঁকা/টেক্সট ঘরও ০ হয়ে AVERAGE, MIN, COUNT বিগড়ে দিত।
+    // এখন: SUM/AVERAGE/MIN/MAX শুধু আসল সংখ্যা নেয়; COUNT অ-ফাঁকা ঘর গোনে; এরর থাকলে ফলাফলও এরর।
+    interface PivotBucket {
+      numbers: number[];
+      nonBlank: number;
+      error: string;
+    }
+    const newBucket = (): PivotBucket => ({ numbers: [], nonBlank: 0, error: "" });
+    const map = new Map<string, Map<string, PivotBucket>>();
     const colKeys = new Set<string>();
+    const rowTotals = new Map<string, PivotBucket>();
+    const colTotals = new Map<string, PivotBucket>();
+    const grand = newBucket();
+
+    const addTo = (bucket: PivotBucket, value: EvalResult) => {
+      if (value === "") return;
+      bucket.nonBlank += 1;
+      if (typeof value === "number" && Number.isFinite(value)) bucket.numbers.push(value);
+      else if (typeof value === "string" && FORMULA_ERRORS.has(value) && !bucket.error) bucket.error = value;
+    };
+
     for (let r = nr.r1 + 1; r <= nr.r2; r++) {
       const rowKey = getDisplayValue(cellKey(r, nr.c1 + rowIndex)) || "(blank)";
       const colKey = colIndex >= 0 ? (getDisplayValue(cellKey(r, nr.c1 + colIndex)) || "(blank)") : "Total";
-      const val = toNumber(getCellValue(cellKey(r, nr.c1 + valIndex)));
+      const value = getCellValue(cellKey(r, nr.c1 + valIndex));
       colKeys.add(colKey);
       if (!map.has(rowKey)) map.set(rowKey, new Map());
-      if (!map.get(rowKey)!.has(colKey)) map.get(rowKey)!.set(colKey, []);
-      map.get(rowKey)!.get(colKey)!.push(val);
+      const rowMap = map.get(rowKey)!;
+      if (!rowMap.has(colKey)) rowMap.set(colKey, newBucket());
+      if (!rowTotals.has(rowKey)) rowTotals.set(rowKey, newBucket());
+      if (!colTotals.has(colKey)) colTotals.set(colKey, newBucket());
+      addTo(rowMap.get(colKey)!, value);
+      addTo(rowTotals.get(rowKey)!, value);
+      addTo(colTotals.get(colKey)!, value);
+      addTo(grand, value);
     }
-    const cols = Array.from(colKeys).sort();
-    const aggregate = (vals: number[]) => {
-      if (!vals.length) return "";
-      if (pivotAggregate === "COUNT") return String(vals.length);
-      if (pivotAggregate === "AVERAGE") return String(Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 100) / 100);
-      if (pivotAggregate === "MIN") return String(Math.min(...vals));
-      if (pivotAggregate === "MAX") return String(Math.max(...vals));
-      return String(vals.reduce((a, b) => a + b, 0));
+
+    const cols = Array.from(colKeys).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
+    const rowKeysSorted = Array.from(map.keys()).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
+
+    const aggregate = (bucket: PivotBucket | undefined): string => {
+      if (!bucket || bucket.nonBlank === 0) return "";
+      if (bucket.error) return bucket.error;
+      const nums = bucket.numbers;
+      if (pivotAggregate === "COUNT") return String(bucket.nonBlank);
+      if (nums.length === 0) return "";
+      if (pivotAggregate === "AVERAGE") return String(cleanNumber(nums.reduce((a, b) => a + b, 0) / nums.length));
+      if (pivotAggregate === "MIN") return String(nums.reduce((lowest: number, v: number) => Math.min(lowest, v), Infinity));
+      if (pivotAggregate === "MAX") return String(nums.reduce((highest: number, v: number) => Math.max(highest, v), -Infinity));
+      return String(cleanNumber(nums.reduce((a, b) => a + b, 0)));
     };
-    const result = [[pivotRowField, ...cols]];
-    Array.from(map.keys()).sort().forEach((rk) => {
-      result.push([rk, ...cols.map((ck) => aggregate(map.get(rk)!.get(ck) || []))]);
+
+    // Grand Total কলাম (একাধিক কলাম থাকলেই অর্থবহ) ও Grand Total সারি যোগ হলো — আগে ছিল না
+    const showTotalColumn = colIndex >= 0;
+    const result = [[pivotRowField, ...cols, ...(showTotalColumn ? ["Grand Total"] : [])]];
+    rowKeysSorted.forEach((rk) => {
+      result.push([
+        rk,
+        ...cols.map((ck) => aggregate(map.get(rk)!.get(ck))),
+        ...(showTotalColumn ? [aggregate(rowTotals.get(rk))] : []),
+      ]);
     });
+    result.push([
+      "Grand Total",
+      ...cols.map((ck) => aggregate(colTotals.get(ck))),
+      ...(showTotalColumn ? [aggregate(grand)] : []),
+    ]);
     setPivotResult(result);
   };
 
@@ -8032,9 +9377,28 @@ export default function ExcelStudioPage() {
   };
 
   const renameSheet = () => {
-    const name = window.prompt("Sheet name:", sheet.name);
-    if (!name) return;
-    updateSheet({ name });
+    const name = window.prompt("Sheet name:", sheet.name)?.trim();
+    if (!name || name === sheet.name) return;
+
+    if (/[:\\/?*[\]!']/.test(name) || name.length > 31) {
+      showToast("Sheet name cannot contain : \\ / ? * [ ] ! ' and must be at most 31 characters.");
+      return;
+    }
+
+    if (sheets.some((item, index) => index !== activeSheetIndex && sameSheetName(item.name, name))) {
+      showToast("Another sheet already uses this name.");
+      return;
+    }
+
+    const oldName = sheet.name;
+
+    // শিটের নাম বদলালে অন্য শিটের 'পুরনো নাম'!A1 সূত্রগুলোও নতুন নামে আপডেট হয় (আগে #REF! হয়ে যেত)
+    setSheets((prev) => {
+      const renamed = prev.map((item, index) => (index === activeSheetIndex ? { ...item, name } : item));
+      return rewriteWorkbookFormulas(renamed, () => (ref) =>
+        ref.sheet && sameSheetName(ref.sheet, oldName) ? { ...ref, sheet: name } : ref
+      );
+    });
     showToast("Sheet renamed.");
   };
 
@@ -8210,8 +9574,8 @@ export default function ExcelStudioPage() {
         if (typeof raw === "number" && Number.isFinite(raw)) {
           numeric = raw;
         } else if (typeof raw === "string" && raw.trim() && !raw.startsWith("#")) {
-          const parsed = parseFloat(raw.replace(/,/g, ""));
-          if (Number.isFinite(parsed)) numeric = parsed;
+          const parsed = strictNumber(raw);
+          if (parsed !== null && Number.isFinite(parsed)) numeric = parsed;
         }
 
         if (numeric !== null) {
@@ -8672,6 +10036,27 @@ export default function ExcelStudioPage() {
       case "DATA_PIVOT_TABLE":
         setShowPivotDialog(true);
         break;
+      case "DATA_PIVOT_CHART":
+        setShowPivotChart(true);
+        break;
+      case "DATA_FORECAST_SHEET":
+        setShowForecastSheet(true);
+        break;
+      case "DATA_ANALYZE_DATA":
+        setShowAnalyzeData(true);
+        break;
+      case "DATA_WHAT_IF_TABLE":
+        setShowWhatIfTable(true);
+        break;
+      case "DATA_SCENARIO_MANAGER":
+        setShowScenarioManager(true);
+        break;
+      case "DATA_ANALYSIS_TOOLPAK":
+        setShowDataAnalysis(true);
+        break;
+      case "DATA_SUBTOTALS":
+        setShowSubtotalDialog(true);
+        break;
       case "DATA_VALIDITY":
         setShowValidity(true);
         break;
@@ -8680,6 +10065,17 @@ export default function ExcelStudioPage() {
         break;
       case "DATA_GROUP_OUTLINE":
         groupSelection();
+        break; case "DATA_GROUP_COLUMNS":
+        groupColumnsSelection();
+        break;
+      case "DATA_UNGROUP_COLUMNS":
+        ungroupColumnsSelection();
+        break;
+      case "DATA_COLLAPSE_ALL_GROUPS":
+        collapseAllGroups();
+        break;
+      case "DATA_EXPAND_ALL_GROUPS":
+        expandAllGroups();
         break;
       case "TOOLS_SPELLING":
       case "TOOLS_AUTO_SPELL":
@@ -8981,6 +10377,395 @@ export default function ExcelStudioPage() {
     { key: "settings", label: "Sidebar Settings", icon: Icons.Settings },
   ];
 
+
+  const writeCell = (sheetIndex: number, key: string, value: string) => {
+    setSheetsRaw((prev) =>
+      prev.map((sheet, index) =>
+        index === sheetIndex
+          ? {
+            ...sheet,
+            cells: {
+              ...sheet.cells,
+              [key]: { ...(sheet.cells[key] ?? { value: "" }), value },
+            },
+          }
+          : sheet,
+      ),
+    );
+  };
+
+  const runWhatIfTable = (cfg: WhatIfTableConfig) => {
+    const sheetIndex = activeSheetIndex;
+    const sheet = sheets[sheetIndex];
+    if (!sheet) return;
+    const rowVals = cfg.rowValues.split(",").map((item) => item.trim()).filter(Boolean);
+    const colVals = cfg.colValues ? cfg.colValues.split(",").map((item) => item.trim()).filter(Boolean) : [];
+    const parseA1 = (ref: string) => {
+      const match = /^([A-Z]+)([0-9]+)$/.exec(ref.trim().toUpperCase());
+      if (!match) return null;
+      let col = 0;
+      for (const ch of match[1]) col = col * 26 + (ch.charCodeAt(0) - 64);
+      return { row: parseInt(match[2], 10), col };
+    };
+    const toA1 = (row: number, col: number) => {
+      let value = col;
+      let label = "";
+      while (value > 0) {
+        const remainder = (value - 1) % 26;
+        label = String.fromCharCode(65 + remainder) + label;
+        value = Math.floor((value - 1) / 26);
+      }
+      return label + row;
+    };
+    const base = parseA1(cfg.outputCell);
+    if (!base) return;
+    const evalAt = (rowValue?: string, colValue?: string): string => {
+      const cloned = JSON.parse(JSON.stringify(sheets)) as WorkbookSheet[];
+      const target = cloned[sheetIndex];
+      const applyInput = (cell: string, value?: string) => {
+        if (!cell || !value) return;
+        const existing = target.cells[cell] ?? { value: "" };
+        target.cells[cell] = { ...existing, value };
+      };
+      applyInput(cfg.rowInputCell, rowValue);
+      applyInput(cfg.colInputCell, colValue);
+      const rawFormula = target.cells[cfg.formulaCell]?.value ?? "";
+      if (!rawFormula.startsWith("=")) return "#VALUE!";
+      const getCell = (key: string) => getCellValueInSheet(target, key, new Set<string>(), cloned);
+      const expandRange = (range: string) => {
+        const normalized = normalizeRange(range);
+        if (!normalized) return [];
+        const values: EvalResult[] = [];
+        for (let row = normalized.r1; row <= normalized.r2; row++) {
+          for (let col = normalized.c1; col <= normalized.c2; col++) {
+            values.push(getCell(cellKey(row, col)));
+          }
+        }
+        return values;
+      };
+      try {
+        const result = evaluateFormula(rawFormula.slice(1), getCell, expandRange);
+        return String(result);
+      } catch {
+        return "#VALUE!";
+      }
+    };
+    const results: Array<{ key: string; value: string }> = [];
+    if (rowVals.length > 0 && colVals.length > 0) {
+      colVals.forEach((colValue, colIndex) => {
+        results.push({ key: toA1(base.row, base.col + 1 + colIndex), value: colValue });
+      });
+      rowVals.forEach((rowValue, rowIndex) => {
+        results.push({ key: toA1(base.row + 1 + rowIndex, base.col), value: rowValue });
+        colVals.forEach((colValue, colIndex) => {
+          results.push({
+            key: toA1(base.row + 1 + rowIndex, base.col + 1 + colIndex),
+            value: evalAt(rowValue, colValue),
+          });
+        });
+      });
+    } else if (rowVals.length > 0) {
+      rowVals.forEach((rowValue, rowIndex) => {
+        results.push({ key: toA1(base.row + rowIndex, base.col), value: rowValue });
+        results.push({ key: toA1(base.row + rowIndex, base.col + 1), value: evalAt(rowValue, undefined) });
+      });
+    } else if (colVals.length > 0) {
+      colVals.forEach((colValue, colIndex) => {
+        results.push({ key: toA1(base.row, base.col + colIndex), value: colValue });
+        results.push({ key: toA1(base.row + 1, base.col + colIndex), value: evalAt(undefined, colValue) });
+      });
+    }
+    results.forEach((item) => {
+      writeCell(sheetIndex, item.key, item.value);
+    });
+  };
+  const addScenario = (name: string, changes: string, resultCells: string) => {
+    const changeList = changes
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map((item) => {
+        const [cell, ...rest] = item.split("=");
+        return { cell: cell.trim(), value: rest.join("=").trim() };
+      })
+      .filter((item) => item.cell && item.value);
+    const resultCellList = resultCells.split(",").map((item) => item.trim()).filter(Boolean);
+    setScenarios((prev) => [
+      ...prev,
+      {
+        id: `scenario-${Date.now()}-${prev.length}`,
+        name: name.trim() || `Scenario ${prev.length + 1}`,
+        changes: changeList,
+        resultCells: resultCellList,
+      },
+    ]);
+  };
+
+  const applyScenario = (id: string) => {
+    const scenario = scenarios.find((item) => item.id === id);
+    if (!scenario) return;
+    scenario.changes.forEach((change) => {
+      writeCell(activeSheetIndex, change.cell, change.value);
+    });
+  };
+
+  const deleteScenario = (id: string) => {
+    setScenarios((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  const summarizeScenarios = () => {
+    const lines: string[] = [];
+    scenarios.forEach((scenario) => {
+      const cloned = JSON.parse(JSON.stringify(sheets)) as WorkbookSheet[];
+      const target = cloned[activeSheetIndex];
+      scenario.changes.forEach((change) => {
+        const existing = target.cells[change.cell] ?? { value: "" };
+        target.cells[change.cell] = { ...existing, value: change.value };
+      });
+      const values = scenario.resultCells.map((cell) => {
+        const rawValue = target.cells[cell]?.value ?? "";
+        if (!rawValue.startsWith("=")) return String(rawValue);
+        const getCell = (key: string) => getCellValueInSheet(target, key, new Set<string>(), cloned);
+        const expandRange = (range: string) => {
+          const normalized = normalizeRange(range);
+          if (!normalized) return [];
+          const collected: EvalResult[] = [];
+          for (let row = normalized.r1; row <= normalized.r2; row++) {
+            for (let col = normalized.c1; col <= normalized.c2; col++) {
+              collected.push(getCell(cellKey(row, col)));
+            }
+          }
+          return collected;
+        };
+        try {
+          return String(evaluateFormula(rawValue.slice(1), getCell, expandRange));
+        } catch {
+          return "#VALUE!";
+        }
+      });
+      const detail = scenario.resultCells
+        .map((cell, index) => `${cell} = ${values[index]}`)
+        .join(", ");
+      lines.push(`${scenario.name}: ${detail}`);
+    });
+    setScenarioSummary(lines.length > 0 ? lines.join("\n") : "No scenarios defined.");
+  };
+  const runSubtotal = (cfg: SubtotalConfig) => {
+    const sheetIndex = activeSheetIndex;
+    const sheet = sheets[sheetIndex];
+    if (!sheet) return;
+    const colToIndex = (col: string) => {
+      let value = 0;
+      for (const ch of col.trim().toUpperCase()) value = value * 26 + (ch.charCodeAt(0) - 64);
+      return value - 1;
+    };
+    const groupCol = colToIndex(cfg.groupColumn);
+    const valueCol = colToIndex(cfg.valueColumn);
+    const groups = new Map<string, number[]>();
+    for (let row = 0; row < sheet.gridRows; row++) {
+      const groupKey = sheet.cells[cellKey(row, groupCol)]?.value?.trim();
+      if (!groupKey) continue;
+      const rawValue = sheet.cells[cellKey(row, valueCol)]?.value ?? "";
+      const numeric = parseFloat(rawValue);
+      const bucket = groups.get(groupKey) ?? [];
+      if (Number.isFinite(numeric)) bucket.push(numeric);
+      groups.set(groupKey, bucket);
+    }
+    const parseA1 = (ref: string) => {
+      const match = /^([A-Z]+)([0-9]+)$/.exec(ref.trim().toUpperCase());
+      if (!match) return null;
+      let col = 0;
+      for (const ch of match[1]) col = col * 26 + (ch.charCodeAt(0) - 64);
+      return { row: parseInt(match[2], 10), col };
+    };
+    const toA1 = (row: number, col: number) => {
+      let value = col;
+      let label = "";
+      while (value > 0) {
+        const remainder = (value - 1) % 26;
+        label = String.fromCharCode(65 + remainder) + label;
+        value = Math.floor((value - 1) / 26);
+      }
+      return label + row;
+    };
+    const base = parseA1(cfg.outputCell);
+    if (!base) return;
+    const results: Array<{ key: string; value: string }> = [];
+    results.push({ key: toA1(base.row, base.col), value: "Group" });
+    results.push({ key: toA1(base.row, base.col + 1), value: cfg.func });
+    let outputRow = base.row + 1;
+    groups.forEach((values, key) => {
+      let aggregate = 0;
+      if (cfg.func === "SUM") aggregate = values.reduce((sum, value) => sum + value, 0);
+      else if (cfg.func === "COUNT") aggregate = values.length;
+      else if (cfg.func === "AVERAGE") aggregate = values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+      else if (cfg.func === "MIN") aggregate = values.length > 0 ? Math.min(...values) : 0;
+      else if (cfg.func === "MAX") aggregate = values.length > 0 ? Math.max(...values) : 0;
+      else if (cfg.func === "PRODUCT") aggregate = values.reduce((product, value) => product * value, 1);
+      results.push({ key: toA1(outputRow, base.col), value: key });
+      results.push({ key: toA1(outputRow, base.col + 1), value: String(aggregate) });
+      outputRow += 1;
+    });
+    results.forEach((item) => {
+      writeCell(sheetIndex, item.key, item.value);
+    });
+  };
+  const runPivotChart = (cfg: PivotChartConfig) => {
+    const sheetIndex = activeSheetIndex;
+    const sheet = sheets[sheetIndex];
+    if (!sheet) return;
+    const normalized = normalizeRange(cfg.sourceRange);
+    if (!normalized) return;
+    const headerRow = normalized.r1;
+    const headers = new Map<string, number>();
+    for (let col = normalized.c1; col <= normalized.c2; col++) {
+      const header = sheet.cells[cellKey(headerRow, col)]?.value?.trim();
+      if (header) headers.set(header, col);
+    }
+    const rowCol = headers.get(cfg.rowField);
+    const valueCol = headers.get(cfg.valueField);
+    if (rowCol === undefined || valueCol === undefined) return;
+    const groups = new Map<string, number[]>();
+    for (let row = headerRow + 1; row <= normalized.r2; row++) {
+      const label = sheet.cells[cellKey(row, rowCol)]?.value?.trim();
+      if (!label) continue;
+      const rawValue = sheet.cells[cellKey(row, valueCol)]?.value ?? "";
+      const numeric = parseFloat(rawValue);
+      const bucket = groups.get(label) ?? [];
+      if (cfg.aggregation === "COUNT" || Number.isFinite(numeric)) bucket.push(Number.isFinite(numeric) ? numeric : 0);
+      groups.set(label, bucket);
+    }
+    const parseA1 = (ref: string) => {
+      const match = /^([A-Z]+)([0-9]+)$/.exec(ref.trim().toUpperCase());
+      if (!match) return null;
+      let col = 0;
+      for (const ch of match[1]) col = col * 26 + (ch.charCodeAt(0) - 64);
+      return { row: parseInt(match[2], 10) - 1, col: col - 1 };
+    };
+    const base = parseA1(cfg.outputCell);
+    if (!base) return;
+    const results: Array<{ key: string; value: string }> = [];
+    results.push({ key: cellKey(base.row, base.col), value: "Category" });
+    results.push({ key: cellKey(base.row, base.col + 1), value: cfg.aggregation });
+    let outputRow = base.row + 1;
+    groups.forEach((values, label) => {
+      let aggregate = 0;
+      if (cfg.aggregation === "SUM") aggregate = values.reduce((sum, value) => sum + value, 0);
+      else if (cfg.aggregation === "COUNT") aggregate = values.length;
+      else if (cfg.aggregation === "AVERAGE") aggregate = values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+      else if (cfg.aggregation === "MIN") aggregate = values.length > 0 ? Math.min(...values) : 0;
+      else if (cfg.aggregation === "MAX") aggregate = values.length > 0 ? Math.max(...values) : 0;
+      results.push({ key: cellKey(outputRow, base.col), value: label });
+      results.push({ key: cellKey(outputRow, base.col + 1), value: String(aggregate) });
+      outputRow += 1;
+    });
+    results.forEach((item) => {
+      writeCell(sheetIndex, item.key, item.value);
+    });
+    const chartRange = `${colToLetter(base.col)}${base.row + 1}:${colToLetter(base.col + 1)}${outputRow}`;
+    updateSheet((s) => ({
+      charts: [
+        ...s.charts,
+        {
+          id: `pivotchart_${Date.now()}`,
+          title: cfg.title || "PivotChart",
+          type: cfg.chartType,
+          range: chartRange,
+          showLegend: true,
+          legendPosition: "right",
+        },
+      ],
+    }));
+  };
+  const runForecastSheet = (cfg: ForecastSheetConfig) => {
+    const sheetIndex = activeSheetIndex;
+    const sheet = sheets[sheetIndex];
+    if (!sheet) return;
+    const values = getRangeNumbers(sheets, sheetIndex, cfg.valuesRange);
+    if (values.length === 0) return;
+    const n = values.length;
+    const x = Array.from({ length: n }, (_, index) => index + 1);
+    const regression = linearRegression(values, [x]);
+    if (regression.coefficients.length === 0) return;
+    const intercept = regression.coefficients[0];
+    const slope = regression.coefficients[1];
+    const residuals = values.map((value, index) => value - (intercept + slope * x[index]));
+    const residualStd = standardDeviation(residuals, true);
+    const period = Math.max(0, Math.trunc(cfg.seasonalityPeriod));
+    const seasonalIndex = new Map<number, number>();
+    if (period > 1) {
+      const buckets = new Map<number, number[]>();
+      residuals.forEach((residual, index) => {
+        const key = index % period;
+        const bucket = buckets.get(key) ?? [];
+        bucket.push(residual);
+        buckets.set(key, bucket);
+      });
+      buckets.forEach((bucket, key) => {
+        seasonalIndex.set(key, mean(bucket));
+      });
+    }
+    const z = cfg.confidence >= 0.99 ? 2.576 : cfg.confidence >= 0.95 ? 1.96 : 1.645;
+    const parseA1 = (ref: string) => {
+      const match = /^([A-Z]+)([0-9]+)$/.exec(ref.trim().toUpperCase());
+      if (!match) return null;
+      let col = 0;
+      for (const ch of match[1]) col = col * 26 + (ch.charCodeAt(0) - 64);
+      return { row: parseInt(match[2], 10) - 1, col: col - 1 };
+    };
+    const base = parseA1(cfg.outputCell);
+    if (!base) return;
+    const results: Array<{ key: string; value: string }> = [];
+    results.push({ key: cellKey(base.row, base.col), value: "Period" });
+    results.push({ key: cellKey(base.row, base.col + 1), value: "Forecast" });
+    results.push({ key: cellKey(base.row, base.col + 2), value: "Lower" });
+    results.push({ key: cellKey(base.row, base.col + 3), value: "Upper" });
+    let outputRow = base.row + 1;
+    for (let step = 1; step <= cfg.periods; step++) {
+      const futureX = n + step;
+      let forecast = intercept + slope * futureX;
+      if (period > 1) forecast += seasonalIndex.get((n + step - 1) % period) ?? 0;
+      const margin = z * residualStd * Math.sqrt(1 + 1 / n);
+      results.push({ key: cellKey(outputRow, base.col), value: `Period ${futureX}` });
+      results.push({ key: cellKey(outputRow, base.col + 1), value: String(forecast) });
+      results.push({ key: cellKey(outputRow, base.col + 2), value: String(forecast - margin) });
+      results.push({ key: cellKey(outputRow, base.col + 3), value: String(forecast + margin) });
+      outputRow += 1;
+    }
+    results.forEach((item) => {
+      writeCell(sheetIndex, item.key, item.value);
+    });
+    const chartRange = `${colToLetter(base.col)}${base.row + 1}:${colToLetter(base.col + 1)}${outputRow}`;
+    updateSheet((s) => ({
+      charts: [
+        ...s.charts,
+        {
+          id: `forecast_${Date.now()}`,
+          title: cfg.title || "Forecast",
+          type: cfg.chartType,
+          range: chartRange,
+          showLegend: true,
+          legendPosition: "right",
+        },
+      ],
+    }));
+  };
+  const insertAnalysisChart = (request: AnalyzeChartRequest) => {
+    if (!request.range) return;
+    updateSheet((s) => ({
+      charts: [
+        ...s.charts,
+        {
+          id: `analysis_${Date.now()}`,
+          title: request.title || "Analysis Chart",
+          type: request.chartType,
+          range: request.range,
+          showLegend: true,
+          legendPosition: "right",
+        },
+      ],
+    }));
+  };
   return (
     <div
       dir="ltr"
@@ -9199,6 +10984,19 @@ export default function ExcelStudioPage() {
           Home
         </button>
 
+
+        <button
+          type="button"
+          onClick={() => setMobileMenuOpen((open) => !open)}
+          className="md:hidden ml-auto rounded-md border border-[#E3A200]/60 px-2 py-2"
+          aria-label="Open menu"
+          aria-expanded={mobileMenuOpen}
+        >
+          <span className="block h-0.5 w-5 bg-[#F8D150]"></span>
+          <span className="mt-1 block h-0.5 w-5 bg-[#F8D150]"></span>
+          <span className="mt-1 block h-0.5 w-5 bg-[#F8D150]"></span>
+        </button>
+
         {EXCEL_MENU_DATA.map((category, index) => {
           const isActive = activeMenuIndex === index;
           const isDeveloperMenu = category.title === "Developer";
@@ -9206,7 +11004,7 @@ export default function ExcelStudioPage() {
           return (
             <div
               key={category.title}
-              className="relative group"
+              className="relative group hidden md:block"
               onMouseEnter={() => {
                 if (activeMenuIndex !== null) setActiveMenuIndex(index);
               }}
@@ -9289,6 +11087,41 @@ export default function ExcelStudioPage() {
           {saveState === "saved" && <span className="text-xs text-green-600 font-bold whitespace-nowrap">Saved</span>}
           {saveState === "error" && <span className="text-xs text-red-600 font-bold whitespace-nowrap">Save failed</span>}
         </div>
+
+        {mobileMenuOpen && (
+          <div className="md:hidden absolute top-full left-0 right-0 z-50 max-h-[70vh] overflow-y-auto border-t border-[#E3A200] bg-[#013706] text-[#F8D150]">
+            {EXCEL_MENU_DATA.map((category, index) => (
+              <div key={category.title} className="border-b border-[#016200]/60">
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between px-4 py-2 text-left"
+                  onClick={() => setMobileOpenCategory(mobileOpenCategory === index ? null : index)}
+                >
+                  <span>{category.title}</span>
+                  <span>{mobileOpenCategory === index ? "−" : "+"}</span>
+                </button>
+                {mobileOpenCategory === index && (
+                  <div className="bg-[#014E00]/40">
+                    {category.items.map((item, itemIndex) => (
+                      <button
+                        key={`${item.label}-${itemIndex}`}
+                        type="button"
+                        className="block w-full px-6 py-2 text-left text-[13px] text-white/90 hover:bg-[#016200]/60"
+                        onClick={() => {
+                          dispatchMenuAction(item.action);
+                          setMobileMenuOpen(false);
+                          setMobileOpenCategory(null);
+                        }}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </nav>
 
 
@@ -9923,6 +11756,21 @@ export default function ExcelStudioPage() {
                       return (
                         <th
                           key={c}
+                          data-col-header={c}
+                          onMouseDown={(e) => {
+                            if (e.button !== 0) return;
+                            e.preventDefault();
+                            if (e.ctrlKey || e.metaKey) {
+                              draggingHeader.current = null;
+                              setCtrlSelectedCols((prev) => prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]);
+                              return;
+                            }
+                            setCtrlSelectedRows([]);
+                            setCtrlSelectedCols([]);
+                            setCtrlSelectedCells([]);
+                            draggingHeader.current = "col";
+                            selectEntireColumn(c);
+                          }}
                           onClick={() => selectEntireColumn(c)}
                           onContextMenu={(e) => {
                             // ডিফল্ট ব্রাউজার রাইট-ক্লিক মেনু বন্ধ করে, প্রথমে পুরো কলামটি সিলেক্ট করা হচ্ছে
@@ -10011,6 +11859,21 @@ export default function ExcelStudioPage() {
 
                     <tr key={r} style={{ height: sheet.rowHeights[r] || DEFAULT_ROW_HEIGHT }}>
                       <td
+                        data-row-header={r}
+                        onMouseDown={(e) => {
+                          if (e.button !== 0) return;
+                          e.preventDefault();
+                          if (e.ctrlKey || e.metaKey) {
+                            draggingHeader.current = null;
+                            setCtrlSelectedRows((prev) => prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]);
+                            return;
+                          }
+                          setCtrlSelectedRows([]);
+                          setCtrlSelectedCols([]);
+                          setCtrlSelectedCells([]);
+                          draggingHeader.current = "row";
+                          selectEntireRow(r);
+                        }}
                         onClick={() => selectEntireRow(r)}
                         onContextMenu={(e) => {
                           // ডিফল্ট ব্রাউজার রাইট-ক্লিক মেনু বন্ধ করে, প্রথমে পুরো রোটি সিলেক্ট করা হচ্ছে
@@ -10147,6 +12010,8 @@ export default function ExcelStudioPage() {
                               }}
                               rowSpan={data?.rowSpan}
                               colSpan={data?.colSpan}
+                              data-row={r}
+                              data-col={c}
                               onMouseDown={(e) => handleMouseDown(r, c, e)}
 
                               onMouseEnter={() => handleMouseEnter(r, c)}
@@ -10412,12 +12277,52 @@ export default function ExcelStudioPage() {
                 <span>Selected: {selectionStats.count}</span>
                 {selectionStats.numericCount > 0 && (
                   <>
-                    <span>Sum: {selectionStats.sum.toLocaleString("en-US")}</span>
-                    <span>Average: {selectionStats.avg.toLocaleString("en-US", { maximumFractionDigits: 2 })}</span>
+                    <span>Count: {selectionStats.numericCount.toLocaleString("en-US")}</span>
+                    <span>Sum: {selectionStats.sum.toLocaleString("en-US", { maximumFractionDigits: 10 })}</span>
+                    <span>Average: {selectionStats.avg.toLocaleString("en-US", { maximumFractionDigits: 6 })}</span>
+                    <span>Min: {selectionStats.min.toLocaleString("en-US", { maximumFractionDigits: 10 })}</span>
+                    <span>Max: {selectionStats.max.toLocaleString("en-US", { maximumFractionDigits: 10 })}</span>
+                    {selectionStats.truncated && (
+                      <span className="text-[#A4262C]" title="Selection is too large; totals use only the first part of the selection.">
+                        (partial)
+                      </span>
+                    )}
                   </>
                 )}
               </div>
               <div className="flex items-center gap-2">
+                {userExchangeRatesActive && (
+                  <span className="rounded bg-[#E1F0E5] px-2 py-0.5 text-[11px] text-[#0F5132]" title="Exchange Rates শিটে দেওয়া রেট ব্যবহৃত হচ্ছে।">
+                    Exchange Rates: sheet রেট ব্যবহৃত হচ্ছে
+                  </span>
+                )}
+                <select
+                  className="rounded border border-[#D2D0CE] bg-white px-1 py-0.5 text-[11px]"
+                  value={displayGrouping}
+                  onChange={(event) => {
+                    const next = event.target.value as DisplayGrouping;
+                    setDisplayGrouping(next);
+                    DISPLAY_SETTINGS.grouping = next;
+                  }}
+                  title="সংখ্যার গ্রুপিং: ১২,৫০,০০০ (BD) বা 1,250,000 (Western)"
+                >
+                  <option value="western">1,250,000</option>
+                  <option value="bd">১২,৫০,০০০</option>
+                </select>
+                <select
+                  className="rounded border border-[#D2D0CE] bg-white px-1 py-0.5 text-[11px]"
+                  value={displayDigits}
+                  onChange={(event) => {
+                    const next = event.target.value as DisplayDigits;
+                    setDisplayDigits(next);
+                    DISPLAY_SETTINGS.digits = next;
+                  }}
+                  title="ফলাফলের অঙ্ক: English, বাংলা বা আরবি"
+                >
+                  <option value="latin">123</option>
+                  <option value="bengali">১২৩</option>
+                  <option value="arabic">١٢৩</option>
+                </select>
                 <button onClick={toggleDarkMode} className="rounded-md border border-[#D2D0CE] bg-white px-2 py-0.5 hover:border-[#106EBE]" title="Toggle Dark Mode">
                   {darkMode ? "Light Mode" : "Dark Mode"}
                 </button>
@@ -10621,7 +12526,10 @@ export default function ExcelStudioPage() {
                     <SidebarSection title="Objects">
                       <button onClick={openChartWizard} className="w-full rounded-lg border border-[#D2D0CE] bg-white px-3 py-2 text-left text-xs hover:border-[#106EBE]">Charts: {sheet.charts.length}</button>
                       <button onClick={groupSelection} className="mt-2 w-full rounded-lg border border-[#D2D0CE] bg-white px-3 py-2 text-left text-xs hover:border-[#106EBE]">Group selected rows</button>
-                      <button onClick={ungroupSelection} className="mt-2 w-full rounded-lg border border-[#D2D0CE] bg-white px-3 py-2 text-left text-xs hover:border-[#106EBE]">Ungroup selected rows</button>
+                      <button onClick={ungroupSelection} className="mt-2 w-full rounded-lg border border-[#D2D0CE] bg-white px-3 py-2 text-left text-xs hover:border-[#106EBE]">Ungroup selected rows</button>                      <button onClick={groupColumnsSelection} className="mt-2 w-full rounded-lg border border-[#D2D0CE] bg-white px-3 py-2 text-left text-xs hover:border-[#106EBE]">Group selected columns</button>
+                      <button onClick={ungroupColumnsSelection} className="mt-2 w-full rounded-lg border border-[#D2D0CE] bg-white px-3 py-2 text-left text-xs hover:border-[#106EBE]">Ungroup selected columns</button>
+                      <button onClick={collapseAllGroups} className="mt-2 w-full rounded-lg border border-[#D2D0CE] bg-white px-3 py-2 text-left text-xs hover:border-[#106EBE]">Collapse all groups</button>
+                      <button onClick={expandAllGroups} className="mt-2 w-full rounded-lg border border-[#D2D0CE] bg-white px-3 py-2 text-left text-xs hover:border-[#106EBE]">Expand all groups</button>
                     </SidebarSection>
                   </div>
                 )}
@@ -10969,6 +12877,75 @@ export default function ExcelStudioPage() {
             </div>
           </div>
         </Modal>
+      )}
+
+      {showWhatIfTable && (
+        <WhatIfTableModal
+          onClose={() => setShowWhatIfTable(false)}
+          onGenerate={(config) => {
+            runWhatIfTable(config);
+            setShowWhatIfTable(false);
+          }}
+        />
+      )}
+
+      {showScenarioManager && (
+        <ScenarioManagerModal
+          scenarios={scenarios}
+          summary={scenarioSummary}
+          onAdd={addScenario}
+          onApply={applyScenario}
+          onDelete={deleteScenario}
+          onSummary={summarizeScenarios}
+          onClose={() => setShowScenarioManager(false)}
+        />
+      )}
+
+      {showDataAnalysis && (
+        <DataAnalysisModal
+          sheets={sheets}
+          activeSheetIndex={activeSheetIndex}
+          onClose={() => setShowDataAnalysis(false)}
+        />
+      )}
+
+      {showSubtotalDialog && (
+        <SubtotalModal
+          onGenerate={(config) => {
+            runSubtotal(config);
+            setShowSubtotalDialog(false);
+          }}
+          onClose={() => setShowSubtotalDialog(false)}
+        />
+      )}
+
+      {showPivotChart && (
+        <PivotChartModal
+          onGenerate={(config) => {
+            runPivotChart(config);
+            setShowPivotChart(false);
+          }}
+          onClose={() => setShowPivotChart(false)}
+        />
+      )}
+
+      {showForecastSheet && (
+        <ForecastSheetModal
+          onGenerate={(config) => {
+            runForecastSheet(config);
+            setShowForecastSheet(false);
+          }}
+          onClose={() => setShowForecastSheet(false)}
+        />
+      )}
+
+      {showAnalyzeData && (
+        <AnalyzeDataModal
+          sheets={sheets}
+          activeSheetIndex={activeSheetIndex}
+          onInsertChart={insertAnalysisChart}
+          onClose={() => setShowAnalyzeData(false)}
+        />
       )}
 
       {/* Modals */}
@@ -12416,8 +14393,10 @@ function SpreadsheetToolbarSplitButton({
  * ========================================================================== */
 
 const STANDARD_COLORS = [
-  "#C00000", "#FF0000", "#FFC000", "#FFFF00", "#92D050",
-  "#00B050", "#00B0F0", "#0070C0", "#002060", "#7030A0",
+  "#E11D48", "#F43F5E", "#FB7185", "#F97316", "#F59E0B",
+  "#EAB308", "#84CC16", "#22C55E", "#10B981", "#14B8A6",
+  "#06B6D4", "#0EA5E9", "#3B82F6", "#6366F1", "#8B5CF6",
+  "#A855F7", "#D946EF", "#EC4899", "#64748B", "#0F172A",
 ];
 
 // প্রতিটি কলামে: [বেস কালার, লাইট ৮০%, লাইট ৬০%, লাইট ৪০%, ডার্ক ২৫%, ডার্ক ৫০%]
@@ -12432,6 +14411,13 @@ const THEME_COLOR_COLUMNS: string[][] = [
   ["#FFC000", "#FFF2CC", "#FFE599", "#FFD966", "#BF9000", "#7F6000"],
   ["#5B9BD5", "#DDEBF7", "#BDD7EE", "#9DC3E6", "#2E75B6", "#1F4E79"],
   ["#70AD47", "#E2EFDA", "#C6E0B4", "#A9D08E", "#548235", "#375623"],
+  // [আপগ্রেড] আধুনিক ব্র্যান্ড-গ্রেড accent কলাম
+  ["#0D9488", "#CCFBF1", "#99F6E4", "#5EEAD4", "#0F766E", "#134E4A"],
+  ["#7C3AED", "#EDE9FE", "#DDD6FE", "#C4B5FD", "#6D28D9", "#4C1D95"],
+  ["#DB2777", "#FCE7F3", "#FBCFE8", "#F9A8D4", "#BE185D", "#831843"],
+  ["#EA580C", "#FFEDD5", "#FED7AA", "#FDBA74", "#C2410C", "#7C2D12"],
+  ["#2563EB", "#DBEAFE", "#BFDBFE", "#93C5FD", "#1D4ED8", "#1E3A8A"],
+  ["#0F172A", "#E2E8F0", "#CBD5E1", "#94A3B8", "#1E293B", "#020617"],
 ];
 
 function AdvancedColorDropdown({
@@ -12535,7 +14521,7 @@ function AdvancedColorDropdown({
       {open && (
         <>
           <div className="fixed inset-0 z-9990" aria-hidden="true" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-full z-9991 mt-1 w-64 rounded-lg border border-[#C8C6C4] bg-white p-3 shadow-2xl">
+          <div className="absolute left-0 top-full z-9991 mt-1 w-72 rounded-xl border border-[#C8C6C4] bg-white p-3 shadow-2xl">
             {allowNoFill && (
               <button
                 type="button"
@@ -12557,7 +14543,7 @@ function AdvancedColorDropdown({
                     type="button"
                     title={c}
                     onClick={() => commitColor(c)}
-                    className="h-4 w-4 rounded-sm border border-black/10 transition-transform hover:z-10 hover:scale-125 hover:border-[#106EBE]"
+                    className="h-5 w-5 rounded-md border border-black/10 shadow-sm transition-all duration-150 hover:z-10 hover:scale-110 hover:border-transparent hover:ring-2 hover:ring-[#106EBE]/40"
                     style={{ backgroundColor: c }}
                   />
                 ))
@@ -12572,7 +14558,7 @@ function AdvancedColorDropdown({
                   type="button"
                   title={c}
                   onClick={() => commitColor(c)}
-                  className="h-4 w-4 rounded-sm border border-black/10 transition-transform hover:z-10 hover:scale-125 hover:border-[#106EBE]"
+                  className="h-5 w-5 rounded-md border border-black/10 shadow-sm transition-all duration-150 hover:z-10 hover:scale-110 hover:border-transparent hover:ring-2 hover:ring-[#106EBE]/40"
                   style={{ backgroundColor: c }}
                 />
               ))}
@@ -12588,7 +14574,7 @@ function AdvancedColorDropdown({
                       type="button"
                       title={c}
                       onClick={() => commitColor(c)}
-                      className="h-4 w-4 rounded-sm border border-black/10 transition-transform hover:z-10 hover:scale-125 hover:border-[#106EBE]"
+                      className="h-5 w-5 rounded-md border border-black/10 shadow-sm transition-all duration-150 hover:z-10 hover:scale-110 hover:border-transparent hover:ring-2 hover:ring-[#106EBE]/40"
                       style={{ backgroundColor: c }}
                     />
                   ))}
@@ -14478,7 +16464,7 @@ function ChartPlot({ type, data: sourceData }: { type: ChartType; data: { label:
       {axes}
       {data.map((d, i) => {
         const bar = barGeometry(d.value, yScale);
-          const barHeight = bar.size;
+        const barHeight = bar.size;
         const x = xAt(i) - barWidth / 2;
         const y = bar.start;
         return (
@@ -15461,3 +17447,728 @@ function PrintDialogModal({
 function isRTL(locale: AppLocale): boolean {
   return locale === "ar";
 };
+
+function getRangeNumbers(sheets: WorkbookSheet[], sheetIndex: number, range: string): number[] {
+  const sheet = sheets[sheetIndex];
+  if (!sheet) return [];
+  const normalized = normalizeRange(range);
+  if (!normalized) return [];
+  const values: number[] = [];
+  for (let row = normalized.r1; row <= normalized.r2; row++) {
+    for (let col = normalized.c1; col <= normalized.c2; col++) {
+      const value = getCellValueInSheet(sheet, cellKey(row, col), new Set<string>(), sheets);
+      const numeric = typeof value === "number" ? value : parseFloat(String(value));
+      if (typeof numeric === "number" && Number.isFinite(numeric)) values.push(numeric);
+    }
+  }
+  return values;
+}
+
+function mean(values: number[]): number {
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function variance(values: number[], sample: boolean): number {
+  if (values.length < 2) return 0;
+  const avg = mean(values);
+  const total = values.reduce((sum, value) => sum + (value - avg) ** 2, 0);
+  return total / (values.length - (sample ? 1 : 0));
+}
+
+function standardDeviation(values: number[], sample: boolean): number {
+  return Math.sqrt(variance(values, sample));
+}
+
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
+function mode(values: number[]): number {
+  const counts = new Map<number, number>();
+  values.forEach((value) => counts.set(value, (counts.get(value) ?? 0) + 1));
+  let best = values[0];
+  let bestCount = 0;
+  counts.forEach((count, value) => {
+    if (count > bestCount) {
+      best = value;
+      bestCount = count;
+    }
+  });
+  return best;
+}
+
+function covariance(x: number[], y: number[], sample: boolean): number {
+  if (x.length !== y.length || x.length < 2) return 0;
+  const meanX = mean(x);
+  const meanY = mean(y);
+  const total = x.reduce((sum, value, index) => sum + (value - meanX) * (y[index] - meanY), 0);
+  return total / (x.length - (sample ? 1 : 0));
+}
+
+function correlation(x: number[], y: number[]): number {
+  const cov = covariance(x, y, true);
+  const sdX = standardDeviation(x, true);
+  const sdY = standardDeviation(y, true);
+  return sdX === 0 || sdY === 0 ? 0 : cov / (sdX * sdY);
+}
+
+function logGamma(x: number): number {
+  const cofactors = [76.18009172947146, -86.50532032941677, 24.01409824083091, -1.231739572450155, 0.1208650973866179e-2, -0.5395239384953e-5];
+  let y = x;
+  let temp = x + 5.5;
+  temp -= (x + 0.5) * Math.log(temp);
+  let ser = 1.000000000190015;
+  for (let j = 0; j < 6; j++) {
+    y += 1;
+    ser -= cofactors[j] / y;
+  }
+  return -temp + Math.log(2.5066282746310005 * ser / x);
+}
+
+function betaInc(a: number, b: number, x: number): number {
+  if (x <= 0) return 0;
+  if (x >= 1) return 1;
+  const lbeta = logGamma(a) + logGamma(b) - logGamma(a + b);
+  const front = Math.exp(Math.log(x) * a + Math.log(1 - x) * b - lbeta) / a;
+  if (x > (a + 1) / (a + b + 2)) {
+    return 1 - betaInc(b, a, 1 - x);
+  }
+  let f = 1;
+  let c = 1;
+  let d = 0;
+  for (let i = 0; i <= 300; i++) {
+    const m = Math.floor(i / 2);
+    let numerator = i % 2 === 0 ? (m * (b - m) * x) / ((a + 2 * m - 1) * (a + 2 * m)) : -((a + m) * (a + b + m) * x) / ((a + 2 * m) * (a + 2 * m + 1));
+    d = 1 + numerator * d;
+    if (Math.abs(d) < 1e-30) d = 1e-30;
+    d = 1 / d;
+    c = 1 + numerator / c;
+    if (Math.abs(c) < 1e-30) c = 1e-30;
+    const cd = c * d;
+    f *= cd;
+    if (Math.abs(1 - cd) < 1e-10) break;
+  }
+  return front * (f - 1);
+}
+
+function tCDF(t: number, df: number): number {
+  const x = df / (df + t * t);
+  const p = 0.5 * betaInc(df / 2, 0.5, x);
+  return t > 0 ? 1 - p : p;
+}
+
+function fCDF(f: number, d1: number, d2: number): number {
+  if (f <= 0) return 0;
+  const x = (d1 * f) / (d1 * f + d2);
+  return betaInc(d1 / 2, d2 / 2, x);
+}
+
+function solveLinearSystem(matrix: number[][], vector: number[]): number[] {
+  const n = vector.length;
+  const a = matrix.map((row, index) => [...row, vector[index]]);
+  for (let i = 0; i < n; i++) {
+    let pivot = i;
+    for (let j = i + 1; j < n; j++) {
+      if (Math.abs(a[j][i]) > Math.abs(a[pivot][i])) pivot = j;
+    }
+    [a[i], a[pivot]] = [a[pivot], a[i]];
+    const pivotValue = a[i][i];
+    if (Math.abs(pivotValue) < 1e-12) return [];
+    for (let j = i + 1; j < n; j++) {
+      const factor = a[j][i] / pivotValue;
+      for (let k = i; k <= n; k++) a[j][k] -= factor * a[i][k];
+    }
+  }
+  const solution = new Array(n).fill(0);
+  for (let i = n - 1; i >= 0; i--) {
+    let sum = a[i][n];
+    for (let j = i + 1; j < n; j++) sum -= a[i][j] * solution[j];
+    solution[i] = sum / a[i][i];
+  }
+  return solution;
+}
+
+function linearRegression(y: number[], predictors: number[][]): { coefficients: number[]; rSquared: number } {
+  const n = y.length;
+  const k = predictors.length;
+  const design = predictors.map((_, index) => [1, ...predictors.map((column) => column[index])]);
+  const xtx: number[][] = Array.from({ length: k + 1 }, () => new Array(k + 1).fill(0));
+  const xty: number[] = new Array(k + 1).fill(0);
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j <= k; j++) {
+      xty[j] += design[i][j] * y[i];
+      for (let l = 0; l <= k; l++) xtx[j][l] += design[i][j] * design[i][l];
+    }
+  }
+  const coefficients = solveLinearSystem(xtx, xty);
+  if (coefficients.length === 0) return { coefficients: [], rSquared: 0 };
+  const meanY = mean(y);
+  let ssTotal = 0;
+  let ssResidual = 0;
+  for (let i = 0; i < n; i++) {
+    const predicted = coefficients.reduce((sum, coefficient, index) => sum + coefficient * design[i][index], 0);
+    ssTotal += (y[i] - meanY) ** 2;
+    ssResidual += (y[i] - predicted) ** 2;
+  }
+  const rSquared = ssTotal === 0 ? 0 : 1 - ssResidual / ssTotal;
+  return { coefficients, rSquared };
+}
+
+function tTestPaired(a: number[], b: number[]): { t: number; df: number; pValue: number } {
+  const differences = a.map((value, index) => value - b[index]);
+  const avg = mean(differences);
+  const sd = standardDeviation(differences, true);
+  const t = sd === 0 ? 0 : (avg / (sd / Math.sqrt(differences.length)));
+  const df = differences.length - 1;
+  return { t, df, pValue: 2 * (1 - tCDF(Math.abs(t), df)) };
+}
+
+function tTestTwoSample(a: number[], b: number[], equalVar: boolean): { t: number; df: number; pValue: number } {
+  const meanA = mean(a);
+  const meanB = mean(b);
+  const varA = variance(a, true);
+  const varB = variance(b, true);
+  const nA = a.length;
+  const nB = b.length;
+  if (equalVar) {
+    const pooled = ((nA - 1) * varA + (nB - 1) * varB) / (nA + nB - 2);
+    const standardError = Math.sqrt(pooled * (1 / nA + 1 / nB));
+    const t = (meanA - meanB) / standardError;
+    const df = nA + nB - 2;
+    return { t, df, pValue: 2 * (1 - tCDF(Math.abs(t), df)) };
+  }
+  const standardError = Math.sqrt(varA / nA + varB / nB);
+  const t = (meanA - meanB) / standardError;
+  const df = (varA / nA + varB / nB) ** 2 / ((varA / nA) ** 2 / (nA - 1) + (varB / nB) ** 2 / (nB - 1));
+  return { t, df, pValue: 2 * (1 - tCDF(Math.abs(t), df)) };
+}
+
+function fTest(a: number[], b: number[]): { f: number; df1: number; df2: number; pValue: number } {
+  const varA = variance(a, true);
+  const varB = variance(b, true);
+  const larger = Math.max(varA, varB);
+  const smaller = Math.min(varA, varB);
+  const f = smaller === 0 ? 0 : larger / smaller;
+  const df1 = varA >= varB ? a.length - 1 : b.length - 1;
+  const df2 = varA >= varB ? b.length - 1 : a.length - 1;
+  return { f, df1, df2, pValue: 1 - fCDF(f, df1, df2) };
+}
+
+function anovaOneWay(groups: number[][]): { f: number; pValue: number; dfBetween: number; dfWithin: number } {
+  const allValues = groups.flat();
+  const grandMean = mean(allValues);
+  let ssBetween = 0;
+  let ssWithin = 0;
+  groups.forEach((group) => {
+    const groupMean = mean(group);
+    ssBetween += group.length * (groupMean - grandMean) ** 2;
+    group.forEach((value) => {
+      ssWithin += (value - groupMean) ** 2;
+    });
+  });
+  const dfBetween = groups.length - 1;
+  const dfWithin = allValues.length - groups.length;
+  const msBetween = ssBetween / dfBetween;
+  const msWithin = ssWithin / dfWithin;
+  const f = msWithin === 0 ? 0 : msBetween / msWithin;
+  return { f, pValue: 1 - fCDF(f, dfBetween, dfWithin), dfBetween, dfWithin };
+}
+function DataAnalysisModal({ sheets, activeSheetIndex, onClose }: {
+  sheets: WorkbookSheet[];
+  activeSheetIndex: number;
+  onClose: () => void;
+}) {
+  const [analysisType, setAnalysisType] = useState("descriptive");
+  const [ranges, setRanges] = useState("");
+  const [alpha, setAlpha] = useState("0.05");
+  const [paired, setPaired] = useState(false);
+  const [equalVar, setEqualVar] = useState(true);
+  const [binCount, setBinCount] = useState("10");
+  const [result, setResult] = useState("");
+  const inputClass = "w-full rounded border border-slate-300 px-2 py-1 text-sm";
+  const runAnalysis = () => {
+    const rangeList = ranges.split(",").map((item) => item.trim()).filter(Boolean);
+    const numericGroups = rangeList.map((range) => getRangeNumbers(sheets, activeSheetIndex, range));
+    const lines: string[] = [];
+    if (analysisType === "descriptive") {
+      numericGroups.forEach((values, index) => {
+        lines.push(`Range ${index + 1}: ${rangeList[index]}`);
+        lines.push(`Count: ${values.length}`);
+        lines.push(`Sum: ${values.reduce((sum, value) => sum + value, 0)}`);
+        lines.push(`Mean: ${mean(values)}`);
+        lines.push(`Median: ${median(values)}`);
+        lines.push(`Mode: ${mode(values)}`);
+        lines.push(`Min: ${Math.min(...values)}`);
+        lines.push(`Max: ${Math.max(...values)}`);
+        lines.push(`Range: ${Math.max(...values) - Math.min(...values)}`);
+        lines.push(`Sample Variance: ${variance(values, true)}`);
+        lines.push(`Sample Std Dev: ${standardDeviation(values, true)}`);
+        lines.push("");
+      });
+    } else if (analysisType === "histogram") {
+      const values = numericGroups[0];
+      const bins = Math.max(1, parseInt(binCount, 10) || 10);
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      const width = (max - min) / bins || 1;
+      const frequencies = new Array(bins).fill(0);
+      values.forEach((value) => {
+        const index = Math.min(bins - 1, Math.floor((value - min) / width));
+        frequencies[index] += 1;
+      });
+      lines.push("Bin\tFrequency");
+      frequencies.forEach((frequency, index) => {
+        const lower = min + index * width;
+        const upper = min + (index + 1) * width;
+        lines.push(`${lower.toFixed(2)} - ${upper.toFixed(2)}\t${frequency}`);
+      });
+    } else if (analysisType === "correlation" || analysisType === "covariance") {
+      if (numericGroups.length < 2) {
+        lines.push("Please provide two ranges.");
+      } else {
+        const value = analysisType === "correlation" ? correlation(numericGroups[0], numericGroups[1]) : covariance(numericGroups[0], numericGroups[1], true);
+        lines.push(`${analysisType === "correlation" ? "Correlation" : "Covariance"}: ${value}`);
+      }
+    } else if (analysisType === "regression") {
+      const y = numericGroups[0];
+      const predictors = numericGroups.slice(1);
+      const regression = linearRegression(y, predictors);
+      lines.push(`Intercept: ${regression.coefficients[0]}`);
+      regression.coefficients.slice(1).forEach((coefficient, index) => {
+        lines.push(`Coefficient ${index + 1}: ${coefficient}`);
+      });
+      lines.push(`R-squared: ${regression.rSquared}`);
+    } else if (analysisType === "ttest") {
+      const outcome = paired ? tTestPaired(numericGroups[0], numericGroups[1]) : tTestTwoSample(numericGroups[0], numericGroups[1], equalVar);
+      lines.push(`t Statistic: ${outcome.t}`);
+      lines.push(`Degrees of Freedom: ${outcome.df}`);
+      lines.push(`p-value: ${outcome.pValue}`);
+    } else if (analysisType === "ftest") {
+      const outcome = fTest(numericGroups[0], numericGroups[1]);
+      lines.push(`F Statistic: ${outcome.f}`);
+      lines.push(`df1: ${outcome.df1}`);
+      lines.push(`df2: ${outcome.df2}`);
+      lines.push(`p-value: ${outcome.pValue}`);
+    } else if (analysisType === "anova") {
+      const outcome = anovaOneWay(numericGroups);
+      lines.push(`F Statistic: ${outcome.f}`);
+      lines.push(`df Between: ${outcome.dfBetween}`);
+      lines.push(`df Within: ${outcome.dfWithin}`);
+      lines.push(`p-value: ${outcome.pValue}`);
+    }
+    setResult(lines.join("\n"));
+  };
+  return (
+    <Modal title="Data Analysis ToolPak" onClose={onClose}>
+      <div className="space-y-3 text-sm">
+        <div>
+          <label className="mb-1 block font-medium">Analysis type</label>
+          <select className={inputClass} value={analysisType} onChange={(event) => setAnalysisType(event.target.value)}>
+            <option value="descriptive">Descriptive Statistics</option>
+            <option value="histogram">Histogram</option>
+            <option value="correlation">Correlation</option>
+            <option value="covariance">Covariance</option>
+            <option value="regression">Regression</option>
+            <option value="ttest">t-Test</option>
+            <option value="ftest">F-Test</option>
+            <option value="anova">ANOVA (Single Factor)</option>
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block font-medium">Ranges (comma separated)</label>
+          <input className={inputClass} value={ranges} onChange={(event) => setRanges(event.target.value)} placeholder="A1:A10, B1:B10" />
+        </div>
+        {(analysisType === "histogram") && (
+          <div>
+            <label className="mb-1 block font-medium">Bin count</label>
+            <input className={inputClass} value={binCount} onChange={(event) => setBinCount(event.target.value)} />
+          </div>
+        )}
+        {(analysisType === "ttest") && (
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-1"><input type="checkbox" checked={paired} onChange={(event) => setPaired(event.target.checked)} /> Paired</label>
+            <label className="flex items-center gap-1"><input type="checkbox" checked={equalVar} onChange={(event) => setEqualVar(event.target.checked)} /> Equal variance</label>
+          </div>
+        )}
+        <div>
+          <label className="mb-1 block font-medium">Alpha</label>
+          <input className={inputClass} value={alpha} onChange={(event) => setAlpha(event.target.value)} />
+        </div>
+        <div className="flex justify-end gap-2">
+          <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={onClose}>Close</button>
+          <button type="button" className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white" onClick={runAnalysis}>Run Analysis</button>
+        </div>
+        {result && <pre className="whitespace-pre-wrap rounded bg-slate-100 p-2 text-xs">{result}</pre>}
+      </div>
+    </Modal>
+  );
+}
+
+function SubtotalModal({ onGenerate, onClose }: { onGenerate: (config: SubtotalConfig) => void; onClose: () => void }) {
+  const [groupColumn, setGroupColumn] = useState("A");
+  const [valueColumn, setValueColumn] = useState("B");
+  const [func, setFunc] = useState<SubtotalConfig["func"]>("SUM");
+  const [outputCell, setOutputCell] = useState("");
+  const inputClass = "w-full rounded border border-slate-300 px-2 py-1 text-sm";
+  return (
+    <Modal title="Subtotal" onClose={onClose}>
+      <div className="space-y-3 text-sm">
+        <div>
+          <label className="mb-1 block font-medium">Group column</label>
+          <input className={inputClass} value={groupColumn} onChange={(event) => setGroupColumn(event.target.value)} placeholder="A" />
+        </div>
+        <div>
+          <label className="mb-1 block font-medium">Value column</label>
+          <input className={inputClass} value={valueColumn} onChange={(event) => setValueColumn(event.target.value)} placeholder="B" />
+        </div>
+        <div>
+          <label className="mb-1 block font-medium">Function</label>
+          <select className={inputClass} value={func} onChange={(event) => setFunc(event.target.value as SubtotalConfig["func"])}>
+            <option value="SUM">SUM</option>
+            <option value="COUNT">COUNT</option>
+            <option value="AVERAGE">AVERAGE</option>
+            <option value="MIN">MIN</option>
+            <option value="MAX">MAX</option>
+            <option value="PRODUCT">PRODUCT</option>
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block font-medium">Output cell</label>
+          <input className={inputClass} value={outputCell} onChange={(event) => setOutputCell(event.target.value)} placeholder="E1" />
+        </div>
+        <div className="flex justify-end gap-2">
+          <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={onClose}>Cancel</button>
+          <button type="button" className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white" onClick={() => onGenerate({ groupColumn, valueColumn, func, outputCell })}>Generate</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function PivotChartModal({ onGenerate, onClose }: { onGenerate: (config: PivotChartConfig) => void; onClose: () => void }) {
+  const [sourceRange, setSourceRange] = useState("A1:C10");
+  const [rowField, setRowField] = useState("");
+  const [valueField, setValueField] = useState("");
+  const [aggregation, setAggregation] = useState<PivotChartConfig["aggregation"]>("SUM");
+  const [chartType, setChartType] = useState<ChartType>("column");
+  const [outputCell, setOutputCell] = useState("");
+  const [title, setTitle] = useState("PivotChart");
+  const inputClass = "w-full rounded border border-slate-300 px-2 py-1 text-sm";
+  return (
+    <Modal title="PivotChart" onClose={onClose}>
+      <div className="space-y-3 text-sm">
+        <div>
+          <label className="mb-1 block font-medium">Source range (with header row)</label>
+          <input className={inputClass} value={sourceRange} onChange={(event) => setSourceRange(event.target.value)} placeholder="A1:C10" />
+        </div>
+        <div>
+          <label className="mb-1 block font-medium">Row field (category)</label>
+          <input className={inputClass} value={rowField} onChange={(event) => setRowField(event.target.value)} placeholder="Category" />
+        </div>
+        <div>
+          <label className="mb-1 block font-medium">Value field</label>
+          <input className={inputClass} value={valueField} onChange={(event) => setValueField(event.target.value)} placeholder="Amount" />
+        </div>
+        <div>
+          <label className="mb-1 block font-medium">Aggregation</label>
+          <select className={inputClass} value={aggregation} onChange={(event) => setAggregation(event.target.value as PivotChartConfig["aggregation"])}>
+            <option value="SUM">SUM</option>
+            <option value="COUNT">COUNT</option>
+            <option value="AVERAGE">AVERAGE</option>
+            <option value="MIN">MIN</option>
+            <option value="MAX">MAX</option>
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block font-medium">Chart type</label>
+          <select className={inputClass} value={chartType} onChange={(event) => setChartType(event.target.value as ChartType)}>
+            <option value="column">Column</option>
+            <option value="bar">Bar</option>
+            <option value="pie">Pie</option>
+            <option value="line">Line</option>
+            <option value="area">Area</option>
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block font-medium">Output cell</label>
+          <input className={inputClass} value={outputCell} onChange={(event) => setOutputCell(event.target.value)} placeholder="E1" />
+        </div>
+        <div>
+          <label className="mb-1 block font-medium">Chart title</label>
+          <input className={inputClass} value={title} onChange={(event) => setTitle(event.target.value)} />
+        </div>
+        <div className="flex justify-end gap-2">
+          <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={onClose}>Cancel</button>
+          <button type="button" className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white" onClick={() => onGenerate({ sourceRange, rowField, valueField, aggregation, chartType, outputCell, title })}>Generate</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function ForecastSheetModal({ onGenerate, onClose }: { onGenerate: (config: ForecastSheetConfig) => void; onClose: () => void }) {
+  const [timelineRange, setTimelineRange] = useState("A1:A12");
+  const [valuesRange, setValuesRange] = useState("B1:B12");
+  const [periods, setPeriods] = useState("6");
+  const [confidence, setConfidence] = useState("0.95");
+  const [seasonalityPeriod, setSeasonalityPeriod] = useState("0");
+  const [outputCell, setOutputCell] = useState("");
+  const [chartType, setChartType] = useState<ChartType>("line");
+  const [title, setTitle] = useState("Forecast");
+  const inputClass = "w-full rounded border border-slate-300 px-2 py-1 text-sm";
+  return (
+    <Modal title="Forecast Sheet" onClose={onClose}>
+      <div className="space-y-3 text-sm">
+        <div>
+          <label className="mb-1 block font-medium">Timeline range</label>
+          <input className={inputClass} value={timelineRange} onChange={(event) => setTimelineRange(event.target.value)} placeholder="A1:A12" />
+        </div>
+        <div>
+          <label className="mb-1 block font-medium">Values range</label>
+          <input className={inputClass} value={valuesRange} onChange={(event) => setValuesRange(event.target.value)} placeholder="B1:B12" />
+        </div>
+        <div>
+          <label className="mb-1 block font-medium">Forecast periods</label>
+          <input className={inputClass} value={periods} onChange={(event) => setPeriods(event.target.value)} />
+        </div>
+        <div>
+          <label className="mb-1 block font-medium">Confidence (0.90 / 0.95 / 0.99)</label>
+          <input className={inputClass} value={confidence} onChange={(event) => setConfidence(event.target.value)} />
+        </div>
+        <div>
+          <label className="mb-1 block font-medium">Seasonality period (0 = none)</label>
+          <input className={inputClass} value={seasonalityPeriod} onChange={(event) => setSeasonalityPeriod(event.target.value)} />
+        </div>
+        <div>
+          <label className="mb-1 block font-medium">Output cell</label>
+          <input className={inputClass} value={outputCell} onChange={(event) => setOutputCell(event.target.value)} placeholder="E1" />
+        </div>
+        <div>
+          <label className="mb-1 block font-medium">Chart type</label>
+          <select className={inputClass} value={chartType} onChange={(event) => setChartType(event.target.value as ChartType)}>
+            <option value="line">Line</option>
+            <option value="column">Column</option>
+            <option value="area">Area</option>
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block font-medium">Chart title</label>
+          <input className={inputClass} value={title} onChange={(event) => setTitle(event.target.value)} />
+        </div>
+        <div className="flex justify-end gap-2">
+          <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={onClose}>Cancel</button>
+          <button type="button" className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white" onClick={() => onGenerate({ timelineRange, valuesRange, periods: parseInt(periods, 10) || 0, confidence: parseFloat(confidence) || 0.95, seasonalityPeriod: parseInt(seasonalityPeriod, 10) || 0, outputCell, chartType, title })}>Generate</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function AnalyzeDataModal({ sheets, activeSheetIndex, onInsertChart, onClose }: {
+  sheets: WorkbookSheet[];
+  activeSheetIndex: number;
+  onInsertChart: (request: AnalyzeChartRequest) => void;
+  onClose: () => void;
+}) {
+  const [range, setRange] = useState("");
+  const [question, setQuestion] = useState("");
+  const [result, setResult] = useState("");
+  const [chartType, setChartType] = useState<ChartType>("column");
+  const inputClass = "w-full rounded border border-slate-300 px-2 py-1 text-sm";
+  const runInsight = (type: string) => {
+    const rangeList = range.split(",").map((item) => item.trim()).filter(Boolean);
+    const numericGroups = rangeList.map((item) => getRangeNumbers(sheets, activeSheetIndex, item));
+    const values = numericGroups[0];
+    const lines: string[] = [];
+    if (values.length === 0) {
+      setResult("Please provide a valid numeric range.");
+      return;
+    }
+    if (type === "auto" || type === "trend") {
+      const x = Array.from({ length: values.length }, (_, index) => index + 1);
+      const regression = linearRegression(values, [x]);
+      const slope = regression.coefficients[1] ?? 0;
+      lines.push(`Trend: ${slope > 0 ? "Increasing" : slope < 0 ? "Decreasing" : "Flat"} (slope ${slope})`);
+      lines.push(`R-squared: ${regression.rSquared}`);
+    }
+    if (type === "auto" || type === "outlier") {
+      const avg = mean(values);
+      const sd = standardDeviation(values, true);
+      const outliers = values.filter((value) => Math.abs(value - avg) > 2 * sd);
+      lines.push(`Outliers (mean ± 2 SD): ${outliers.length > 0 ? outliers.join(", ") : "None"}`);
+    }
+    if (type === "auto" || type === "correlation") {
+      if (numericGroups.length >= 2) {
+        const corr = correlation(numericGroups[0], numericGroups[1]);
+        lines.push(`Correlation: ${corr}`);
+      } else {
+        lines.push("Correlation requires two ranges.");
+      }
+    }
+    if (type === "auto" || type === "topbottom") {
+      const sorted = [...values].sort((a, b) => b - a);
+      lines.push(`Top 5: ${sorted.slice(0, 5).join(", ")}`);
+      lines.push(`Bottom 5: ${sorted.slice(-5).reverse().join(", ")}`);
+    }
+    if (type === "auto" || type === "stats") {
+      lines.push(`Count: ${values.length}`);
+      lines.push(`Mean: ${mean(values)}`);
+      lines.push(`Median: ${median(values)}`);
+      lines.push(`Min: ${Math.min(...values)}`);
+      lines.push(`Max: ${Math.max(...values)}`);
+      lines.push(`Std Dev: ${standardDeviation(values, true)}`);
+    }
+    if (type === "charts") {
+      lines.push(numericGroups.length >= 2 ? "Suggested chart: Line or Scatter" : "Suggested chart: Histogram or Column");
+    }
+    setResult(lines.join("\n"));
+  };
+  const runQuestion = () => {
+    const text = question.toLowerCase();
+    if (text.includes("trend")) runInsight("trend");
+    else if (text.includes("outlier")) runInsight("outlier");
+    else if (text.includes("correlation")) runInsight("correlation");
+    else if (text.includes("top") || text.includes("bottom")) runInsight("topbottom");
+    else if (text.includes("chart")) runInsight("charts");
+    else runInsight("auto");
+  };
+  return (
+    <Modal title="Analyze Data" onClose={onClose}>
+      <div className="space-y-3 text-sm">
+        <div>
+          <label className="mb-1 block font-medium">Range (comma separated for multiple)</label>
+          <input className={inputClass} value={range} onChange={(event) => setRange(event.target.value)} placeholder="A1:A20, B1:B20" />
+        </div>
+        <div>
+          <label className="mb-1 block font-medium">Ask a question</label>
+          <input className={inputClass} value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="What is the trend?" />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => runInsight("auto")}>Auto Insights</button>
+          <button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => runInsight("trend")}>Trends</button>
+          <button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => runInsight("outlier")}>Outliers</button>
+          <button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => runInsight("correlation")}>Correlation</button>
+          <button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => runInsight("topbottom")}>Top/Bottom</button>
+          <button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => runInsight("charts")}>Suggest Charts</button>
+          <button type="button" className="rounded bg-blue-600 px-2 py-1 text-xs text-white" onClick={runQuestion}>Ask</button>
+        </div>
+        <div>
+          <label className="mb-1 block font-medium">Insert chart</label>
+          <select className={inputClass} value={chartType} onChange={(event) => setChartType(event.target.value as ChartType)}>
+            <option value="column">Column</option>
+            <option value="bar">Bar</option>
+            <option value="line">Line</option>
+            <option value="pie">Pie</option>
+            <option value="area">Area</option>
+          </select>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={onClose}>Close</button>
+          <button type="button" className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white" onClick={() => onInsertChart({ range: range.split(",")[0]?.trim() || "", chartType, title: "Analysis Chart" })}>Insert Chart</button>
+        </div>
+        {result && <pre className="whitespace-pre-wrap rounded bg-slate-100 p-2 text-xs">{result}</pre>}
+      </div>
+    </Modal>
+  );
+}
+
+function WhatIfTableModal({ onClose, onGenerate }: { onClose: () => void; onGenerate: (config: WhatIfTableConfig) => void }) {
+  const [formulaCell, setFormulaCell] = useState("");
+  const [rowInputCell, setRowInputCell] = useState("");
+  const [rowValues, setRowValues] = useState("");
+  const [colInputCell, setColInputCell] = useState("");
+  const [colValues, setColValues] = useState("");
+  const [outputCell, setOutputCell] = useState("");
+  const inputClass = "w-full rounded border border-slate-300 px-2 py-1 text-sm";
+  return (
+    <Modal title="What-If Data Table" onClose={onClose}>
+      <div className="space-y-3 text-sm">
+        <div>
+          <label className="mb-1 block font-medium">Formula cell</label>
+          <input className={inputClass} value={formulaCell} onChange={(event) => setFormulaCell(event.target.value)} placeholder="B2" />
+        </div>
+        <div>
+          <label className="mb-1 block font-medium">Row input cell</label>
+          <input className={inputClass} value={rowInputCell} onChange={(event) => setRowInputCell(event.target.value)} placeholder="B1" />
+        </div>
+        <div>
+          <label className="mb-1 block font-medium">Row values (comma separated)</label>
+          <input className={inputClass} value={rowValues} onChange={(event) => setRowValues(event.target.value)} placeholder="10,20,30" />
+        </div>
+        <div>
+          <label className="mb-1 block font-medium">Column input cell (optional)</label>
+          <input className={inputClass} value={colInputCell} onChange={(event) => setColInputCell(event.target.value)} placeholder="C1" />
+        </div>
+        <div>
+          <label className="mb-1 block font-medium">Column values (optional, comma separated)</label>
+          <input className={inputClass} value={colValues} onChange={(event) => setColValues(event.target.value)} placeholder="5,10" />
+        </div>
+        <div>
+          <label className="mb-1 block font-medium">Output cell</label>
+          <input className={inputClass} value={outputCell} onChange={(event) => setOutputCell(event.target.value)} placeholder="E1" />
+        </div>
+        <div className="flex justify-end gap-2">
+          <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={onClose}>Cancel</button>
+          <button type="button" className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white" onClick={() => onGenerate({ formulaCell, rowInputCell, rowValues, colInputCell, colValues, outputCell })}>Generate</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function ScenarioManagerModal({ scenarios, summary, onAdd, onApply, onDelete, onSummary, onClose }: {
+  scenarios: ScenarioItem[];
+  summary: string | null;
+  onAdd: (name: string, changes: string, resultCells: string) => void;
+  onApply: (id: string) => void;
+  onDelete: (id: string) => void;
+  onSummary: () => void;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [changes, setChanges] = useState("");
+  const [resultCells, setResultCells] = useState("");
+  const inputClass = "w-full rounded border border-slate-300 px-2 py-1 text-sm";
+  return (
+    <Modal title="Scenario Manager" onClose={onClose}>
+      <div className="space-y-3 text-sm">
+        <div>
+          <label className="mb-1 block font-medium">Scenario name</label>
+          <input className={inputClass} value={name} onChange={(event) => setName(event.target.value)} placeholder="Best case" />
+        </div>
+        <div>
+          <label className="mb-1 block font-medium">Changes (cell=value, comma separated)</label>
+          <input className={inputClass} value={changes} onChange={(event) => setChanges(event.target.value)} placeholder="B1=100, B2=200" />
+        </div>
+        <div>
+          <label className="mb-1 block font-medium">Result cells (comma separated)</label>
+          <input className={inputClass} value={resultCells} onChange={(event) => setResultCells(event.target.value)} placeholder="B10, B11" />
+        </div>
+        <div className="flex justify-end gap-2">
+          <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={onClose}>Close</button>
+          <button type="button" className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white" onClick={() => { onAdd(name, changes, resultCells); setName(""); setChanges(""); setResultCells(""); }}>Add Scenario</button>
+        </div>
+        <div className="space-y-2">
+          {scenarios.map((scenario) => (
+            <div key={scenario.id} className="rounded border border-slate-200 p-2">
+              <div className="flex items-center justify-between">
+                <span className="font-medium">{scenario.name}</span>
+                <div className="flex gap-2">
+                  <button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => onApply(scenario.id)}>Apply</button>
+                  <button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => onDelete(scenario.id)}>Delete</button>
+                </div>
+              </div>
+              <div className="mt-1 text-xs text-slate-600">{scenario.changes.map((change) => `${change.cell}=${change.value}`).join(", ")}</div>
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-end">
+          <button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={onSummary}>Show Summary</button>
+        </div>
+        {summary && <pre className="whitespace-pre-wrap rounded bg-slate-100 p-2 text-xs">{summary}</pre>}
+      </div>
+    </Modal>
+  );
+}
