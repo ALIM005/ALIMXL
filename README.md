@@ -1,6 +1,9 @@
 ALIMXL
 ├─ app
 │  ├─ api
+│  │  ├─ ai
+│  │  │  └─ remove-background
+│  │  │     └─ route.ts
 │  │  ├─ auth
 │  │  │  ├─ forgot-password
 │  │  │  │  └─ route.ts
@@ -28,12 +31,12 @@ ALIMXL
 │  ├─ settings
 │  │  └─ page.tsx
 │  └─ sitemap.ts
-├─ backups
 ├─ components
 │  ├─ AccountMenu.tsx
 │  ├─ AlimxlHome.tsx
 │  ├─ MyFiles.tsx
 │  ├─ OfflineSetup.tsx
+│  ├─ RecoveryDrafts.tsx
 │  ├─ SettingsProvider.tsx
 │  ├─ WelcomeGate.tsx
 │  └─ WelcomeScreen.tsx
@@ -49,7 +52,14 @@ ALIMXL
 │  ├─ chart-geometry.mjs
 │  ├─ currency.ts
 │  ├─ device-files.ts
-│  └─ local-workbooks.ts
+│  ├─ local-workbooks.ts
+│  ├─ recovery-policy.d.mts
+│  ├─ recovery-policy.mjs
+│  ├─ recovery-store.ts
+│  ├─ workbook-backup.d.mts
+│  ├─ workbook-backup.mjs
+│  ├─ workbook-integrity.d.mts
+│  └─ workbook-integrity.mjs
 ├─ next.config.ts
 ├─ package-lock.json
 ├─ package.json
@@ -62,7 +72,10 @@ ALIMXL
 │  └─ sw.js
 ├─ README.md
 ├─ tests
-│  └─ chart-geometry.test.mjs
+│  ├─ chart-geometry.test.mjs
+│  ├─ recovery-policy.test.mjs
+│  ├─ workbook-backup.test.mjs
+│  └─ workbook-integrity.test.mjs
 ├─ tsconfig.json
 ├─ UPDATE-CHANGES.patch
 ├─ UPDATE-COMPARISON.txt
