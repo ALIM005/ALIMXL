@@ -1,7 +1,10 @@
 "use client";
 
 /* eslint-disable react-hooks/refs -- render helpers only read stable refs; event handlers perform all mutations. */
-
+import {
+  syncExchangeRates as libSyncExchangeRates,
+  getExchangeRate as libGetExchangeRate,
+} from "../lib/formula-core.mjs";
 import Image from "next/image";
 import { createSignedScale, categoryCenter, barGeometry, collectChartRows, buildPieGroups, pieSlices } from "../lib/chart-geometry.mjs";
 import { useRouter } from "next/navigation";
@@ -1393,24 +1396,11 @@ function getUsdRate(currencyCode: string): number | null {
   return typeof fallback === "number" && fallback > 0 ? fallback : null;
 }
 
+
 function getExchangeRate(from: string, to: string): number {
-  if (from === to) return 1;
-
-  const direct = activeExchangeRates[rateKey(from, to)];
-  if (isValidRate(direct)) return direct;
-
-  const reverse = activeExchangeRates[rateKey(to, from)];
-  if (isValidRate(reverse)) return 1 / reverse;
-
-  const fromUsd = getUsdRate(from);
-  const toUsd = getUsdRate(to);
-
-  if (fromUsd && toUsd) {
-    return fromUsd / toUsd;
-  }
-
-  return NaN;
+  return libGetExchangeRate(from, to);
 }
+
 
 function syncExchangeRates(allSheets: WorkbookSheet[]): void {
   const rateSheet = allSheets.find(
@@ -4369,41 +4359,41 @@ function findIndexByOffset(offsets: number[], pos: number): number {
 
 type HomeDataToolsMode = "export" | "backup";
 
-function HomeDataToolsDialog({mode,workbookName,sheetName,onClose,onXlsx,onCsv,onBackup,onRestore}:{
-  mode:HomeDataToolsMode;workbookName:string;sheetName:string;onClose:()=>void;
-  onXlsx:()=>Promise<void>;onCsv:()=>Promise<void>;onBackup:()=>Promise<void>;onRestore:()=>void;
+function HomeDataToolsDialog({ mode, workbookName, sheetName, onClose, onXlsx, onCsv, onBackup, onRestore }: {
+  mode: HomeDataToolsMode; workbookName: string; sheetName: string; onClose: () => void;
+  onXlsx: () => Promise<void>; onCsv: () => Promise<void>; onBackup: () => Promise<void>; onRestore: () => void;
 }) {
-  const dialogRef=useRef<HTMLDialogElement>(null);
-  const lock=useRef(false);
-  const [working,setWorking]=useState(false);
-  const [error,setError]=useState("");
-  useEffect(()=>{
-    const el=dialogRef.current;
-    if(el&&!el.open)el.showModal();
-    return()=>{if(el?.open)el.close();};
-  },[]);
-  async function perform(action:()=>Promise<void>){
-    if(lock.current)return;
-    lock.current=true;setWorking(true);setError("");
-    try{await action();}catch(e){setError(e instanceof Error?e.message:"ফাইলের কাজ সম্পন্ন হয়নি।");}
-    finally{lock.current=false;setWorking(false);}
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const lock = useRef(false);
+  const [working, setWorking] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    const el = dialogRef.current;
+    if (el && !el.open) el.showModal();
+    return () => { if (el?.open) el.close(); };
+  }, []);
+  async function perform(action: () => Promise<void>) {
+    if (lock.current) return;
+    lock.current = true; setWorking(true); setError("");
+    try { await action(); } catch (e) { setError(e instanceof Error ? e.message : "ফাইলের কাজ সম্পন্ন হয়নি।"); }
+    finally { lock.current = false; setWorking(false); }
   }
-  const buttonClass="w-full rounded-xl border border-green-700/30 bg-green-50 px-4 py-3 text-left text-sm font-semibold text-green-950 hover:bg-green-100 focus-visible:outline-2 focus-visible:outline-green-700 disabled:cursor-wait disabled:opacity-50";
-  return <dialog ref={dialogRef} aria-labelledby="home-data-tools-title" onCancel={e=>{e.preventDefault();if(!lock.current)onClose();}} onKeyDown={e=>e.stopPropagation()} className="fixed inset-0 m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-lg overflow-auto rounded-2xl border border-green-700/30 bg-white p-6 text-slate-900 shadow-2xl backdrop:bg-black/50">
-    <header className="mb-4 flex items-center justify-between gap-4"><h2 id="home-data-tools-title" className="text-xl font-bold">{mode==="export"?"Export Data":"Backup & Restore"}</h2><button type="button" disabled={working} onClick={onClose} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50" aria-label="Close data tools">Close</button></header>
-    <p className="mb-2 .break-words text-sm">Current workbook: {workbookName||"Untitled Workbook"}</p>
+  const buttonClass = "w-full rounded-xl border border-green-700/30 bg-green-50 px-4 py-3 text-left text-sm font-semibold text-green-950 hover:bg-green-100 focus-visible:outline-2 focus-visible:outline-green-700 disabled:cursor-wait disabled:opacity-50";
+  return <dialog ref={dialogRef} aria-labelledby="home-data-tools-title" onCancel={e => { e.preventDefault(); if (!lock.current) onClose(); }} onKeyDown={e => e.stopPropagation()} className="fixed inset-0 m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-lg overflow-auto rounded-2xl border border-green-700/30 bg-white p-6 text-slate-900 shadow-2xl backdrop:bg-black/50">
+    <header className="mb-4 flex items-center justify-between gap-4"><h2 id="home-data-tools-title" className="text-xl font-bold">{mode === "export" ? "Export Data" : "Backup & Restore"}</h2><button type="button" disabled={working} onClick={onClose} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50" aria-label="Close data tools">Close</button></header>
+    <p className="mb-2 .break-words text-sm">Current workbook: {workbookName || "Untitled Workbook"}</p>
     <p className="mb-4 text-xs leading-5 text-slate-600">হোমস্ক্রিনে নয়, বর্তমানে মেমরিতে খোলা workbook-এর ডেটা ব্যবহার হবে। সংরক্ষিত অন্য workbook চাইলে আগে My Files / Recent Files থেকে খুলুন।</p>
     <div className="space-y-3">
-    {mode==="export"&&<>
-      <button type="button" disabled={working} className={buttonClass} onClick={()=>void perform(onXlsx)}>Export Excel (.xlsx)<span className="mt-1 block text-xs font-normal">সব sheet — বিদ্যমান Excel exporter ব্যবহার করবে।</span></button>
-      <button type="button" disabled={working} className={buttonClass} onClick={()=>void perform(onCsv)}>Export CSV (.csv)<span className="mt-1 block text-xs font-normal">শুধু active sheet: {sheetName}. CSV-তে workbook formatting থাকে না।</span></button>
-    </>}
-    <button type="button" disabled={working} className={buttonClass} onClick={()=>void perform(onBackup)}>Download workbook backup (.json)<span className="mt-1 block text-xs font-normal">বর্তমান workbook-এর নিজস্ব JSON snapshot।</span></button>
-    {mode==="backup"&&<button type="button" disabled={working} className={buttonClass} onClick={()=>{if(!lock.current)onRestore();}}>Restore workbook backup (.json)<span className="mt-1 block text-xs font-normal">ফাইল নির্বাচন ও confirmation-এর পরে বর্তমান workbook প্রতিস্থাপিত হবে।</span></button>}
+      {mode === "export" && <>
+        <button type="button" disabled={working} className={buttonClass} onClick={() => void perform(onXlsx)}>Export Excel (.xlsx)<span className="mt-1 block text-xs font-normal">সব sheet — বিদ্যমান Excel exporter ব্যবহার করবে।</span></button>
+        <button type="button" disabled={working} className={buttonClass} onClick={() => void perform(onCsv)}>Export CSV (.csv)<span className="mt-1 block text-xs font-normal">শুধু active sheet: {sheetName}. CSV-তে workbook formatting থাকে না।</span></button>
+      </>}
+      <button type="button" disabled={working} className={buttonClass} onClick={() => void perform(onBackup)}>Download workbook backup (.json)<span className="mt-1 block text-xs font-normal">বর্তমান workbook-এর নিজস্ব JSON snapshot।</span></button>
+      {mode === "backup" && <button type="button" disabled={working} className={buttonClass} onClick={() => { if (!lock.current) onRestore(); }}>Restore workbook backup (.json)<span className="mt-1 block text-xs font-normal">ফাইল নির্বাচন ও confirmation-এর পরে বর্তমান workbook প্রতিস্থাপিত হবে।</span></button>}
     </div>
     <p className="mt-4 text-xs leading-5 text-amber-800">এটি সব saved workbook, account settings, Photo Studio অথবা সম্পূর্ণ অ্যাপের backup নয়। Restore-এর আগে বর্তমান কাজের JSON backup রাখুন।</p>
-    <p role="status" aria-live="polite" className="mt-3 text-sm">{working?"ফাইল প্রস্তুত হচ্ছে… ডাউনলোড/সেভ ডায়ালগ এবং অ্যাপের notification দেখুন।":""}</p>
-    {error&&<p role="alert" className="mt-2 text-sm text-red-700">{error}</p>}
+    <p role="status" aria-live="polite" className="mt-3 text-sm">{working ? "ফাইল প্রস্তুত হচ্ছে… ডাউনলোড/সেভ ডায়ালগ এবং অ্যাপের notification দেখুন।" : ""}</p>
+    {error && <p role="alert" className="mt-2 text-sm text-red-700">{error}</p>}
   </dialog>;
 }
 
@@ -4442,10 +4432,10 @@ export default function ExcelStudioPage() {
     []
   );
   const [showHomeScreen, setShowHomeScreen] = useState(true);
-  const [homeDataTools,setHomeDataTools]=useState<HomeDataToolsMode|null>(null);
-  const homeDataInput=useRef<HTMLInputElement>(null);
-  const homeDataMode=useRef<"import"|"restore">("import");
-  const homeDataLoading=useRef(false);
+  const [homeDataTools, setHomeDataTools] = useState<HomeDataToolsMode | null>(null);
+  const homeDataInput = useRef<HTMLInputElement>(null);
+  const homeDataMode = useRef<"import" | "restore">("import");
+  const homeDataLoading = useRef(false);
 
   const [appLocale, setAppLocale] = useState<AppLocale>("en");
   const [rtlEnabled, setRtlEnabled] = useState(false);
@@ -4848,7 +4838,7 @@ export default function ExcelStudioPage() {
       if (undoStackRef.current.length > HISTORY_LIMIT) undoStackRef.current.shift();
       redoStackRef.current = [];
       sheetsRef.current = next; // ref সাথে সাথে update — পরের call-এ সঠিক prev পাবে
-      syncExchangeRates(next);
+      libSyncExchangeRates(next);
       setSheetsRaw(next);
       setHistoryVersion(v => v + 1);
     }
@@ -4865,7 +4855,7 @@ export default function ExcelStudioPage() {
       redoStackRef.current = [];
 
       sheetsRef.current = isolatedSheets;
-      syncExchangeRates(isolatedSheets);
+      libSyncExchangeRates(isolatedSheets);
       setSheetsRaw(isolatedSheets);
       setHistoryVersion((version) => version + 1);
 
@@ -4887,7 +4877,7 @@ export default function ExcelStudioPage() {
     const previous = undoStackRef.current.pop()!;
     redoStackRef.current.push(current);
     sheetsRef.current = previous;
-    syncExchangeRates(previous);
+    libSyncExchangeRates(previous);
     setSheetsRaw(previous);
     setHistoryVersion((v) => v + 1);
     showToast("Undo");
@@ -4903,7 +4893,7 @@ export default function ExcelStudioPage() {
     const nextState = redoStackRef.current.pop()!;
     undoStackRef.current.push(current);
     sheetsRef.current = nextState;
-    syncExchangeRates(nextState);
+    libSyncExchangeRates(nextState);
     setSheetsRaw(nextState);
     setHistoryVersion((v) => v + 1);
     showToast("Redo");
@@ -4940,7 +4930,7 @@ export default function ExcelStudioPage() {
   const getRawValue = useCallback((key: string) => sheet.cells[key]?.value ?? "", [sheet.cells]);
 
   // Each top-level formula evaluation gets a local cache. This avoids mutating refs
-  // during React render while still preventing repeated work inside nested formulas.
+  // during React render while still preventing repeated work inside nested formulas
   const getCellValue = useCallback(
     (
       key: string,
@@ -5020,6 +5010,7 @@ export default function ExcelStudioPage() {
     },
     [sheet, sheets, historyVersion]
   );
+
 
 
   const activePos = useMemo(() => parseKey(activeCell) || { row: 0, col: 0 }, [activeCell]);
@@ -11178,15 +11169,15 @@ export default function ExcelStudioPage() {
       ],
     }));
   };
-  function openHomeDataPicker(mode:"import"|"restore") {
-    if(homeDataLoading.current||localSaveInProgressRef.current){
-      showToast("চলমান ফাইলের কাজ শেষ হওয়া পর্যন্ত অপেক্ষা করুন।");return;
+  function openHomeDataPicker(mode: "import" | "restore") {
+    if (homeDataLoading.current || localSaveInProgressRef.current) {
+      showToast("চলমান ফাইলের কাজ শেষ হওয়া পর্যন্ত অপেক্ষা করুন।"); return;
     }
-    const input=homeDataInput.current;
-    if(!input)return;
-    homeDataMode.current=mode;
-    input.accept=mode==="restore"?".json":".xlsx,.xls,.csv,.json";
-    input.value="";
+    const input = homeDataInput.current;
+    if (!input) return;
+    homeDataMode.current = mode;
+    input.accept = mode === "restore" ? ".json" : ".xlsx,.xls,.csv,.json";
+    input.value = "";
     input.click();
   }
 
@@ -11202,26 +11193,26 @@ export default function ExcelStudioPage() {
     >
 
       <input ref={homeDataInput} type="file" accept=".xlsx,.xls,.csv,.json" className="hidden" aria-label="Import data or restore workbook backup"
-        onChange={async e=>{
-          const input=e.currentTarget,file=input.files?.[0],mode=homeDataMode.current;
-          if(!file)return;
-          if(homeDataLoading.current||localSaveInProgressRef.current){input.value="";showToast("অন্য ফাইলের কাজ চলছে।");return;}
-          const ext=file.name.split(".").pop()?.toLowerCase();
-          if(!(mode==="restore"?ext==="json":["xlsx","xls","csv","json"].includes(ext??""))){input.value="";window.alert("সমর্থিত workbook ফাইল নির্বাচন করুন।");return;}
-          if(!file.size||file.size>50*1024*1024){input.value="";window.alert("খালি ফাইল নয়; সর্বোচ্চ 50 MB ফাইল ব্যবহার করুন।");return;}
-          if(!window.confirm(mode==="restore"?"এই backup দিয়ে বর্তমান workbook প্রতিস্থাপিত হবে। Unsaved কাজ হারাবে। আগে backup রেখে থাকলে Continue করুন।":"এই ফাইল খুললে বর্তমান workbook-এর ডেটা প্রতিস্থাপিত বা পরিবর্তিত হতে পারে। Unsaved কাজ হারাতে পারে। Continue?")){input.value="";return;}
-          homeDataLoading.current=true;
-          try{
+        onChange={async e => {
+          const input = e.currentTarget, file = input.files?.[0], mode = homeDataMode.current;
+          if (!file) return;
+          if (homeDataLoading.current || localSaveInProgressRef.current) { input.value = ""; showToast("অন্য ফাইলের কাজ চলছে।"); return; }
+          const ext = file.name.split(".").pop()?.toLowerCase();
+          if (!(mode === "restore" ? ext === "json" : ["xlsx", "xls", "csv", "json"].includes(ext ?? ""))) { input.value = ""; window.alert("সমর্থিত workbook ফাইল নির্বাচন করুন।"); return; }
+          if (!file.size || file.size > 50 * 1024 * 1024) { input.value = ""; window.alert("খালি ফাইল নয়; সর্বোচ্চ 50 MB ফাইল ব্যবহার করুন।"); return; }
+          if (!window.confirm(mode === "restore" ? "এই backup দিয়ে বর্তমান workbook প্রতিস্থাপিত হবে। Unsaved কাজ হারাবে। আগে backup রেখে থাকলে Continue করুন।" : "এই ফাইল খুললে বর্তমান workbook-এর ডেটা প্রতিস্থাপিত বা পরিবর্তিত হতে পারে। Unsaved কাজ হারাতে পারে। Continue?")) { input.value = ""; return; }
+          homeDataLoading.current = true;
+          try {
             await onFileSelected(file);
             setHomeDataTools(null);
             setShowHomeScreen(false);
-          }catch(error){
-            window.alert(error instanceof Error?error.message:"ফাইল খোলা যায়নি।");
-          }finally{homeDataLoading.current=false;input.value="";}
-        }}/>
-      {homeDataTools&&<HomeDataToolsDialog mode={homeDataTools} workbookName={workbookName} sheetName={sheet.name}
-        onClose={()=>setHomeDataTools(null)} onXlsx={handleExportAlimxl} onCsv={handleExportCsv} onBackup={handleExportJsonBackup}
-        onRestore={()=>{setHomeDataTools(null);openHomeDataPicker("restore");}}/>}
+          } catch (error) {
+            window.alert(error instanceof Error ? error.message : "ফাইল খোলা যায়নি।");
+          } finally { homeDataLoading.current = false; input.value = ""; }
+        }} />
+      {homeDataTools && <HomeDataToolsDialog mode={homeDataTools} workbookName={workbookName} sheetName={sheet.name}
+        onClose={() => setHomeDataTools(null)} onXlsx={handleExportAlimxl} onCsv={handleExportCsv} onBackup={handleExportJsonBackup}
+        onRestore={() => { setHomeDataTools(null); openHomeDataPicker("restore"); }} />}
 
       {/* START: ALIMXL HOME SCREEN */}
       {showHomeScreen && (
@@ -12138,7 +12129,7 @@ export default function ExcelStudioPage() {
                 const clientWidth = el.clientWidth / scale;
                 setViewport((prev) =>
                   prev.scrollTop === scrollTop && prev.scrollLeft === scrollLeft &&
-                  prev.clientHeight === clientHeight && prev.clientWidth === clientWidth
+                    prev.clientHeight === clientHeight && prev.clientWidth === clientWidth
                     ? prev : { scrollTop, scrollLeft, clientHeight, clientWidth }
                 );
               });
@@ -13897,7 +13888,7 @@ export default function ExcelStudioPage() {
         />
       )}
       {confirmDialog && (
-        <Modal title={confirmDialog.title} onClose={() => setConfirmDialog(null)}>
+        <Modal title={confirmDialog.title} onClose={() => setConfirmDialog(null)} zIndex={100001}>
           <p className="text-sm">{confirmDialog.message}</p>
           <div className="flex justify-end gap-2 mt-4">
             <button
@@ -16247,9 +16238,9 @@ function ColumnWidthDialog({
   );
 }
 
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+function Modal({ title, onClose, children, zIndex = 99999 }: { title: string; onClose: () => void; children: React.ReactNode; zIndex?: number }) {
   return (
-    <div className="fixed inset-0 z-99999 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" style={{ zIndex }}>
       <div className="w-full max-w-2xl rounded-2xl border border-[#D2D0CE] bg-[#FFFFFF] p-6 text-[#000000] shadow-2xl">
         <div className="mb-4 flex items-center justify-between border-b border-[#D2D0CE] pb-3">
           <h3 className="text-lg font-black text-[#106EBE]">{title}</h3>

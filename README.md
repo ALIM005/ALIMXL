@@ -42,6 +42,7 @@ ALIMXL
 │  └─ WelcomeScreen.tsx
 ├─ eslint.config.mjs
 ├─ FINAL-CHECK-BN.txt
+├─ formula-engine-extracted.txt
 ├─ lib
 │  ├─ app-brand.ts
 │  ├─ app-settings.ts
@@ -52,6 +53,7 @@ ALIMXL
 │  ├─ chart-geometry.mjs
 │  ├─ currency.ts
 │  ├─ device-files.ts
+│  ├─ formula-core.mjs
 │  ├─ local-workbooks.ts
 │  ├─ recovery-policy.d.mts
 │  ├─ recovery-policy.mjs
@@ -73,6 +75,10 @@ ALIMXL
 ├─ README.md
 ├─ tests
 │  ├─ chart-geometry.test.mjs
+│  ├─ formula-core.all-functions.test.mjs
+│  ├─ formula-core.edge.test.mjs
+│  ├─ formula-core.integration.test.mjs
+│  ├─ formula-core.test.mjs
 │  ├─ recovery-policy.test.mjs
 │  ├─ workbook-backup.test.mjs
 │  └─ workbook-integrity.test.mjs
