@@ -1,0 +1,16 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {makeRecoveryKey,makeRecoveryRecord,canWriteRecovery,MAX_RECOVERY_DRAFTS} from "../lib/recovery-policy.mjs";
+const w={id:"one",sheets:[{id:"sheet-1"}]};
+test("saved workbook uses stable key",()=>assert.equal(makeRecoveryKey("tab1",w),makeRecoveryKey("tab1",{...w,name:"rename"})));
+test("different tabs do not overwrite drafts",()=>assert.notEqual(makeRecoveryKey("tab1",w),makeRecoveryKey("tab2",w)));
+test("different workbooks have separate drafts",()=>assert.notEqual(makeRecoveryKey("tab1",w),makeRecoveryKey("tab1",{...w,id:"two"})));
+test("untitled workbook uses first sheet identity",()=>assert.equal(makeRecoveryKey("tab1",{sheets:w.sheets}),JSON.stringify(["tab1","sheet-1"])));
+test("ambiguous delimiters do not collide",()=>assert.notEqual(makeRecoveryKey("a:b",{id:"c"}),makeRecoveryKey("a",{id:"b:c"})));
+test("missing session rejected",()=>assert.throws(()=>makeRecoveryKey("",w)));
+test("missing identity rejected",()=>assert.throws(()=>makeRecoveryKey("tab1",{})));
+test("empty store allows draft",()=>assert.equal(canWriteRecovery([],"x"),true));
+test("full store refuses new draft",()=>assert.equal(canWriteRecovery(Array.from({length:MAX_RECOVERY_DRAFTS},(_,i)=>String(i)),"new"),false));
+test("full store still updates existing draft",()=>assert.equal(canWriteRecovery(Array.from({length:MAX_RECOVERY_DRAFTS},(_,i)=>String(i)),"0"),true));
+test("record preserves backup",()=>assert.deepEqual(makeRecoveryRecord("k","Budget","payload","time"),{key:"k",name:"Budget",backup:"payload",capturedAt:"time"}));
+test("empty backup rejected",()=>assert.throws(()=>makeRecoveryRecord("k","Budget","")));

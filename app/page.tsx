@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import React, {
   useCallback,
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -16,6 +17,7 @@ import * as Icons from "lucide-react";
 import { useLayoutEffect } from 'react';
 import AlimxlHome from "../components/AlimxlHome";
 import MyFiles from "../components/MyFiles";
+import RecoveryDrafts from "../components/RecoveryDrafts";
 import { saveDeviceFile } from "../lib/device-files";
 import { BUILT_IN_TEMPLATES } from "../lib/built-in-templates";
 import {
@@ -640,8 +642,8 @@ const EXCEL_MENU_DATA: MenuCategory[] = [
   }
 ];
 
-const DEFAULT_ROWS = 5000;
-const DEFAULT_COLS = 500;
+const DEFAULT_ROWS = 1000000;
+const DEFAULT_COLS = 5000;
 const MAX_ROWS = 100000;
 const MAX_COLS = 2000;
 const DEFAULT_COL_WIDTH = 120;
@@ -883,6 +885,26 @@ const FUNCTION_LIST: { name: string; usage: string; desc: string }[] = [
   { name: "TEXTJOIN", usage: 'TEXTJOIN(", ",TRUE,A1:A5)', desc: "Joins text values with a delimiter; can ignore empty cells." },
   { name: "IFS", usage: 'IFS(A1>90,"A",A1>80,"B")', desc: "Checks multiple conditions and returns the value for the first true condition." },
   { name: "SWITCH", usage: 'SWITCH(A1,1,"One",2,"Two","Other")', desc: "Compares an expression against a list of values and returns the first match; optional default." },
+  { name: "SUBSTITUTE", usage: 'SUBSTITUTE("a-b-c","-","/")', desc: "Replaces existing text with new text (optional: only the Nth occurrence)." },
+  { name: "FIND", usage: 'FIND("b","abc")', desc: "Returns the position of text inside text (case-sensitive)." },
+  { name: "SEARCH", usage: 'SEARCH("B","abc")', desc: "Returns the position of text inside text (case-insensitive, supports ? and * wildcards)." },
+  { name: "PROPER", usage: 'PROPER("hello world")', desc: "Capitalizes the first letter of each word." },
+  { name: "CONCATENATE", usage: 'CONCATENATE(A1," ",B1)', desc: "Joins values together (same as CONCAT)." },
+  { name: "VALUE", usage: 'VALUE("123.5")', desc: "Converts text that looks like a number or date into a number." },
+  { name: "AVERAGEIF", usage: 'AVERAGEIF(A1:A10,">3",B1:B10)', desc: "Averages cells that meet a condition." },
+  { name: "AVERAGEIFS", usage: 'AVERAGEIFS(C2:C100,A2:A100,"Dhaka",B2:B100,">1000")', desc: "Averages cells that meet multiple conditions." },
+  { name: "SUMPRODUCT", usage: "SUMPRODUCT(A1:A5,B1:B5)", desc: "Multiplies matching items of the ranges and adds the results." },
+  { name: "LARGE", usage: "LARGE(A1:A10,2)", desc: "Returns the k-th largest value." },
+  { name: "SMALL", usage: "SMALL(A1:A10,2)", desc: "Returns the k-th smallest value." },
+  { name: "RANK", usage: "RANK(A2,A$2:A$20,0)", desc: "Returns the rank of a number in a list (0 = descending, 1 = ascending)." },
+  { name: "CEILING", usage: "CEILING(4.2,0.5)", desc: "Rounds a number up to the nearest multiple of significance." },
+  { name: "FLOOR", usage: "FLOOR(4.2,0.5)", desc: "Rounds a number down to the nearest multiple of significance." },
+  { name: "ISBLANK", usage: "ISBLANK(A1)", desc: "TRUE if the cell is empty." },
+  { name: "ISNUMBER", usage: "ISNUMBER(A1)", desc: "TRUE if the value is a number." },
+  { name: "ROW", usage: "ROW(A5)", desc: "Returns the row number of a reference (or of the current cell if omitted)." },
+  { name: "COLUMN", usage: "COLUMN(C1)", desc: "Returns the column number of a reference (or of the current cell if omitted)." },
+  { name: "RAND", usage: "RAND()", desc: "Returns a random number from 0 up to (not including) 1." },
+  { name: "PMT", usage: "PMT(0.08/12,60,-250000)", desc: "Returns the periodic payment for a loan with constant payments and rate." },
   {
     name: "CONVERT",
     usage: 'CONVERT(100,"USD","BDT")',
@@ -907,6 +929,9 @@ const FUNCTION_CATEGORIES: Record<string, string> = {
   XLOOKUP: "Lookup", XMATCH: "Lookup",
   FILTER: "Dynamic", SORT: "Dynamic", UNIQUE: "Dynamic", SEQUENCE: "Dynamic",
   TEXTJOIN: "Text", IFS: "Logical", SWITCH: "Logical",
+  SUBSTITUTE: "Text", FIND: "Text", SEARCH: "Text", PROPER: "Text", CONCATENATE: "Text", VALUE: "Text",
+  AVERAGEIF: "Statistical", AVERAGEIFS: "Statistical", SUMPRODUCT: "Math", LARGE: "Statistical", SMALL: "Statistical", RANK: "Statistical",
+  CEILING: "Math", FLOOR: "Math", ISBLANK: "Logical", ISNUMBER: "Logical", ROW: "Lookup", COLUMN: "Lookup", RAND: "Math", PMT: "Financial",
 };
 
 const GALLERY_STAMPS = ["✔", "✖", "★", "⚠", "📌", "🏢", "💰", "📈", "📉", "🕒", "✍", "📎"];
@@ -989,14 +1014,7 @@ function saveCharListToStorage(key: string, items: string[]) {
 // এখন ৮টা প্রফেশনাল বর্ডার লাইন-স্টাইল সাপোর্ট করবে
 const BORDER_STYLE_OPTIONS: CellStyle["borderStyle"][] = ["solid", "dashed", "dotted", "double", "ridge", "groove", "inset", "outset"];
 
-// প্রতিটা স্টাইলের মানুষের পড়ার মতো নাম
-const BORDER_STYLE_LABELS: Record<NonNullable<CellStyle["borderStyle"]>, string> = {
-  solid: "Solid", dashed: "Dashed", dotted: "Dotted", double: "Double",
-  ridge: "Ridge", groove: "Groove", inset: "Inset", outset: "Outset",
-};
 
-// প্রি-সেট পুরুত্ব — এর বাইরেও কাস্টম পিক্সেল ইনপুট দেওয়া যাবে
-const BORDER_WIDTH_PRESETS = [1, 2, 3, 5];
 
 /* ============================================================================
  * World Currency List (ISO 4217 active codes) — used by the Currency toolbar dropdown.
@@ -2366,6 +2384,259 @@ function matchesCriterion(value: EvalResult, criterion: EvalResult): boolean {
   }
 }
 
+// [নতুন ফাংশন] ROW()/COLUMN() আর্গুমেন্ট ছাড়া ডাকলে বর্তমান সেল জানতে হয়
+let currentEvalCellKey: string | null = null;
+
+// [নতুন ফাংশন] SUBSTITUTE, FIND, SEARCH, PROPER, CONCATENATE, VALUE, AVERAGEIF(S), SUMPRODUCT, LARGE, SMALL,
+// RANK, CEILING, FLOOR, ISBLANK, ISNUMBER, ROW, COLUMN, RAND, PMT — চেনা না গেলে undefined (তখন #NAME? আসে)
+function evalExtraFunction(
+  node: { kind: "call"; name: string; args: Node[] },
+  getCell: (key: string) => EvalResult,
+  expandRange: (range: string) => EvalResult[]
+): EvalResult | undefined {
+  const args = node.args;
+  const isErr = (v: EvalResult): boolean => typeof v === "string" && FORMULA_ERRORS.has(v);
+  const ev = (i: number): EvalResult => evalNode(args[i], getCell, expandRange);
+  const asText = (v: EvalResult): string => (typeof v === "boolean" ? (v ? "TRUE" : "FALSE") : String(v));
+  const listOf = (arg: Node): EvalResult[] =>
+    arg.kind === "range" ? expandRange(arg.value) : arg.kind === "ref" ? [getCell(arg.value)] : [evalNode(arg, getCell, expandRange)];
+  const stripSheet = (ref: string): string => ref.slice(ref.lastIndexOf("!") + 1);
+
+  switch (node.name) {
+    case "CONCATENATE": {
+      const out: string[] = [];
+      for (const a of args) {
+        for (const v of listOf(a)) {
+          if (isErr(v)) return v;
+          out.push(asText(v));
+        }
+      }
+      return out.join("");
+    }
+    case "SUBSTITUTE": {
+      if (args.length < 3 || args.length > 4) return "#VALUE!";
+      const t = ev(0); if (isErr(t)) return t;
+      const o = ev(1); if (isErr(o)) return o;
+      const n = ev(2); if (isErr(n)) return n;
+      const text = asText(t); const oldText = asText(o); const newText = asText(n);
+      if (oldText === "") return text;
+      if (args[3]) {
+        const inst = operandNumber(ev(3));
+        if (inst === "#VALUE!") return "#VALUE!";
+        const k = Math.trunc(inst);
+        if (k < 1) return "#VALUE!";
+        let from = 0; let found = 0;
+        while (true) {
+          const idx = text.indexOf(oldText, from);
+          if (idx === -1) return text;
+          found += 1;
+          if (found === k) return text.slice(0, idx) + newText + text.slice(idx + oldText.length);
+          from = idx + oldText.length;
+        }
+      }
+      return text.split(oldText).join(newText);
+    }
+    case "FIND":
+    case "SEARCH": {
+      if (args.length < 2 || args.length > 3) return "#VALUE!";
+      const f = ev(0); if (isErr(f)) return f;
+      const w = ev(1); if (isErr(w)) return w;
+      const findText = asText(f); const within = asText(w);
+      let start = 1;
+      if (args[2]) {
+        const st = operandNumber(ev(2));
+        if (st === "#VALUE!") return "#VALUE!";
+        start = Math.trunc(st);
+      }
+      if (start < 1 || start > within.length + 1) return "#VALUE!";
+      if (node.name === "FIND") {
+        const idx = within.indexOf(findText, start - 1);
+        return idx === -1 ? "#VALUE!" : idx + 1;
+      }
+      let pattern = "";
+      for (let k = 0; k < findText.length; k++) {
+        const c = findText[k];
+        if (c === "~" && /[*?~]/.test(findText[k + 1] ?? "")) pattern += "\\" + findText[++k];
+        else if (c === "*") pattern += "[\\s\\S]*";
+        else if (c === "?") pattern += "[\\s\\S]";
+        else pattern += c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+      }
+      const re = new RegExp(pattern, "i");
+      const m = re.exec(within.slice(start - 1));
+      return m ? m.index + start : "#VALUE!";
+    }
+    case "PROPER": {
+      if (args.length !== 1) return "#VALUE!";
+      const v = ev(0); if (isErr(v)) return v;
+      return asText(v).replace(/\p{L}+/gu, (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+    }
+    case "VALUE": {
+      if (args.length !== 1) return "#VALUE!";
+      const v = ev(0); if (isErr(v)) return v;
+      if (typeof v === "number") return v;
+      if (typeof v === "boolean") return "#VALUE!";
+      if (v.trim() === "") return 0;
+      const n = strictNumber(v);
+      if (n !== null) return n;
+      const d = parseDateTextToSerial(v.trim());
+      return d !== null ? d : "#VALUE!";
+    }
+    case "AVERAGEIF": {
+      if (args.length < 2 || args.length > 3) return "#VALUE!";
+      if (args[0].kind !== "range" && args[0].kind !== "ref") return "#VALUE!";
+      const avgArg = args[2] ?? args[0];
+      if (avgArg.kind !== "range" && avgArg.kind !== "ref") return "#VALUE!";
+      const criterion = ev(1); if (isErr(criterion)) return criterion;
+      const tested = listOf(args[0]); const averaged = listOf(avgArg);
+      const len = Math.max(tested.length, averaged.length);
+      let total = 0; let count = 0;
+      for (let i = 0; i < len; i++) {
+        if (!matchesCriterion(tested[i] ?? "", criterion)) continue;
+        const a = averaged[i] ?? "";
+        if (isErr(a)) return a;
+        if (typeof a === "number" && Number.isFinite(a)) { total += a; count += 1; }
+      }
+      return count === 0 ? "#DIV/0!" : cleanNumber(total / count);
+    }
+    case "AVERAGEIFS": {
+      if (args.length < 3 || (args.length - 1) % 2 !== 0) return "#VALUE!";
+      const avgVals = listOf(args[0]);
+      const pairs: Array<[EvalResult[], EvalResult]> = [];
+      for (let i = 1; i < args.length; i += 2) {
+        const range = listOf(args[i]);
+        const crit = ev(i + 1); if (isErr(crit)) return crit;
+        pairs.push([range, crit]);
+      }
+      let total = 0; let count = 0;
+      for (let i = 0; i < avgVals.length; i++) {
+        if (!pairs.every(([range, crit]) => matchesCriterion(range[i] ?? "", crit))) continue;
+        const a = avgVals[i];
+        if (isErr(a)) return a;
+        if (typeof a === "number" && Number.isFinite(a)) { total += a; count += 1; }
+      }
+      return count === 0 ? "#DIV/0!" : cleanNumber(total / count);
+    }
+    case "SUMPRODUCT": {
+      if (args.length < 1) return "#VALUE!";
+      const arrays = args.map((a) => listOf(a));
+      const len = arrays[0].length;
+      if (arrays.some((a) => a.length !== len)) return "#VALUE!";
+      let total = 0;
+      for (let i = 0; i < len; i++) {
+        let product = 1;
+        for (const arr of arrays) {
+          const v = arr[i];
+          if (isErr(v)) return v;
+          product *= typeof v === "number" && Number.isFinite(v) ? v : 0;
+        }
+        total += product;
+      }
+      return cleanNumber(total);
+    }
+    case "LARGE":
+    case "SMALL": {
+      if (args.length !== 2) return "#VALUE!";
+      const values = listOf(args[0]);
+      const bad = values.find(isErr); if (bad !== undefined) return bad;
+      const nums = values.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+      const kRaw = ev(1); if (isErr(kRaw)) return kRaw;
+      const k = operandNumber(kRaw);
+      if (k === "#VALUE!") return "#VALUE!";
+      const kk = Math.ceil(k);
+      if (kk < 1 || kk > nums.length) return "#NUM!";
+      const sorted = [...nums].sort((a, b) => (node.name === "LARGE" ? b - a : a - b));
+      return sorted[kk - 1];
+    }
+    case "RANK": {
+      if (args.length < 2 || args.length > 3) return "#VALUE!";
+      const nRaw = ev(0); if (isErr(nRaw)) return nRaw;
+      const target = operandNumber(nRaw);
+      if (target === "#VALUE!") return "#VALUE!";
+      if (args[1].kind !== "range" && args[1].kind !== "ref") return "#VALUE!";
+      const values = listOf(args[1]);
+      const bad = values.find(isErr); if (bad !== undefined) return bad;
+      const nums = values.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+      let ascending = false;
+      if (args[2]) {
+        const o = operandNumber(ev(2));
+        if (o === "#VALUE!") return "#VALUE!";
+        ascending = o !== 0;
+      }
+      if (!nums.some((v) => cleanNumber(v) === cleanNumber(target))) return "#N/A";
+      return nums.filter((v) => (ascending ? cleanNumber(v) < cleanNumber(target) : cleanNumber(v) > cleanNumber(target))).length + 1;
+    }
+    case "CEILING":
+    case "FLOOR": {
+      if (args.length < 1 || args.length > 2) return "#VALUE!";
+      const nRaw = ev(0); if (isErr(nRaw)) return nRaw;
+      const n = operandNumber(nRaw);
+      if (n === "#VALUE!") return "#VALUE!";
+      let sig = n < 0 ? -1 : 1;
+      if (args[1]) {
+        const sRaw = ev(1); if (isErr(sRaw)) return sRaw;
+        const sn = operandNumber(sRaw);
+        if (sn === "#VALUE!") return "#VALUE!";
+        sig = sn;
+      }
+      if (sig === 0) return node.name === "CEILING" ? 0 : "#DIV/0!";
+      if (n > 0 && sig < 0) return "#NUM!";
+      const q = cleanNumber(n / sig);
+      const r = (node.name === "CEILING" ? Math.ceil(q) : Math.floor(q)) * sig;
+      return cleanNumber(r === 0 ? 0 : r);
+    }
+    case "ISBLANK": {
+      if (args.length !== 1) return "#VALUE!";
+      if (args[0].kind !== "ref") return false;
+      return getCell(args[0].value) === "";
+    }
+    case "ISNUMBER": {
+      if (args.length !== 1) return "#VALUE!";
+      const v = ev(0);
+      return typeof v === "number" && Number.isFinite(v);
+    }
+    case "ROW":
+    case "COLUMN": {
+      if (args.length > 1) return "#VALUE!";
+      let key: string | null = null;
+      if (args.length === 0) key = currentEvalCellKey;
+      else if (args[0].kind === "ref") key = stripSheet(args[0].value);
+      else if (args[0].kind === "range") key = stripSheet(args[0].value).split(":")[0];
+      else return "#VALUE!";
+      const pos = key ? parseKey(key) : null;
+      if (!pos) {
+        // পুরো কলাম রেঞ্জ (যেমন B:B) এর জন্য COLUMN
+        if (node.name === "COLUMN" && key && /^[A-Za-z]{1,3}$/.test(key)) return letterToCol(key.toUpperCase()) + 1;
+        return "#VALUE!";
+      }
+      return node.name === "ROW" ? pos.row + 1 : pos.col + 1;
+    }
+    case "RAND": {
+      if (args.length !== 0) return "#VALUE!";
+      return Math.random();
+    }
+    case "PMT": {
+      if (args.length < 3 || args.length > 5) return "#VALUE!";
+      const vals: number[] = [];
+      for (let i = 0; i < 5; i++) {
+        if (!args[i]) { vals.push(0); continue; }
+        const raw = ev(i); if (isErr(raw)) return raw;
+        const n = operandNumber(raw);
+        if (n === "#VALUE!") return "#VALUE!";
+        vals.push(n);
+      }
+      const [rate, nper, pv, fv, typeRaw] = vals;
+      const type = typeRaw !== 0 ? 1 : 0;
+      if (nper === 0) return "#NUM!";
+      if (rate === 0) return cleanNumber(-(pv + fv) / nper);
+      const growth = Math.pow(1 + rate, nper);
+      const payment = -(rate * (fv + pv * growth)) / ((1 + rate * type) * (growth - 1));
+      return Number.isFinite(payment) ? cleanNumber(payment) : "#NUM!";
+    }
+    default:
+      return undefined;
+  }
+}
+
 function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange: (range: string) => EvalResult[]): EvalResult {
   switch (node.kind) {
     case "num":
@@ -3256,7 +3527,6 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
           const start = startRaw as number;
           const stepRaw = node.args[3] ? operandNumber(evalNode(node.args[3], getCell, expandRange)) : 1;
           if (stepRaw === "#VALUE!") return "#VALUE!";
-          const step = stepRaw as number;
           if (rows < 1 || cols < 1) return "#VALUE!";
           return start;
         }
@@ -3365,8 +3635,10 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
             ? cleanNumber(result)
             : "#VALUE!";
         }
-        default:
-          return "#NAME?";
+        default: {
+          const extraResult = evalExtraFunction(node, getCell, expandRange);
+          return extraResult === undefined ? "#NAME?" : extraResult;
+        }
       }
     }
     default:
@@ -3469,11 +3741,14 @@ function getCellValueInSheet(
     return out;
   };
   const previousContext = currentEvalContext;
+  const previousCellKey = currentEvalCellKey;
   currentEvalContext = { sheet: targetSheet, allSheets };
+  currentEvalCellKey = key;
   try {
     return evaluateFormula(raw.slice(1), getCell, expandRange);
   } finally {
     currentEvalContext = previousContext;
+    currentEvalCellKey = previousCellKey;
   }
 }
 
@@ -4075,6 +4350,62 @@ function calculatePredictiveAnalytics(
   };
 }
 
+// offsets[i] <= pos হয় এমন সর্ববৃহৎ i (বাইনারি সার্চ)
+function findIndexByOffset(offsets: number[], pos: number): number {
+  let lo = 0;
+  let hi = offsets.length - 2;
+  let ans = 0;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (offsets[mid] <= pos) {
+      ans = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return ans;
+}
+
+type HomeDataToolsMode = "export" | "backup";
+
+function HomeDataToolsDialog({mode,workbookName,sheetName,onClose,onXlsx,onCsv,onBackup,onRestore}:{
+  mode:HomeDataToolsMode;workbookName:string;sheetName:string;onClose:()=>void;
+  onXlsx:()=>Promise<void>;onCsv:()=>Promise<void>;onBackup:()=>Promise<void>;onRestore:()=>void;
+}) {
+  const dialogRef=useRef<HTMLDialogElement>(null);
+  const lock=useRef(false);
+  const [working,setWorking]=useState(false);
+  const [error,setError]=useState("");
+  useEffect(()=>{
+    const el=dialogRef.current;
+    if(el&&!el.open)el.showModal();
+    return()=>{if(el?.open)el.close();};
+  },[]);
+  async function perform(action:()=>Promise<void>){
+    if(lock.current)return;
+    lock.current=true;setWorking(true);setError("");
+    try{await action();}catch(e){setError(e instanceof Error?e.message:"ফাইলের কাজ সম্পন্ন হয়নি।");}
+    finally{lock.current=false;setWorking(false);}
+  }
+  const buttonClass="w-full rounded-xl border border-green-700/30 bg-green-50 px-4 py-3 text-left text-sm font-semibold text-green-950 hover:bg-green-100 focus-visible:outline-2 focus-visible:outline-green-700 disabled:cursor-wait disabled:opacity-50";
+  return <dialog ref={dialogRef} aria-labelledby="home-data-tools-title" onCancel={e=>{e.preventDefault();if(!lock.current)onClose();}} onKeyDown={e=>e.stopPropagation()} className="fixed inset-0 m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-lg overflow-auto rounded-2xl border border-green-700/30 bg-white p-6 text-slate-900 shadow-2xl backdrop:bg-black/50">
+    <header className="mb-4 flex items-center justify-between gap-4"><h2 id="home-data-tools-title" className="text-xl font-bold">{mode==="export"?"Export Data":"Backup & Restore"}</h2><button type="button" disabled={working} onClick={onClose} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50" aria-label="Close data tools">Close</button></header>
+    <p className="mb-2 .break-words text-sm">Current workbook: {workbookName||"Untitled Workbook"}</p>
+    <p className="mb-4 text-xs leading-5 text-slate-600">হোমস্ক্রিনে নয়, বর্তমানে মেমরিতে খোলা workbook-এর ডেটা ব্যবহার হবে। সংরক্ষিত অন্য workbook চাইলে আগে My Files / Recent Files থেকে খুলুন।</p>
+    <div className="space-y-3">
+    {mode==="export"&&<>
+      <button type="button" disabled={working} className={buttonClass} onClick={()=>void perform(onXlsx)}>Export Excel (.xlsx)<span className="mt-1 block text-xs font-normal">সব sheet — বিদ্যমান Excel exporter ব্যবহার করবে।</span></button>
+      <button type="button" disabled={working} className={buttonClass} onClick={()=>void perform(onCsv)}>Export CSV (.csv)<span className="mt-1 block text-xs font-normal">শুধু active sheet: {sheetName}. CSV-তে workbook formatting থাকে না।</span></button>
+    </>}
+    <button type="button" disabled={working} className={buttonClass} onClick={()=>void perform(onBackup)}>Download workbook backup (.json)<span className="mt-1 block text-xs font-normal">বর্তমান workbook-এর নিজস্ব JSON snapshot।</span></button>
+    {mode==="backup"&&<button type="button" disabled={working} className={buttonClass} onClick={()=>{if(!lock.current)onRestore();}}>Restore workbook backup (.json)<span className="mt-1 block text-xs font-normal">ফাইল নির্বাচন ও confirmation-এর পরে বর্তমান workbook প্রতিস্থাপিত হবে।</span></button>}
+    </div>
+    <p className="mt-4 text-xs leading-5 text-amber-800">এটি সব saved workbook, account settings, Photo Studio অথবা সম্পূর্ণ অ্যাপের backup নয়। Restore-এর আগে বর্তমান কাজের JSON backup রাখুন।</p>
+    <p role="status" aria-live="polite" className="mt-3 text-sm">{working?"ফাইল প্রস্তুত হচ্ছে… ডাউনলোড/সেভ ডায়ালগ এবং অ্যাপের notification দেখুন।":""}</p>
+    {error&&<p role="alert" className="mt-2 text-sm text-red-700">{error}</p>}
+  </dialog>;
+}
 
 export default function ExcelStudioPage() {
   const router = useRouter();
@@ -4111,6 +4442,11 @@ export default function ExcelStudioPage() {
     []
   );
   const [showHomeScreen, setShowHomeScreen] = useState(true);
+  const [homeDataTools,setHomeDataTools]=useState<HomeDataToolsMode|null>(null);
+  const homeDataInput=useRef<HTMLInputElement>(null);
+  const homeDataMode=useRef<"import"|"restore">("import");
+  const homeDataLoading=useRef(false);
+
   const [appLocale, setAppLocale] = useState<AppLocale>("en");
   const [rtlEnabled, setRtlEnabled] = useState(false);
   const [showChartWizard, setShowChartWizard] = useState(false);
@@ -4289,6 +4625,33 @@ export default function ExcelStudioPage() {
   const [showAutoSumMenu, setShowAutoSumMenu] = useState(false);
   const autoSumMenuRef = useRef<HTMLDivElement>(null);
   const [zoomLevel, setZoomLevel] = useState(100);
+  useLayoutEffect(() => {
+    const el = document.getElementById("awm-print-area");
+    if (!el) return;
+    const measure = () => {
+      const scale = Math.max(0.1, zoomLevel / 100);
+      const next = {
+        scrollTop: el.scrollTop / scale, scrollLeft: el.scrollLeft / scale,
+        clientHeight: el.clientHeight / scale, clientWidth: el.clientWidth / scale,
+      };
+      setViewport(prev => prev.scrollTop === next.scrollTop &&
+        prev.scrollLeft === next.scrollLeft && prev.clientHeight === next.clientHeight &&
+        prev.clientWidth === next.clientWidth ? prev : next);
+    };
+    measure();
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    observer?.observe(el);
+    window.addEventListener("resize", measure, { passive: true });
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+      if (scrollRafRef.current !== null) {
+        cancelAnimationFrame(scrollRafRef.current);
+        scrollRafRef.current = null;
+      }
+    };
+  }, [zoomLevel, activeSheetIndex, showHomeScreen, showLoadDialog]);
+
   const [darkMode, setDarkMode] = useState(false);
   const [showStatusBar, setShowStatusBar] = useState(true);
   const [displayGrouping, setDisplayGrouping] = useState<DisplayGrouping>(DISPLAY_SETTINGS.grouping);
@@ -4575,7 +4938,6 @@ export default function ExcelStudioPage() {
     });
   }, [activeCell]);
   const getRawValue = useCallback((key: string) => sheet.cells[key]?.value ?? "", [sheet.cells]);
-  const formulaBar = getRawValue(activeCell);
 
   // Each top-level formula evaluation gets a local cache. This avoids mutating refs
   // during React render while still preventing repeated work inside nested formulas.
@@ -4642,7 +5004,14 @@ export default function ExcelStudioPage() {
           return output;
         };
 
-        const result = evaluateFormula(raw.slice(1), getCell, expandRange);
+        const previousCellKey = currentEvalCellKey;
+        currentEvalCellKey = targetKey;
+        let result: EvalResult;
+        try {
+          result = evaluateFormula(raw.slice(1), getCell, expandRange);
+        } finally {
+          currentEvalCellKey = previousCellKey;
+        }
         evaluationCache.set(visitKey, result);
         return result;
       };
@@ -4714,7 +5083,11 @@ export default function ExcelStudioPage() {
 
   // ২০০ কলামের মধ্যে শুধু স্ক্রিনে দেখা যাচ্ছে এমন কলামগুলোই DOM-এ রেন্ডার হবে —
   // এটাই flicker/lag-এর মূল কারণ ঠিক করে (প্রতি রো-তে ২০০ সেলের বদলে ~৩০-৪০টা)
-  const virtualizeCols = sheet.gridCols > 40;
+  const hasColumnMerges = useMemo(
+    () => Object.values(sheet.cells).some(cell => (cell.colSpan || 1) > 1),
+    [sheet.cells]
+  );
+  const virtualizeCols = !hasColumnMerges && sheet.gridCols > 40;
 
   // প্রতিটা কলামের বাম-প্রান্তের cumulative (ক্রমযোজিত) পজিশন — colWidths/gridCols
   // বদলালে তবেই আবার হিসাব হবে, প্রতি স্ক্রলে না, তাই সস্তা
@@ -4722,10 +5095,10 @@ export default function ExcelStudioPage() {
     const offsets: number[] = new Array(sheet.gridCols + 1);
     offsets[0] = 0;
     for (let i = 0; i < sheet.gridCols; i++) {
-      offsets[i + 1] = offsets[i] + (sheet.colWidths[i] || DEFAULT_COL_WIDTH);
+      offsets[i + 1] = offsets[i] + (hiddenCols.has(i) ? 0 : sheet.colWidths[i] || DEFAULT_COL_WIDTH);
     }
     return offsets;
-  }, [sheet.gridCols, sheet.colWidths]);
+  }, [sheet.gridCols, sheet.colWidths, hiddenCols]);
 
   // scrollLeft অনুযায়ী কোন কলাম থেকে কোন কলাম পর্যন্ত ভিজিবল সেটা
   // বাইনারি সার্চ দিয়ে বের করা হচ্ছে (O(log n) — দ্রুত, স্ক্রলে lag করে না)
@@ -4734,7 +5107,7 @@ export default function ExcelStudioPage() {
 
   const visibleColRange = useMemo(() => {
     if (!virtualizeCols) return { start: 0, end: sheet.gridCols - 1 };
-    const BUFFER = 8; // স্ক্রলের সময় হালকা বাফার রাখা হলো যাতে ফাঁকা না দেখায়
+    const BUFFER = Math.max(12, Math.min(24, Math.ceil(viewport.clientWidth / DEFAULT_COL_WIDTH))); // স্ক্রলের সময় হালকা বাফার রাখা হলো যাতে ফাঁকা না দেখায়
 
     let lo = sheet.frozenCols, hi = sheet.gridCols - 1, startCol = sheet.frozenCols;
     while (lo <= hi) {
@@ -4745,7 +5118,7 @@ export default function ExcelStudioPage() {
 
     const rightEdge = viewport.scrollLeft + viewport.clientWidth;
     lo = startCol; hi = sheet.gridCols - 1;
-    let endCol = sheet.gridCols - 1;
+    let endCol = startCol;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
       if (colOffsets[mid] < rightEdge) { endCol = mid; lo = mid + 1; }
@@ -4761,8 +5134,7 @@ export default function ExcelStudioPage() {
   // স্ক্রিনে যে কলামগুলো দেখা যাবে তার তালিকা। virtualization চালু থাকলে:
   // [frozen কলাম..., -1 (বাম spacer), দৃশ্যমান কলাম..., -2 (ডান spacer)]
   const columns = useMemo(() => {
-    const all = Array.from({ length: sheet.gridCols }, (_, i) => i);
-    if (!virtualizeCols) return all;
+    if (!virtualizeCols) return Array.from({ length: sheet.gridCols }, (_, i) => i);
     const out: number[] = [];
     for (let i = 0; i < sheet.frozenCols && i < sheet.gridCols; i++) out.push(i);
     out.push(-1);
@@ -4776,13 +5148,11 @@ export default function ExcelStudioPage() {
   // বাদ পড়া কলামগুলোর মোট প্রস্থ (hidden কলাম বাদ দিয়ে)। spacer এই প্রস্থ নেবে
   const colSpacerWidths = useMemo(() => {
     if (!virtualizeCols) return { left: 0, right: 0 };
-    const widthOf = (i: number) => (hiddenCols.has(i) ? 0 : sheet.colWidths[i] || DEFAULT_COL_WIDTH);
-    let left = 0;
-    for (let i = sheet.frozenCols; i < visibleColRange.start; i++) left += widthOf(i);
-    let right = 0;
-    for (let i = visibleColRange.end + 1; i < sheet.gridCols; i++) right += widthOf(i);
-    return { left, right };
-  }, [virtualizeCols, hiddenCols, sheet.colWidths, sheet.frozenCols, sheet.gridCols, visibleColRange.start, visibleColRange.end]);
+    return {
+      left: Math.max(0, colOffsets[visibleColRange.start] - colOffsets[sheet.frozenCols]),
+      right: Math.max(0, colOffsets[sheet.gridCols] - colOffsets[visibleColRange.end + 1]),
+    };
+  }, [virtualizeCols, colOffsets, sheet.frozenCols, sheet.gridCols, visibleColRange.start, visibleColRange.end]);
 
   const selectedRangeText = useMemo(() => {
     const r1 = Math.min(selection.r1, selection.r2);
@@ -7002,19 +7372,61 @@ export default function ExcelStudioPage() {
     };
   }, [selectionCells, getCellValue, selection]);
 
+
   const hasRowMerges = useMemo(() => Object.values(sheet.cells).some((c) => (c.rowSpan || 1) > 1), [sheet.cells]);
   const virtualizeRows = !hasRowMerges && sheet.gridRows > 150;
+  const ROW_BUFFER = Math.max(20, Math.min(64, Math.ceil(viewport.clientHeight / DEFAULT_ROW_HEIGHT)));
+
+  // প্রতিটি রোর বাম-প্রান্তের ক্রমযোজিত অফসেট (hidden রো = ০ উচ্চতা)
+  const rowOffsets = useMemo(() => {
+    const o = new Array<number>(sheet.gridRows + 1);
+    o[0] = 0;
+    for (let i = 0; i < sheet.gridRows; i++) {
+      o[i + 1] = o[i] + (hiddenRows.has(i) ? 0 : sheet.rowHeights[i] || DEFAULT_ROW_HEIGHT);
+    }
+    return o;
+  }, [sheet.gridRows, sheet.rowHeights, hiddenRows]);
+
   const visibleRowRange = useMemo(() => {
     if (!virtualizeRows) return { start: 0, end: sheet.gridRows - 1 };
-    const rowH = DEFAULT_ROW_HEIGHT;
-    // বাফার ১০ থেকে বাড়িয়ে ১৫ করা হলো — স্ক্রল করার সময় আশেপাশের রো আগে থেকেই
-    // রেন্ডার হয়ে থাকে, ফলে দ্রুত স্ক্রলে ফাঁকা মুহূর্ত/flicker কম হয়
-    const start = Math.max(sheet.frozenRows, Math.floor(viewport.scrollTop / rowH) - 15);
-    const end = Math.min(sheet.gridRows - 1, Math.ceil((viewport.scrollTop + viewport.clientHeight) / rowH) + 15);
-    return { start, end };
-  }, [virtualizeRows, viewport, sheet.gridRows, sheet.frozenRows]);
-  const topSpacerHeight = virtualizeRows ? Math.max(0, visibleRowRange.start - sheet.frozenRows) * DEFAULT_ROW_HEIGHT : 0;
-  const bottomSpacerHeight = virtualizeRows ? Math.max(0, sheet.gridRows - 1 - visibleRowRange.end) * DEFAULT_ROW_HEIGHT : 0;
+    const first = findIndexByOffset(rowOffsets, viewport.scrollTop);
+    const last = findIndexByOffset(rowOffsets, viewport.scrollTop + viewport.clientHeight);
+    return {
+      start: Math.max(sheet.frozenRows, first - ROW_BUFFER),
+      end: Math.min(sheet.gridRows - 1, last + ROW_BUFFER),
+    };
+  }, [virtualizeRows, rowOffsets, viewport.scrollTop, viewport.clientHeight, sheet.gridRows, sheet.frozenRows, ROW_BUFFER]);
+
+  const topSpacerHeight = virtualizeRows
+    ? Math.max(0, rowOffsets[visibleRowRange.start] - rowOffsets[sheet.frozenRows])
+    : 0;
+  const bottomSpacerHeight = virtualizeRows
+    ? Math.max(0, rowOffsets[sheet.gridRows] - rowOffsets[visibleRowRange.end + 1])
+    : 0;
+
+  // শুধু যে রোগুলো আসলে রেন্ডার হবে
+  const renderRows = useMemo(() => {
+    if (!virtualizeRows) return rowsArr;
+    const out: number[] = [];
+    for (let i = 0; i < sheet.frozenRows; i++) out.push(i);
+    for (let i = Math.max(visibleRowRange.start, sheet.frozenRows); i <= visibleRowRange.end; i++) out.push(i);
+    return out;
+  }, [virtualizeRows, rowsArr, sheet.frozenRows, visibleRowRange.start, visibleRowRange.end]);
+
+  // টেবিলের মোট প্রস্থ (hidden কলাম বাদে) — টেবিল-প্রস্থ স্থির রাখতে
+  const tableWidth = useMemo(() => {
+    let w = ROW_HEADER_WIDTH;
+    for (let i = 0; i < sheet.gridCols; i++) {
+      if (!hiddenCols.has(i)) w += sheet.colWidths[i] || DEFAULT_COL_WIDTH;
+    }
+    return w;
+  }, [sheet.gridCols, sheet.colWidths, hiddenCols]);
+
+  // কন্ডিশনাল ফরম্যাটিং রুলের রেঞ্জ একবারই পার্স হবে
+  const cfRulesParsed = useMemo(
+    () => (sheet.conditionalRules || []).map((rule) => ({ rule, nr: normalizeRange(rule.range) })),
+    [sheet.conditionalRules]
+  );
 
   const handleExportCsv = useCallback(async (): Promise<void> => {
     try {
@@ -7686,11 +8098,6 @@ export default function ExcelStudioPage() {
     showToast("Columns ungrouped.");
   };
 
-  const toggleColGroupCollapse = (id: string) => {
-    updateSheet((s) => ({
-      colGroups: (s.colGroups || []).map((group) => (group.id === id ? { ...group, collapsed: !group.collapsed } : group)),
-    }));
-  };
 
   const collapseAllGroups = () => {
     updateSheet((s) => {
@@ -8129,7 +8536,7 @@ export default function ExcelStudioPage() {
     setSelection({ r1: 0, c1: 0, r2: 0, c2: 0 });
     setShowTemplatesDialog(null);
     showToast(`New workbook created from "${tpl.name}".`);
-  }, [showToast, replaceWorkbookSheets, setSheets]);
+  }, [showToast, setSheets]);
 
   const handleApplyBuiltInTemplate = useCallback(
     (tpl: (typeof BUILT_IN_TEMPLATES)[number]) => {
@@ -10124,6 +10531,12 @@ export default function ExcelStudioPage() {
     setSavedMacros(loadMacrosFromStorage());
   }, [refreshRecentFromDevice]);
 
+  // Used only by the listener installed in the Effect below. Menu/UI events
+  // continue calling dispatchMenuAction directly.
+  const dispatchShortcutAction = useEffectEvent((action: string) => {
+    dispatchMenuAction(action);
+  });
+
   // refreshTick is intentionally a render trigger for the explicit Refresh action.
   // Do not clone predictiveResult in an effect: the clone does not recalculate analytics.
   useEffect(() => {
@@ -10177,7 +10590,7 @@ export default function ExcelStudioPage() {
               shortcutString.toUpperCase()
             ) {
               e.preventDefault();
-              dispatchMenuAction(item.action);
+              dispatchShortcutAction(item.action);
             }
           });
         });
@@ -10199,7 +10612,6 @@ export default function ExcelStudioPage() {
     };
   }, [
     activeMenuIndex,
-    dispatchMenuAction,
     showHomeScreen,
   ]);
 
@@ -10243,7 +10655,7 @@ export default function ExcelStudioPage() {
   const pageDims = PAGE_SIZES[pageSize] || PAGE_SIZES["A4"] || { w: 210, h: 297 };
   const pageWmm = orientation === "portrait" ? pageDims.w : pageDims.h;
 
-  const leftOffset = (col: number) => ROW_HEADER_WIDTH + Array.from({ length: col }, (_, i) => sheet.colWidths[i] || DEFAULT_COL_WIDTH).reduce((a, b) => a + b, 0);
+  const leftOffset = (col: number) => ROW_HEADER_WIDTH + colOffsets[col];
   const headerRowShadow = viewport.scrollTop > 0
     ? { boxShadow: "0 2px 4px rgba(0,0,0,0.12)" }
     : undefined;
@@ -10251,7 +10663,7 @@ export default function ExcelStudioPage() {
   const headerColShadow = viewport.scrollLeft > 0
     ? { boxShadow: "2px 0 4px rgba(0,0,0,0.12)" }
     : undefined;
-  const topOffset = (row: number) => HEADER_HEIGHT + Array.from({ length: row }, (_, i) => sheet.rowHeights[i] || DEFAULT_ROW_HEIGHT).reduce((a, b) => a + b, 0);
+  const topOffset = (row: number) => HEADER_HEIGHT + rowOffsets[row];
 
   const standardToolbarButtons: SpreadsheetToolbarButton[] = [
     {
@@ -10766,6 +11178,18 @@ export default function ExcelStudioPage() {
       ],
     }));
   };
+  function openHomeDataPicker(mode:"import"|"restore") {
+    if(homeDataLoading.current||localSaveInProgressRef.current){
+      showToast("চলমান ফাইলের কাজ শেষ হওয়া পর্যন্ত অপেক্ষা করুন।");return;
+    }
+    const input=homeDataInput.current;
+    if(!input)return;
+    homeDataMode.current=mode;
+    input.accept=mode==="restore"?".json":".xlsx,.xls,.csv,.json";
+    input.value="";
+    input.click();
+  }
+
   return (
     <div
       dir="ltr"
@@ -10777,11 +11201,36 @@ export default function ExcelStudioPage() {
       }
     >
 
+      <input ref={homeDataInput} type="file" accept=".xlsx,.xls,.csv,.json" className="hidden" aria-label="Import data or restore workbook backup"
+        onChange={async e=>{
+          const input=e.currentTarget,file=input.files?.[0],mode=homeDataMode.current;
+          if(!file)return;
+          if(homeDataLoading.current||localSaveInProgressRef.current){input.value="";showToast("অন্য ফাইলের কাজ চলছে।");return;}
+          const ext=file.name.split(".").pop()?.toLowerCase();
+          if(!(mode==="restore"?ext==="json":["xlsx","xls","csv","json"].includes(ext??""))){input.value="";window.alert("সমর্থিত workbook ফাইল নির্বাচন করুন।");return;}
+          if(!file.size||file.size>50*1024*1024){input.value="";window.alert("খালি ফাইল নয়; সর্বোচ্চ 50 MB ফাইল ব্যবহার করুন।");return;}
+          if(!window.confirm(mode==="restore"?"এই backup দিয়ে বর্তমান workbook প্রতিস্থাপিত হবে। Unsaved কাজ হারাবে। আগে backup রেখে থাকলে Continue করুন।":"এই ফাইল খুললে বর্তমান workbook-এর ডেটা প্রতিস্থাপিত বা পরিবর্তিত হতে পারে। Unsaved কাজ হারাতে পারে। Continue?")){input.value="";return;}
+          homeDataLoading.current=true;
+          try{
+            await onFileSelected(file);
+            setHomeDataTools(null);
+            setShowHomeScreen(false);
+          }catch(error){
+            window.alert(error instanceof Error?error.message:"ফাইল খোলা যায়নি।");
+          }finally{homeDataLoading.current=false;input.value="";}
+        }}/>
+      {homeDataTools&&<HomeDataToolsDialog mode={homeDataTools} workbookName={workbookName} sheetName={sheet.name}
+        onClose={()=>setHomeDataTools(null)} onXlsx={handleExportAlimxl} onCsv={handleExportCsv} onBackup={handleExportJsonBackup}
+        onRestore={()=>{setHomeDataTools(null);openHomeDataPicker("restore");}}/>}
+
       {/* START: ALIMXL HOME SCREEN */}
       {showHomeScreen && (
         <AlimxlHome
           templates={BUILT_IN_TEMPLATES}
           recentFiles={recentFiles}
+          onImportData={() => openHomeDataPicker("import")}
+          onExportData={() => setHomeDataTools("export")}
+          onBackupRestore={() => setHomeDataTools("backup")}
           onBlank={() => {
             if (
               !window.confirm(
@@ -11679,28 +12128,30 @@ export default function ExcelStudioPage() {
               const el = e.currentTarget;
               if (scrollRafRef.current !== null) return;
               scrollRafRef.current = requestAnimationFrame(() => {
-                setViewport({
-                  scrollTop: el.scrollTop,
-                  scrollLeft: el.scrollLeft,
-                  clientHeight: el.clientHeight,
-                  clientWidth: el.clientWidth,
-                });
                 scrollRafRef.current = null;
+                if (!el.isConnected) return;
+                // Coordinates must match the CSS-zoomed table's logical units.
+                const scale = Math.max(0.1, zoomLevel / 100);
+                const scrollTop = el.scrollTop / scale;
+                const scrollLeft = el.scrollLeft / scale;
+                const clientHeight = el.clientHeight / scale;
+                const clientWidth = el.clientWidth / scale;
+                setViewport((prev) =>
+                  prev.scrollTop === scrollTop && prev.scrollLeft === scrollLeft &&
+                  prev.clientHeight === clientHeight && prev.clientWidth === clientWidth
+                    ? prev : { scrollTop, scrollLeft, clientHeight, clientWidth }
+                );
               });
             }}
             className={`flex-1 overflow-auto bg-[#F3F2F1] relative awm-premium-scrollbar ${printPreview ? "mx-auto w-full max-w-6xl rounded-xl bg-white shadow-2xl" : ""}`}
-            style={{
-              // স্ক্রল-কন্টেইনারকে GPU লেয়ারে প্রমোট করা হচ্ছে, যাতে স্ক্রলের
-              // সময় sticky হেডার repaint-এ প্রভাবিত না হয় এবং ফ্লিকার না করে
-              willChange: "scroll-position",
-              contain: "layout style paint",
-            }}
+            style={{ overflowAnchor: "none", overscrollBehavior: "contain" }}
           >
             <table
               className="table-fixed text-sm bg-[#FFFFFF]"
               style={{
                 borderCollapse: "separate",
                 borderSpacing: 0,
+                width: tableWidth,
                 ...(zoomLevel !== 100 ? { zoom: zoomLevel / 100 } : {}),
               } as React.CSSProperties}
             >
@@ -11714,8 +12165,6 @@ export default function ExcelStudioPage() {
                       height: HEADER_HEIGHT,
                       ...(viewport.scrollLeft > 0 ? headerColShadow : {}),
                       ...(viewport.scrollTop > 0 ? headerRowShadow : {}),
-                      // কর্নার সেল সবসময় সবার উপরে থাকে — এটাও লেয়ার-প্রমোট করা হলো
-                      willChange: "transform",
                     }}
                   ></th>
 
@@ -11793,9 +12242,6 @@ export default function ExcelStudioPage() {
                             color: colMarked ? "#013706" : "#F8D150",
                             // ⬅️ সিলেক্ট করা কলাম হেডার এখন গাঢ় নীল (আগে ছিল সবুজ #107C10)
                             ...(viewport.scrollTop > 0 ? headerRowShadow : {}),
-                            // হেডারকে নিজস্ব compositor layer-এ রাখা হচ্ছে — নিচের
-                            // সেলগুলো রি-রেন্ডার হলেও হেডার আলাদা লেয়ার হওয়ায় ফ্লিকার করবে না
-                            willChange: "transform",
                           }}
                         >
                           <div className="flex items-center justify-center gap-1">
@@ -11848,16 +12294,17 @@ export default function ExcelStudioPage() {
                   </tr>
                 )}
                 {/* Row render helpers read refs without mutating them. */}
-                {rowsArr.map((r) => {
+                {renderRows.map((r) => {
                   if (hiddenRows.has(r)) return null;
                   if (virtualizeRows && r >= sheet.frozenRows && (r < visibleRowRange.start || r > visibleRowRange.end)) return null;
                   const isGroupHeader = sheet.groups.find((g) => g.start === r);
                   const rowFrozen = r < sheet.frozenRows;
                   const rowMarked = r >= Math.min(selection.r1, selection.r2) && r <= Math.max(selection.r1, selection.r2);
+                  const rowH = sheet.rowHeights[r] || DEFAULT_ROW_HEIGHT;
                   return (
 
 
-                    <tr key={r} style={{ height: sheet.rowHeights[r] || DEFAULT_ROW_HEIGHT }}>
+                    <tr key={r} style={{ height: rowH }}>
                       <td
                         data-row-header={r}
                         onMouseDown={(e) => {
@@ -11893,8 +12340,6 @@ export default function ExcelStudioPage() {
                           color: rowMarked ? "#013706" : "#F8D150",
                           // ⬅️ কলামের সাথে মিলিয়ে রো হেডারও নীল করা হলো
                           ...(viewport.scrollLeft > 0 ? headerColShadow : {}),
-                          // একই কারণে রো-হেডারকেও আলাদা লেয়ারে প্রমোট করা হলো
-                          willChange: "transform",
                         }}
                       >
 
@@ -11974,14 +12419,16 @@ export default function ExcelStudioPage() {
                             c >= Math.min(fillPreview.c1, fillPreview.c2) &&
                             c <= Math.max(fillPreview.c1, fillPreview.c2);
 
-                          const cfMatch = (sheet.conditionalRules || []).find((rule) => {
-                            const nr = normalizeRange(rule.range);
-                            if (!nr) return false;
-                            if (r < nr.r1 || r > nr.r2 || c < nr.c1 || c > nr.c2) return false;
-                            return evaluateConditionalRule(rule, getCellValue(key));
-                          });
-
                           const cellRawResult = getCellValue(key);
+                          const cfMatch = cfRulesParsed.find(
+                            ({ rule, nr }) =>
+                              nr &&
+                              r >= nr.r1 && r <= nr.r2 &&
+                              c >= nr.c1 && c <= nr.c2 &&
+                              evaluateConditionalRule(rule, cellRawResult)
+                          )?.rule;
+                          const displayText = formatDisplayValue(cellRawResult, style);
+
                           const isErrorValue =
                             typeof cellRawResult === "string" &&
                             !!data?.value?.startsWith("=") &&
@@ -12040,8 +12487,8 @@ export default function ExcelStudioPage() {
                                 width: sheet.colWidths[c] || DEFAULT_COL_WIDTH,
                                 minWidth: sheet.colWidths[c] || DEFAULT_COL_WIDTH,
                                 maxWidth: sheet.colWidths[c] || DEFAULT_COL_WIDTH,
-                                height: "auto",
-                                minHeight: sheet.rowHeights[r] || DEFAULT_ROW_HEIGHT,
+                                height: rowH,
+                                minHeight: rowH,
                                 backgroundColor: finalCellBg, // ⬅️ এখন blend করা কালার থেকে আসছে (ধাপ ২-এ হিসাব করা)
                                 color: isErrorValue ? "#A80000" : cfMatch?.color || style?.color || "#000000",
                                 fontFamily: style?.fontFamily,
@@ -12174,7 +12621,7 @@ export default function ExcelStudioPage() {
                                 />
                               ) : data?.image ? (
 
-                                <Image src={data.image} alt="" width={800} height={600} unoptimized className="max-h-full max-w-full object-contain" />
+                                <Image src={data.image} alt="" width={800} height={600} unoptimized className="max-h-full max-w-full object-contain" style={{ maxHeight: virtualizeRows ? rowH - 10 : undefined }} />
 
 
 
@@ -12191,7 +12638,7 @@ export default function ExcelStudioPage() {
                                     unicodeBidi: "plaintext",
                                   }}
                                 >
-                                  {getDisplayValue(key) || data.hyperlink}
+                                  {displayText || data.hyperlink}
                                 </a>
 
                               ) : data?.validation ? (
@@ -12221,9 +12668,10 @@ export default function ExcelStudioPage() {
                                     direction: style?.textDirection || "ltr",
                                     unicodeBidi: "plaintext",
                                     textAlign: style?.align || (style?.textDirection === "rtl" ? "right" : "left"),
+                                    maxHeight: virtualizeRows ? rowH - 10 : undefined,
                                   }}
                                 >
-                                  {getDisplayValue(key)}
+                                  {displayText}
 
                                 </span>
                               )}
@@ -13736,6 +14184,15 @@ export default function ExcelStudioPage() {
         </Modal>
       )}
 
+      <RecoveryDrafts
+        workbook={buildWorkbookSnapshot()}
+        enabled={!showHomeScreen}
+        onRecovered={() => {
+          void refreshRecentFromDevice();
+          setShowLoadDialog(true);
+        }}
+      />
+
       <MyFiles
         open={showLoadDialog}
         activeWorkbookId={workbookId}
@@ -14801,34 +15258,7 @@ function rgbToHex(r: number, g: number, b: number): string {
   return `#${[clamp(r), clamp(g), clamp(b)].map((v) => v.toString(16).padStart(2, "0")).join("")}`.toUpperCase();
 }
 
-// RGB থেকে HSL (Hue, Saturation, Lightness)-এ রূপান্তর করে
-function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: number } {
-  r /= 255; g /= 255; b /= 255;
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  let h = 0, s = 0;
-  const l = (max + min) / 2;
-  const d = max - min;
-  if (d !== 0) {
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    switch (max) {
-      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-      case g: h = (b - r) / d + 2; break;
-      default: h = (r - g) / d + 4; break;
-    }
-    h *= 60;
-  }
-  return { h: Math.round(h), s: Math.round(s * 100), l: Math.round(l * 100) };
-}
 
-// HSL থেকে HEX-এ রূপান্তর করে
-function hslToHex(h: number, s: number, l: number): string {
-  s /= 100; l /= 100;
-  const k = (n: number) => (n + h / 30) % 12;
-  const a = s * Math.min(l, 1 - l);
-  const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
-  return rgbToHex(255 * f(0), 255 * f(8), 255 * f(4));
-}
 
 // বেস কালারের (সেলের নিজস্ব ব্যাকগ্রাউন্ড) উপর একটা স্বচ্ছ (rgba) কালার
 // "ব্লেন্ড" করে একটামাত্র solid হেক্স কালার বানায় — এভাবে backgroundColor
@@ -17540,7 +17970,7 @@ function betaInc(a: number, b: number, x: number): number {
   let d = 0;
   for (let i = 0; i <= 300; i++) {
     const m = Math.floor(i / 2);
-    let numerator = i % 2 === 0 ? (m * (b - m) * x) / ((a + 2 * m - 1) * (a + 2 * m)) : -((a + m) * (a + b + m) * x) / ((a + 2 * m) * (a + 2 * m + 1));
+    const numerator = i % 2 === 0 ? (m * (b - m) * x) / ((a + 2 * m - 1) * (a + 2 * m)) : -((a + m) * (a + b + m) * x) / ((a + 2 * m) * (a + 2 * m + 1));
     d = 1 + numerator * d;
     if (Math.abs(d) < 1e-30) d = 1e-30;
     d = 1 / d;

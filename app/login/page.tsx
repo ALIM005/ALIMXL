@@ -2,11 +2,13 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowLeft, Eye, EyeOff, FileSpreadsheet, LoaderCircle, LockKeyhole, Mail, UserRound } from "lucide-react";
 
 type Mode = "login" | "register" | "forgot" | "reset";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [mode, setMode] = useState<Mode>("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -18,26 +20,29 @@ export default function LoginPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    // Supabase sends the recovery link back to /login#access_token=...&type=recovery
-    // (older links used ?reset=TOKEN, still supported).
-    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-    const query = new URLSearchParams(window.location.search);
-    const hashError = hash.get("error_description");
-    const accessToken = hash.get("access_token");
-    const legacyToken = query.get("reset");
-
-    if (accessToken && hash.get("type") === "recovery") {
-      setToken(accessToken);
-      setMode("reset");
-      window.history.replaceState({}, "", "/login"); // keep the token out of the address bar/history
-    } else if (legacyToken) {
-      setToken(legacyToken);
-      setMode("reset");
-      window.history.replaceState({}, "", "/login");
-    } else if (hashError) {
-      setError(hashError.replace(/\+/g, " ") || "রিসেট লিংকটি মেয়াদোত্তীর্ণ বা অবৈধ। নতুন লিংক নিন।");
-      window.history.replaceState({}, "", "/login");
-    }
+    const timer = window.setTimeout(() => {
+      // Supabase sends the recovery link back to /login#access_token=...&type=recovery
+      // (older links used ?reset=TOKEN, still supported).
+      const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+      const query = new URLSearchParams(window.location.search);
+      const hashError = hash.get("error_description");
+      const accessToken = hash.get("access_token");
+      const legacyToken = query.get("reset");
+  
+      if (accessToken && hash.get("type") === "recovery") {
+        setToken(accessToken);
+        setMode("reset");
+        window.history.replaceState({}, "", "/login"); // keep the token out of the address bar/history
+      } else if (legacyToken) {
+        setToken(legacyToken);
+        setMode("reset");
+        window.history.replaceState({}, "", "/login");
+      } else if (hashError) {
+        setError(hashError.replace(/\+/g, " ") || "রিসেট লিংকটি মেয়াদোত্তীর্ণ বা অবৈধ। নতুন লিংক নিন।");
+        window.history.replaceState({}, "", "/login");
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -53,7 +58,7 @@ export default function LoginPage() {
         // Show a visible success message first, then open the workspace
         // (the profile menu in the top bar now shows the signed-in account).
         setMessage(mode === "register" ? "অ্যাকাউন্ট তৈরি হয়েছে। সফলভাবে লগইন হয়েছে! হোমে নেওয়া হচ্ছে…" : "সফলভাবে লগইন হয়েছে! হোমে নেওয়া হচ্ছে…");
-        window.setTimeout(() => window.location.assign("/"), 1200);
+        window.setTimeout(() => { router.push("/"); router.refresh(); }, 1200);
         return; // keep the button busy until the redirect
       }
       setMessage(data.message || "সফল হয়েছে।");

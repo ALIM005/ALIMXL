@@ -9,9 +9,14 @@ import {
 
 import {
     deleteLocalWorkbook,
+    getLocalWorkbook,
+    saveLocalWorkbook,
     listLocalWorkbooks,
     type LocalWorkbookSummary,
 } from "../lib/local-workbooks";
+
+import { createBackupText, parseBackupText, MAX_BACKUP_BYTES } from "../lib/workbook-backup.mjs";
+import { sanitizeFileName } from "../lib/device-files";
 
 interface MyFilesProps {
     open: boolean;
@@ -53,6 +58,8 @@ export default function MyFiles({
     );
     const [error, setError] = useState("");
 
+    const [notice, setNotice] = useState("");
+    const restoreInput = useRef<HTMLInputElement>(null);
     const requestVersion = useRef(0);
     const actionLock = useRef(false);
 
@@ -158,6 +165,58 @@ export default function MyFiles({
                     "ওয়ার্কবুক খোলা যায়নি।"
                 )
             );
+        } finally {
+            actionLock.current = false;
+            setBusyId(null);
+        }
+    }
+
+    async function handleBackup(file: LocalWorkbookSummary) {
+        if (actionLock.current) return;
+        actionLock.current = true;
+        setBusyId(file.id);
+        setError("");
+        setNotice("");
+        try {
+            const workbook = await getLocalWorkbook(file.id);
+            if (!workbook) throw new Error("ওয়ার্কবুকটি পাওয়া যায়নি।");
+            const backup = await createBackupText(workbook);
+            const url = URL.createObjectURL(new Blob([backup], { type: "application/json;charset=utf-8" }));
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = sanitizeFileName(`${file.name}.alimxl-backup.json`);
+            link.style.display = "none";
+            try {
+                document.body.appendChild(link);
+                link.click();
+            } finally {
+                link.remove();
+                window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+            }
+            setNotice("ব্যাকআপ ডাউনলোডের অনুরোধ পাঠানো হয়েছে। Downloads-এ ফাইলটি আছে কি না যাচাই করুন। শুধু সর্বশেষ সেভ করা ডেটা অন্তর্ভুক্ত।");
+        } catch (cause) {
+            setError(errorMessage(cause, "ব্যাকআপ তৈরি করা যায়নি।"));
+        } finally {
+            actionLock.current = false;
+            setBusyId(null);
+        }
+    }
+
+    async function handleRestore(file: File) {
+        if (actionLock.current) return;
+        actionLock.current = true;
+        setBusyId("__backup_restore__");
+        setError("");
+        setNotice("");
+        try {
+            if (file.size > MAX_BACKUP_BYTES) throw new Error("ব্যাকআপের সীমা ২৫ MiB।");
+            const workbook = await parseBackupText(await file.text());
+            if (!window.confirm(`"${workbook.name}" নতুন কপি হিসেবে ফিরিয়ে আনবেন? বর্তমান কাজ বা পুরোনো ফাইল বদলাবে না।`)) return;
+            const saved = await saveLocalWorkbook(workbook);
+            await refreshFiles();
+            setNotice(`"${saved.name}" নতুন কপি হিসেবে সেভ হয়েছে। তালিকা থেকে ওপেন করুন।`);
+        } catch (cause) {
+            setError(errorMessage(cause, "ব্যাকআপ ফিরিয়ে আনা যায়নি।"));
         } finally {
             actionLock.current = false;
             setBusyId(null);
@@ -271,6 +330,23 @@ export default function MyFiles({
                     </button>
                 </div>
 
+                <div className="border-b border-gray-200 px-5 py-3 text-sm">
+                    <input ref={restoreInput} type="file" accept=".json,application/json" className="hidden"
+                        aria-label="ALIMXL backup file"
+                        onChange={(event) => {
+                            const file = event.currentTarget.files?.[0];
+                            event.currentTarget.value = "";
+                            if (file) void handleRestore(file);
+                        }} />
+                    <button type="button" disabled={loading || busy}
+                        onClick={() => restoreInput.current?.click()}
+                        className="rounded-md border border-gray-300 px-3 py-2 disabled:opacity-50">
+                        ব্যাকআপ ফিরিয়ে আনুন
+                    </button>
+                    <p className="mt-2 text-xs text-gray-600">এই সংস্করণের ALIMXL backup ফাইল, সর্বোচ্চ ২৫ MiB। ফিরিয়ে আনলে নতুন কপি তৈরি হবে।</p>
+                </div>
+                {notice && <div role="status" className="mx-5 mt-3 rounded border border-green-200 bg-green-50 p-3 text-sm text-green-900">{notice}</div>}
+
                 {error && (
                     <div
                         role="alert"
@@ -321,6 +397,11 @@ export default function MyFiles({
                                             </div>
 
                                             <div className="flex shrink-0 gap-2">
+                                                <button type="button" disabled={busy || loading}
+                                                    onClick={() => void handleBackup(file)}
+                                                    className="rounded-md border border-gray-300 px-3 py-2 text-sm disabled:opacity-50">
+                                                    ব্যাকআপ
+                                                </button>
                                                 <button
                                                     type="button"
                                                     disabled={busy}

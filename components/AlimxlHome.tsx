@@ -117,7 +117,7 @@ interface NavItem {
   active?: boolean;
   disabled?: boolean;
   hint?: string;
-  onClick: () => void;
+
 }
 
 interface AssetImageProps {
@@ -569,6 +569,30 @@ function TemplateArtwork({
 /* Main Home component                                                        */
 /* -------------------------------------------------------------------------- */
 
+function HomeNavigation({ items, onSelect }: {
+  items: readonly NavItem[];
+  onSelect: (key: string) => void;
+}) {
+  return <>{items.map((item) => {
+    const Icon = item.icon;
+    return (
+      <button
+        key={item.key}
+        type="button"
+        title={item.hint ?? item.label}
+        className={item.active ? "is-active" : ""}
+        aria-current={item.active ? "page" : undefined}
+        disabled={item.disabled}
+        onClick={() => onSelect(item.key)}
+      >
+        <Icon size={23} strokeWidth={1.8} aria-hidden="true" />
+        <span>{item.label}</span>
+        {item.active && <ChevronRight size={18} className="axh-nav-arrow" aria-hidden="true" />}
+      </button>
+    );
+  })}</>;
+}
+
 function AlimxlHomeContent({
   templates,
   recentFiles,
@@ -577,7 +601,6 @@ function AlimxlHomeContent({
   onTemplate,
   onRecent,
   onMyFiles,
-  onContinue,
   hasUnsavedChanges = true,
   onTemplateSnapshot,
   onImportData,
@@ -588,7 +611,7 @@ function AlimxlHomeContent({
   templateImages,
   profileImageSrc,
   profileName = "User",
-  version = "1.0.0",
+  version = "4.0.0",
 }: AlimxlHomeProps) {
   const router = useRouter();
 
@@ -712,43 +735,35 @@ function AlimxlHomeContent({
     };
   }, []);
 
-  /* Load local Home preferences after hydration. */
+  /* Read browser-only preferences after hydration; cancel on unmount. */
   useEffect(() => {
-    if (/Mac|iPhone|iPad/i.test(navigator.userAgent)) {
-      setShortcutLabel("⌘ K");
-    }
-
-        const storedFavorites = readPreference(FAVORITES_KEY);
-
-    if (storedFavorites) {
-      try {
-        const parsed: unknown = JSON.parse(storedFavorites);
-
-        if (Array.isArray(parsed)) {
-          const validIds = parsed.filter(
-            (item): item is string => typeof item === "string"
-          );
-
-          setFavorites(Array.from(new Set(validIds)));
+    const timer = window.setTimeout(() => {
+      if (/Mac|iPhone|iPad/i.test(navigator.userAgent)) setShortcutLabel("⌘ K");
+      const storedFavorites = readPreference(FAVORITES_KEY);
+      if (storedFavorites) {
+        try {
+          const parsed: unknown = JSON.parse(storedFavorites);
+          if (Array.isArray(parsed)) {
+            const validIds = parsed.filter((item): item is string => typeof item === "string");
+            setFavorites(Array.from(new Set(validIds)));
+          }
+        } catch {
+          // Invalid preferences must not prevent opening Home.
         }
-      } catch {
-        // Malformed preferences must not block Home.
       }
-    }
-
-    setPreferencesReady(true);
+      setPreferencesReady(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
-  /* Save Home preferences, not workbook data. */
+  /* Persist the latest favorites after initialization, with cancellation. */
   useEffect(() => {
     if (!preferencesReady) return;
-
-    const savedFavorites = writePreference(
-      FAVORITES_KEY,
-      JSON.stringify(favorites)
-    );
-
-    setStorageWarning(!savedFavorites);
+    const timer = window.setTimeout(() => {
+      const savedFavorites = writePreference(FAVORITES_KEY, JSON.stringify(favorites));
+      setStorageWarning(!savedFavorites);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [favorites, preferencesReady]);
 
   /* Prefetch does not verify offline route availability. */
@@ -1043,116 +1058,41 @@ function AlimxlHomeContent({
       : []),
   ];
 
+  const handleNavigation = (key: string): void => {
+    switch (key) {
+      case "home": switchTab("home"); break;
+      case "new": switchTab("new"); break;
+      case "recent": switchTab("recent"); break;
+      case "templates": switchTab("templates"); break;
+      case "favorites": switchTab("favorites"); break;
+      case "open": void runAction(onOpen); break;
+      case "files": void runAction(onMyFiles); break;
+      case "photo": navigateToTool("/photo-studio"); break;
+      case "settings": navigateToTool("/settings"); break;
+      case "import": if (onImportData) void runAction(onImportData); break;
+      case "export": if (onExportData) void runAction(onExportData); break;
+      case "backup": if (onBackupRestore) void runAction(onBackupRestore); break;
+      case "help": if (onHelp) void runAction(onHelp); else setDialog("help"); break;
+    }
+  };
+
   const navigation: NavItem[] = [
-    {
-      key: "home",
-      label: "Home",
-      icon: HomeIcon,
-      active: tab === "home",
-      onClick: () => switchTab("home"),
-    },
-    {
-      key: "new",
-      label: "New Workbook",
-      icon: FilePlus,
-      active: tab === "new",
-      onClick: () => switchTab("new"),
-    },
-    {
-      key: "open",
-      label: "Open File",
-      icon: FolderOpen,
-      disabled: busy,
-      onClick: () => void runAction(onOpen),
-    },
-    {
-      key: "files",
-      label: "My Files",
-      icon: HardDrive,
-      disabled: busy,
-      onClick: () => void runAction(onMyFiles),
-    },
-    {
-      key: "recent",
-      label: "Recent Files",
-      icon: Clock,
-      active: tab === "recent",
-      onClick: () => switchTab("recent"),
-    },
-    {
-      key: "templates",
-      label: "Templates",
-      icon: LayoutGrid,
-      active: tab === "templates",
-      onClick: () => switchTab("templates"),
-    },
-    {
-      key: "favorites",
-      label: "Favorites",
-      icon: Star,
-      active: tab === "favorites",
-      onClick: () => switchTab("favorites"),
-    },
-    {
-      key: "photo",
-      label: "Photo Studio",
-      icon: ImageIcon,
-      disabled: busy,
-      onClick: () => navigateToTool("/photo-studio"),
-    },
-    {
-      key: "import",
-      label: "Import Data",
-      icon: Upload,
-      disabled: !onImportData || busy,
-      hint: onImportData
-        ? "Import Data"
-        : "Import handler is not connected",
-      onClick: () => {
-        if (onImportData) void runAction(onImportData);
-      },
-    },
-    {
-      key: "export",
-      label: "Export Data",
-      icon: Download,
-      disabled: !onExportData || busy,
-      hint: onExportData
-        ? "Export Data"
-        : "Export handler is not connected",
-      onClick: () => {
-        if (onExportData) void runAction(onExportData);
-      },
-    },
-    {
-      key: "backup",
-      label: "Backup & Restore",
-      icon: Database,
-      disabled: !onBackupRestore || busy,
-      hint: onBackupRestore
-        ? "Backup & Restore"
-        : "Backup handler is not connected",
-      onClick: () => {
-        if (onBackupRestore) void runAction(onBackupRestore);
-      },
-    },
-    {
-      key: "settings",
-      label: "Settings",
-      icon: Settings,
-      disabled: busy,
-      onClick: () => navigateToTool("/settings"),
-    },
-    {
-      key: "help",
-      label: "Help & Support",
-      icon: HelpCircle,
-      disabled: busy,
-      onClick: () => {
-        if (onHelp) void runAction(onHelp);
-        else setDialog("help");
-      },
-    },
+    { key: "home", label: "Home", icon: HomeIcon, active: tab === "home" },
+    { key: "new", label: "New Workbook", icon: FilePlus, active: tab === "new" },
+    { key: "open", label: "Open File", icon: FolderOpen, disabled: busy },
+    { key: "files", label: "My Files", icon: HardDrive, disabled: busy },
+    { key: "recent", label: "Recent Files", icon: Clock, active: tab === "recent" },
+    { key: "templates", label: "Templates", icon: LayoutGrid, active: tab === "templates" },
+    { key: "favorites", label: "Favorites", icon: Star, active: tab === "favorites" },
+    { key: "photo", label: "Photo Studio", icon: ImageIcon, disabled: busy },
+    { key: "import", label: "Import Data", icon: Upload, disabled: !onImportData || busy,
+      hint: onImportData ? "Import Data" : "Import handler is not connected" },
+    { key: "export", label: "Export Data", icon: Download, disabled: !onExportData || busy,
+      hint: onExportData ? "Export Data" : "Export handler is not connected" },
+    { key: "backup", label: "Backup & Restore", icon: Database, disabled: !onBackupRestore || busy,
+      hint: onBackupRestore ? "Backup & Restore" : "Backup handler is not connected" },
+    { key: "settings", label: "Settings", icon: Settings, disabled: busy },
+    { key: "help", label: "Help & Support", icon: HelpCircle, disabled: busy },
   ];
 
   const greeting =
@@ -1364,32 +1304,7 @@ function AlimxlHomeContent({
           </div>
 
           <nav className="axh-navigation" aria-label="Home navigation">
-            {navigation.map((item) => {
-              const Icon = item.icon;
-
-              return (
-                <button
-                  key={item.key}
-                  type="button"
-                  title={item.hint ?? item.label}
-                  className={item.active ? "is-active" : ""}
-                  aria-current={item.active ? "page" : undefined}
-                  disabled={item.disabled}
-                  onClick={item.onClick}
-                >
-                  <Icon size={23} strokeWidth={1.8} aria-hidden="true" />
-                  <span>{item.label}</span>
-
-                  {item.active && (
-                    <ChevronRight
-                      size={18}
-                      className="axh-nav-arrow"
-                      aria-hidden="true"
-                    />
-                  )}
-                </button>
-              );
-            })}
+            <HomeNavigation items={navigation} onSelect={handleNavigation} />
           </nav>
 
           <div className="axh-sidebar-edition">

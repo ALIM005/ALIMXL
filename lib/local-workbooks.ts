@@ -1,3 +1,5 @@
+import { prepareWorkbookForSave, validateStoredWorkbook } from "./workbook-integrity.mjs";
+
 const DB_NAME = "alimxl-local";
 const DB_VERSION = 1;
 const STORE_NAME = "workbooks";
@@ -57,6 +59,10 @@ function openDatabase(): Promise<IDBDatabase> {
 
       db.onversionchange = () => {
         db.close();
+        databasePromise = null;
+      };
+
+      db.onclose = () => {
         databasePromise = null;
       };
 
@@ -125,53 +131,19 @@ async function runRequest<T>(
   });
 }
 
-function validateWorkbook(value: LocalWorkbook): void {
-  if (!value || typeof value !== "object") {
-    throw new Error("ওয়ার্কবুকের ডেটা সঠিক নয়।");
-  }
-
-  if (
-    typeof value.name !== "string" ||
-    !value.name.trim()
-  ) {
-    throw new Error("ওয়ার্কবুকের নাম দিন।");
-  }
-
-  if (
-    !Array.isArray(value.sheets) ||
-    value.sheets.length === 0
-  ) {
-    throw new Error("অন্তত একটি শিট থাকতে হবে।");
-  }
-
-  if (
-    !Number.isInteger(value.activeSheetIndex) ||
-    value.activeSheetIndex < 0 ||
-    value.activeSheetIndex >= value.sheets.length
-  ) {
-    throw new Error("সক্রিয় শিটের অবস্থান সঠিক নয়।");
-  }
-
-  if (
-    !["A4", "Letter", "Legal"].includes(value.pageSize) ||
-    !["portrait", "landscape"].includes(value.orientation)
-  ) {
-    throw new Error("ওয়ার্কবুকের পেজ সেটিংস সঠিক নয়।");
-  }
-}
-
 export async function saveLocalWorkbook<T extends LocalWorkbook>(
   snapshot: T
 ): Promise<LocalWorkbookSummary> {
-  validateWorkbook(snapshot);
+  // Capture nested data before the first await; later UI edits cannot alter this save.
+  const captured = prepareWorkbookForSave(snapshot);
 
-  const id = snapshot.id?.trim() || crypto.randomUUID();
+  const id = captured.id?.trim() || crypto.randomUUID();
   const updatedAt = new Date().toISOString();
 
   const stored: StoredWorkbook<T> = {
-    ...snapshot,
+    ...captured,
     id,
-    name: snapshot.name.trim(),
+    name: captured.name.trim(),
     updatedAt,
   };
 
@@ -217,7 +189,7 @@ export async function getLocalWorkbook<T extends LocalWorkbook>(
     return null;
   }
 
-  validateWorkbook(item);
+  validateStoredWorkbook(item);
 
   return item;
 }

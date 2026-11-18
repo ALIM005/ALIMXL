@@ -66,11 +66,14 @@ export default function AccountMenu({
   }, []);
 
   useEffect(() => {
-    try {
-      setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone || "");
-    } catch {
-      setTimeZone("");
-    }
+    const timer = window.setTimeout(() => {
+      try {
+        setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone || "");
+      } catch {
+        setTimeZone("");
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   // Close on outside click / Escape.
