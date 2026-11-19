@@ -18,6 +18,8 @@ ALIMXL
 │  │  │  └─ reset-password
 │  │  │     └─ route.ts
 │  │  └─ route.ts
+│  ├─ dynamic-arrays
+│  │  └─ page.tsx
 │  ├─ favicon.ico
 │  ├─ globals.css
 │  ├─ layout.tsx
@@ -58,6 +60,9 @@ ALIMXL
 │  ├─ recovery-policy.d.mts
 │  ├─ recovery-policy.mjs
 │  ├─ recovery-store.ts
+│  ├─ spill-dependency.mjs
+│  ├─ spill-engine.mjs
+│  ├─ spill-functions.mjs
 │  ├─ workbook-backup.d.mts
 │  ├─ workbook-backup.mjs
 │  ├─ workbook-integrity.d.mts
@@ -79,6 +84,7 @@ ALIMXL
 │  ├─ formula-core.edge.test.mjs
 │  ├─ formula-core.integration.test.mjs
 │  ├─ formula-core.step2-functions.test.mjs
+│  ├─ formula-core.step3-functions.test.mjs
 │  ├─ formula-core.test.mjs
 │  ├─ recovery-policy.test.mjs
 │  ├─ workbook-backup.test.mjs

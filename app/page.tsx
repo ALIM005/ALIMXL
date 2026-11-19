@@ -7,6 +7,22 @@ import {
   evalMoreFunction as libEvalMoreFunction,
   rewriteDynamicArgs as libRewriteDynamicArgs,
 } from "../lib/formula-core.mjs";
+import {
+  evaluateSpillFunction,
+  isSpillFunction,
+} from "../lib/spill-functions.mjs";
+import {
+  isArrayResult,
+  writeSpill,
+  clearSpill,
+  clearSpillByAnchor,
+  createSpillRegistry,
+  createSpillHost,
+  SPILL_CIRCULAR_ERROR,
+} from "../lib/spill-engine.mjs";
+import {
+  createSpillDependencyManager,
+} from "../lib/spill-dependency.mjs";
 import Image from "next/image";
 import { createSignedScale, categoryCenter, barGeometry, collectChartRows, buildPieGroups, pieSlices } from "../lib/chart-geometry.mjs";
 import { useRouter } from "next/navigation";
@@ -304,6 +320,207 @@ interface SavedMacro {
   createdAt: string;
   updatedAt: string;
   actions: MacroAction[];
+}
+
+
+/* ==================== Dynamic Array Spill helpers ==================== */
+type SpillStatus = "disabled" | "enabled";
+interface SpillSettings { status: SpillStatus; allowSpillReferences: boolean; showSpillBorders: boolean; maxSpillCells: number; }
+interface SpillRange { sheetId: string; anchorRow: number; anchorCol: number; startRow: number; startCol: number; endRow: number; endCol: number; rows: number; cols: number; cellCount: number; }
+interface SpillArrayResult { values: EvalResult[][]; rows: number; cols: number; kind?: string; }
+const SPILL_SETTINGS_KEY = "alimxl_spill_settings";
+const DEFAULT_SPILL_SETTINGS: SpillSettings = { status: "enabled", allowSpillReferences: true, showSpillBorders: true, maxSpillCells: 1_000_000 };
+function loadSpillSettings(): SpillSettings {
+  if (typeof window === "undefined") return DEFAULT_SPILL_SETTINGS;
+  try {
+    const raw = window.localStorage.getItem(SPILL_SETTINGS_KEY);
+    if (!raw) return DEFAULT_SPILL_SETTINGS;
+    const parsed = JSON.parse(raw) as Partial<SpillSettings>;
+    return {
+      ...DEFAULT_SPILL_SETTINGS,
+      ...parsed,
+      maxSpillCells: typeof parsed.maxSpillCells === "number" && Number.isFinite(parsed.maxSpillCells)
+        ? Math.max(1, Math.min(1_000_000, Math.trunc(parsed.maxSpillCells)))
+        : DEFAULT_SPILL_SETTINGS.maxSpillCells,
+    };
+  } catch {
+    return DEFAULT_SPILL_SETTINGS;
+  }
+}
+function saveSpillSettings(settings: SpillSettings) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(SPILL_SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+    /* storage unavailable */
+  }
+}
+interface SpillBridgeContext {
+  sheet: WorkbookSheet;
+  allSheets: WorkbookSheet[];
+  visiting: Set<string>;
+  anchorSheetId: string;
+  anchorRow: number;
+  anchorCol: number;
+  anchorKey: string;
+  getCell: (reference: string) => EvalResult;
+  expandRange: (range: string) => EvalResult[];
+}
+interface SpillOutcome {
+  array?: SpillArrayResult;
+  error?: string;
+  refs: string[];
+}
+let currentSpillBridge: SpillBridgeContext | null = null;
+let currentSpillRootNode: Node | null = null;
+const pendingSpillWrites = new Map<string, {
+  sheetId: string;
+  row: number;
+  col: number;
+  array?: SpillArrayResult;
+  error?: string;
+  refs: string[];
+}>();
+function serializeFormulaNode(node: unknown): string {
+  if (!node || typeof node !== "object") return String(node ?? "");
+  const value = node as Record<string, unknown>;
+  switch (value.kind) {
+    case "num":
+    case "number":
+      return String(value.value ?? "");
+    case "str":
+    case "string":
+      return `"${String(value.value ?? "").replace(/"/g, '""')}"`;
+    case "bool":
+    case "boolean":
+      return value.value ? "TRUE" : "FALSE";
+    case "ref":
+    case "range":
+      return String(value.value ?? "");
+    case "neg":
+      return `-${serializeFormulaNode(value.node)}`;
+    case "bin":
+      return `${serializeFormulaNode(value.left)}${String(value.op ?? "")}${serializeFormulaNode(value.right)}`;
+    case "call":
+      return `${String(value.name ?? "")}(${(Array.isArray(value.args) ? value.args : []).map(serializeFormulaNode).join(",")})`;
+    default:
+      return typeof value.raw === "string" ? value.raw : "";
+  }
+}
+function shiftFormulaRows(formula: string, delta: number): string {
+  if (delta === 0) return formula;
+  return formula.replace(
+    /(^|[^$A-Za-z0-9_])([A-Za-z]{1,3})(\d+)/g,
+    (_match: string, boundary: string, letters: string, digits: string) =>
+      `${boundary}${letters}${Math.max(1, parseInt(digits, 10) + delta)}`
+  );
+}
+function extractCellReferences(formula: string): string[] {
+  const matches = formula.match(/(?:[A-Za-z0-9_ ]+!)?\$?[A-Za-z]{1,3}\$?\d+(?::\$?[A-Za-z]{1,3}\$?\d+)?/g);
+  return matches ? Array.from(new Set(matches)) : [];
+}
+function evaluateSpillFormula(functionName: string, args: string[], bridge: SpillBridgeContext): SpillOutcome {
+  const { sheet, allSheets, visiting, getCell, expandRange } = bridge;
+  const findSheet = (name: string): WorkbookSheet | undefined =>
+    allSheets.find((item) => sameSheetName(item.name, name));
+  const resolveReference = (reference: string) => {
+    const { sheetName, reference: localReference } = splitSheetReference(reference);
+    const target = sheetName ? findSheet(sheetName) : sheet;
+    return { target, reference: localReference };
+  };
+  const rangeToGrid = (rangeText: string): EvalResult[][] | null => {
+    const { target, reference } = resolveReference(rangeText);
+    if (!target) return null;
+    const normalized = normalizeRange(reference);
+    if (!normalized) return null;
+    const grid: EvalResult[][] = [];
+    for (let row = normalized.r1; row <= normalized.r2; row += 1) {
+      const gridRow: EvalResult[] = [];
+      for (let col = normalized.c1; col <= normalized.c2; col += 1) {
+        gridRow.push(getCellValueInSheet(target, cellKey(row, col), visiting, allSheets));
+      }
+      grid.push(gridRow);
+    }
+    return grid;
+  };
+  let lastGrid: EvalResult[][] = [];
+  const getGrid = (rangeText: string): EvalResult[][] => {
+    const grid = rangeToGrid(rangeText);
+    if (!grid) throw new Error("SPILL_RANGE_INVALID");
+    lastGrid = grid;
+    return grid;
+  };
+  const getValue = (expression: string): EvalResult =>
+    evaluateFormula(expression, getCell, expandRange);
+  const getArrayOrExpression = (expression: string): EvalResult[][] => {
+    const normalized = normalizeRange(expression);
+    if (normalized) {
+      const grid = rangeToGrid(expression);
+      if (!grid) throw new Error("SPILL_RANGE_INVALID");
+      return grid;
+    }
+    const rowCount = Math.max(1, lastGrid.length);
+    return Array.from({ length: rowCount }, (_unused: unknown, index: number) => [
+      evaluateFormula(shiftFormulaRows(expression, index), getCell, expandRange),
+    ]);
+  };
+  const refs = extractCellReferences(args.join(","));
+  try {
+    const result = evaluateSpillFunction(functionName, args, {
+      getGrid,
+      getValue,
+      getArrayOrExpression,
+    });
+  
+    if (typeof result === "string") {
+      return { error: result, refs };
+    }
+
+    if (result && typeof result === "object") {
+      const candidate = result as {
+        kind?: unknown;
+        value?: unknown;
+        values?: unknown;
+      };
+
+      if (candidate.kind === "scalar") {
+        const value = candidate.value;
+
+        if (
+          value !== null &&
+          value !== undefined &&
+          typeof value !== "string" &&
+          typeof value !== "number" &&
+          typeof value !== "boolean"
+        ) {
+          return { error: "#VALUE!", refs };
+        }
+
+        const scalarValue: EvalResult = value ?? "";
+
+        const arrayResult: SpillArrayResult = {
+          kind: "array",
+          rows: 1,
+          cols: 1,
+          values: [[scalarValue]],
+        };
+
+        return { array: arrayResult, refs };
+      }
+
+      if (isArrayResult(result)) {
+        return {
+          array: result as SpillArrayResult,
+          refs,
+        };
+      }
+    }
+
+    return { error: "#VALUE!", refs };
+
+  } catch {
+    return { error: SPILL_CIRCULAR_ERROR, refs };
+  }
 }
 
 function loadMacrosFromStorage(): SavedMacro[] {
@@ -2907,6 +3124,35 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
       return node.op === "+" || node.op === "-" ? cleanNumber(arithmetic) : arithmetic;
     }
     case "call": {
+      if (currentSpillBridge && isSpillFunction(String(node.name).toUpperCase())) {
+        const bridge = currentSpillBridge;
+        const spillName = String(node.name).toUpperCase();
+        // Match the parsed root node, not its lossy text serialization.
+        const isRootSpillCall = node === currentSpillRootNode;
+        const spillOutcome = evaluateSpillFormula(
+          spillName,
+          (node.args || []).map((arg) => serializeFormulaNode(arg)),
+          bridge
+        );
+        if (spillOutcome.error) return spillOutcome.error;
+        if (spillOutcome.array) {
+          const firstValue = spillOutcome.array.values?.[0]?.[0] ?? "";
+          if (isRootSpillCall) {
+            pendingSpillWrites.set(
+              `${bridge.anchorSheetId}!${bridge.anchorRow}:${bridge.anchorCol}`,
+              {
+                sheetId: bridge.anchorSheetId,
+                row: bridge.anchorRow,
+                col: bridge.anchorCol,
+                array: spillOutcome.array,
+                refs: spillOutcome.refs,
+              }
+            );
+          }
+          return firstValue === undefined || firstValue === null ? "" : (firstValue as EvalResult);
+        }
+        return "#VALUE!";
+      }
       const rewrittenCall = libRewriteDynamicArgs(node, getCell, expandRange, evalNode, currentEvalContext) as typeof node;
       if (rewrittenCall !== node) return evalNode(rewrittenCall, getCell, expandRange);
       const collect = () => {
@@ -3783,13 +4029,17 @@ let formulaEvalDepth = 0;
 
 function evaluateFormula(formula: string, getCell: (key: string) => EvalResult, expandRange: (range: string) => EvalResult[]): EvalResult {
   formulaEvalDepth += 1;
+  const previousSpillRootNode = currentSpillRootNode;
   try {
-    const result = evalNode(new FormulaParser(formula).parse(), getCell, expandRange);
+    const rootNode = new FormulaParser(formula).parse();
+    currentSpillRootNode = rootNode;
+    const result = evalNode(rootNode, getCell, expandRange);
     return typeof result === "number" ? cleanNumber(result) : result;
   } catch {
     return "#ERROR!";
   } finally {
     formulaEvalDepth -= 1;
+    currentSpillRootNode = previousSpillRootNode;
   }
 }
 
@@ -5051,7 +5301,213 @@ export default function ExcelStudioPage() {
       })
     );
   }, [activeSheetIndex, setSheets]);
-  // সারি/কলাম ঢোকানো-মোছার সময়: সেল সরানোর পাশাপাশি ওয়ার্কবুকের সব ফর্মুলার রেফারেন্সও ঠিক করে
+  // সারি/কলাম ঢোকানো-মোছার সময়
+  // ==================== Dynamic Array Spill Integration ====================
+  const [spillSettings, setSpillSettings] = useState<SpillSettings>(loadSpillSettings);
+  useEffect(() => {
+    saveSpillSettings(spillSettings);
+  }, [spillSettings]);
+  const spillRegistryRef = useRef<ReturnType<typeof createSpillRegistry>>(createSpillRegistry());
+  const spillDependencyManagerRef = useRef(createSpillDependencyManager());
+  const [spillRanges, setSpillRanges] = useState<SpillRange[]>([]);
+    const [spillCalculationStatus, setSpillCalculationStatus] = useState<{
+    sourceSheets: WorkbookSheet[] | null;
+    errors: Record<string, string>;
+  }>({
+    sourceSheets: null,
+    errors: {},
+  });
+  const spillRangeByCell = useMemo(() => {
+    const map = new Map<string, SpillRange>();
+    if (!spillSettings.showSpillBorders) return map;
+    for (const range of spillRanges) {
+      for (let row = range.startRow; row <= range.endRow; row += 1) {
+        for (let col = range.startCol; col <= range.endCol; col += 1) {
+          map.set(`${range.sheetId}!${row}:${col}`, range);
+        }
+      }
+    }
+    return map;
+  }, [spillRanges, spillSettings.showSpillBorders]);
+  useEffect(() => {
+        const nextSpillErrors: Record<string, string> = {};
+    const pending = Array.from(pendingSpillWrites.values());
+    pendingSpillWrites.clear();
+    const draft = structuredClone(sheets);
+    const registry = spillRegistryRef.current;
+    const manager = spillDependencyManagerRef.current;
+    const host = createSpillHost(
+      { sheets: draft, cellKey },
+      { spillRegistry: registry, spillDependencyManager: manager, onSpillChanged: () => {} }
+    ) as any;
+    if (spillSettings.status !== "enabled") {
+      let clearedAny = false;
+      for (const spill of registry.getAll()) {
+        clearSpill(spill as any, host);
+        clearedAny = true;
+      }
+      registry.clear();
+      manager.clear();
+      setSpillRanges([]);
+      if (clearedAny) {
+        setSheets(() => draft);
+      }
+      return;
+    }
+    const collectActiveSpillAnchors = () => {
+      const anchors = new Set<string>();
+      for (const currentSheet of draft) {
+        for (const [key, cell] of Object.entries(currentSheet.cells || {})) {
+          const raw = cell?.value ?? "";
+          if (!raw.startsWith("=")) continue;
+          const match = /^=\s*([A-Za-z_][A-Za-z0-9_.]*)\s*\(/.exec(raw);
+          if (!match || !isSpillFunction(match[1].toUpperCase())) continue;
+          const position = parseKey(key);
+          if (!position) continue;
+          anchors.add(`${currentSheet.id}!${position.row}:${position.col}`);
+        }
+      }
+      return anchors;
+    };
+    const activeAnchors = collectActiveSpillAnchors();
+    for (const entry of pending) {
+      const anchorMapKey = `${entry.sheetId}!${entry.row}:${entry.col}`;
+      const sourceSheet = draft.find((item) => item.id === entry.sheetId);
+      if (!sourceSheet) continue;
+      if (!entry.array) {
+        clearSpillByAnchor(entry.sheetId, entry.row, entry.col, host);
+        continue;
+      }
+      const cellCount = entry.array.rows * entry.array.cols;
+      const anchorRef = `${entry.sheetId}!${entry.row}:${entry.col}`;
+      if (cellCount > spillSettings.maxSpillCells || entry.refs.includes(anchorRef)) {
+        clearSpillByAnchor(entry.sheetId, entry.row, entry.col, host);
+        continue;
+      }
+      manager.removeDependencies(entry.sheetId, entry.row, entry.col);
+      for (const reference of entry.refs) {
+        const { sheetName, reference: localReference } = splitSheetReference(reference);
+        const targetSheet = sheetName
+          ? draft.find((item) => sameSheetName(item.name, sheetName))
+          : sourceSheet;
+        if (!targetSheet) continue;
+        const normalized = normalizeRange(localReference);
+        if (!normalized) continue;
+        for (let row = normalized.r1; row <= normalized.r2; row += 1) {
+          for (let col = normalized.c1; col <= normalized.c2; col += 1) {
+            manager.addDependency(entry.sheetId, entry.row, entry.col, targetSheet.id, row, col);
+          }
+        }
+      }
+      const plan = manager.planForCellChange(entry.sheetId, entry.row, entry.col);
+      if (Array.isArray(plan.circular) && plan.circular.length > 0) {
+        clearSpillByAnchor(entry.sheetId, entry.row, entry.col, host);
+        continue;
+      }
+      const writeResult = writeSpill(
+        { sheetId: entry.sheetId, row: entry.row, col: entry.col },
+        entry.array,
+        host
+      ) as any;
+         if (!writeResult || writeResult.ok !== true) {
+        const errorKey =
+          `${entry.sheetId}!${cellKey(entry.row, entry.col)}`;
+
+        nextSpillErrors[errorKey] =
+          typeof writeResult?.error === "string"
+            ? writeResult.error
+            : "#SPILL!";
+
+        clearSpillByAnchor(
+          entry.sheetId,
+          entry.row,
+          entry.col,
+          host
+        );
+
+        continue;
+      }
+      const spillRange = writeResult.spillRange as SpillRange | undefined;
+      if (spillRange) {
+        const changedCells: {
+          sheetId: string;
+          row: number;
+          col: number;
+          key: string;
+          previousValue: string;
+          newValue: string;
+        }[] = [];
+        for (let row = spillRange.startRow; row <= spillRange.endRow; row += 1) {
+          for (let col = spillRange.startCol; col <= spillRange.endCol; col += 1) {
+            const key = cellKey(row, col);
+            const previousValue = sheets.find((item) => item.id === spillRange.sheetId)?.cells?.[key]?.value ?? "";
+            const nextValue = host.getCell(spillRange.sheetId, key);
+            if (previousValue !== nextValue) {
+              changedCells.push({
+                sheetId: spillRange.sheetId,
+                row,
+                col,
+                key,
+                previousValue,
+                newValue: nextValue,
+              });
+            }
+          }
+        }
+        manager.registerSpill(spillRange, changedCells, host as any);
+      }
+      activeAnchors.add(anchorMapKey);
+    }
+    for (const spill of registry.getAll()) {
+      const anchorMapKey = `${spill.sheetId}!${spill.anchorRow}:${spill.anchorCol}`;
+      if (!activeAnchors.has(anchorMapKey)) {
+        clearSpill(spill as any, host);
+      }
+    }
+    const changedCells: {
+      sheetId: string;
+      row: number;
+      col: number;
+      key: string;
+      previousValue: string;
+      newValue: string;
+    }[] = [];
+    for (let index = 0; index < sheets.length; index += 1) {
+      const before = sheets[index];
+      const after = draft[index];
+      if (!before || !after) continue;
+      const keys = new Set([
+        ...Object.keys(before.cells || {}),
+        ...Object.keys(after.cells || {}),
+      ]);
+      for (const key of keys) {
+        const previousValue = before.cells?.[key]?.value ?? "";
+        const nextValue = after.cells?.[key]?.value ?? "";
+        if (previousValue === nextValue) continue;
+        const position = parseKey(key);
+        if (!position) continue;
+        changedCells.push({
+          sheetId: before.id,
+          row: position.row,
+          col: position.col,
+          key,
+          previousValue,
+          newValue: nextValue,
+        });
+      }
+    }
+     setSpillCalculationStatus({
+      sourceSheets: sheets,
+      errors: nextSpillErrors,
+    });
+
+    if (changedCells.length > 0) {
+      setSheets(() => draft);
+    }
+
+    setSpillRanges(registry.getAll() as SpillRange[]);
+  }, [sheets, spillSettings, setSheets]);
+ 
   const updateSheetStructural = useCallback(
     (patch: (s: WorkbookSheet) => Partial<WorkbookSheet>, change: StructuralChange) => {
       setSheets((prev) => {
@@ -5088,8 +5544,15 @@ export default function ExcelStudioPage() {
         currentVisiting: Set<string>,
         currentSheet: WorkbookSheet
       ): EvalResult => {
-        const cell = currentSheet.cells[targetKey];
-        const raw = cell?.value ?? "";
+         const cell = currentSheet.cells[targetKey];
+
+        const storedValue: unknown = cell?.value;
+        const raw: string =
+          storedValue === null || storedValue === undefined
+            ? ""
+            : typeof storedValue === "boolean"
+              ? (storedValue ? "TRUE" : "FALSE")
+              : String(storedValue);
 
         if (!raw) return "";
         if (cell?.style?.numberFormat === "text") return raw;
@@ -5139,26 +5602,59 @@ export default function ExcelStudioPage() {
 
         const previousCellKey = currentEvalCellKey;
         const previousEvalContext = currentEvalContext;
+        const previousSpillBridge = currentSpillBridge;
+        const anchorPosition = parseKey(targetKey);
         currentEvalCellKey = targetKey;
-        // [ধাপ ২] SUBTOTAL-এর লুকানো সারি ও পুরো-কলাম রেঞ্জের জন্য বর্তমান শিটের তথ্য
         currentEvalContext = { sheet: currentSheet, allSheets };
+        currentSpillBridge = anchorPosition
+          ? {
+              sheet: currentSheet,
+              allSheets,
+              visiting: currentVisiting,
+              anchorSheetId: currentSheet.id,
+              anchorRow: anchorPosition.row,
+              anchorCol: anchorPosition.col,
+              anchorKey: targetKey,
+              getCell,
+              expandRange,
+            }
+          : null;
         let result: EvalResult;
         try {
           result = evaluateFormula(raw.slice(1), getCell, expandRange);
         } finally {
           currentEvalCellKey = previousCellKey;
           currentEvalContext = previousEvalContext;
+           currentSpillBridge = previousSpillBridge;
         }
-        evaluationCache.set(visitKey, result);
+
+        if (
+          spillSettings.status === "enabled" &&
+          spillCalculationStatus.sourceSheets === allSheets
+        ) {
+          const errorKey = `${currentSheet.id}!${targetKey}`;
+          const spillError =
+            spillCalculationStatus.errors[errorKey];
+
+          if (spillError) {
+            result = spillError;
+          }
+        }
+
+             evaluationCache.set(visitKey, result);
         return result;
       };
 
       return resolveCellValue(key, visiting, activeSheet);
     },
-    [sheet, sheets, historyVersion]
+    [
+      sheet,
+      sheets,
+      historyVersion,
+      spillSettings.status,
+      spillCalculationStatus,
+    ]
   );
-
-
 
   const activePos = useMemo(() => parseKey(activeCell) || { row: 0, col: 0 }, [activeCell]);
 
@@ -12585,6 +13081,9 @@ export default function ExcelStudioPage() {
                           } else if (selected) {
                             finalCellBg = blendWithAlpha(baseCellBg, "#106EBE", 0.12);
                           }
+                          const spillRangeForCell = spillRangeByCell.get(
+                            `${sheet.id}!${r}:${c}`
+                          );
                           return (
 
                             <td
@@ -12619,6 +13118,7 @@ export default function ExcelStudioPage() {
                                     : "border-[#dfd9df]"
                                 } ${inFillPreview ? "outline-2 outline-dashed outline-[#15803D]" : ""
                                 } ${isTraced ? "ring-2 ring-inset ring-[#f006ec]" : ""
+                                } ${spillRangeForCell ? "ring-1 ring-inset ring-[#107C10]" : ""
                                 }`}
 
                               style={{
