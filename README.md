@@ -78,6 +78,7 @@ ALIMXL
 │  ├─ formula-core.all-functions.test.mjs
 │  ├─ formula-core.edge.test.mjs
 │  ├─ formula-core.integration.test.mjs
+│  ├─ formula-core.step2-functions.test.mjs
 │  ├─ formula-core.test.mjs
 │  ├─ recovery-policy.test.mjs
 │  ├─ workbook-backup.test.mjs

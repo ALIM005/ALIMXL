@@ -4,6 +4,7 @@
 import {
   syncExchangeRates as libSyncExchangeRates,
   getExchangeRate as libGetExchangeRate,
+  evalMoreFunction as libEvalMoreFunction,
 } from "../lib/formula-core.mjs";
 import Image from "next/image";
 import { createSignedScale, categoryCenter, barGeometry, collectChartRows, buildPieGroups, pieSlices } from "../lib/chart-geometry.mjs";
@@ -908,6 +909,48 @@ const FUNCTION_LIST: { name: string; usage: string; desc: string }[] = [
   { name: "COLUMN", usage: "COLUMN(C1)", desc: "Returns the column number of a reference (or of the current cell if omitted)." },
   { name: "RAND", usage: "RAND()", desc: "Returns a random number from 0 up to (not including) 1." },
   { name: "PMT", usage: "PMT(0.08/12,60,-250000)", desc: "Returns the periodic payment for a loan with constant payments and rate." },
+  { name: "INDEX", usage: "INDEX(B1:B10,3)", desc: "Returns the value at a given row (and column) of a range." },
+  { name: "MATCH", usage: "MATCH(\"cherry\",A1:A10,0)", desc: "Returns the position of a value in a range (0 = exact, 1 = largest ≤, -1 = smallest ≥)." },
+  { name: "HLOOKUP", usage: "HLOOKUP(20,A1:C2,2,FALSE)", desc: "Looks up a value in the top row and returns a value from a row below it." },
+  { name: "CHOOSE", usage: "CHOOSE(2,\"a\",\"b\",\"c\")", desc: "Returns the value at the given position from a list of values." },
+  { name: "DATE", usage: "DATE(2026,11,19)", desc: "Builds a date from year, month and day (overflow rolls over, e.g. month 14)." },
+  { name: "YEAR", usage: "YEAR(A1)", desc: "Returns the year of a date." },
+  { name: "MONTH", usage: "MONTH(A1)", desc: "Returns the month (1-12) of a date." },
+  { name: "DAY", usage: "DAY(A1)", desc: "Returns the day of the month of a date." },
+  { name: "WEEKDAY", usage: "WEEKDAY(A1,2)", desc: "Returns the day of the week (type 1: Sun=1, 2: Mon=1, 3: Mon=0, 11-17: other start days)." },
+  { name: "EOMONTH", usage: "EOMONTH(A1,1)", desc: "Returns the last day of the month, a number of months before or after a date." },
+  { name: "EDATE", usage: "EDATE(A1,3)", desc: "Returns the date a number of months before or after a date." },
+  { name: "DAYS", usage: "DAYS(B1,A1)", desc: "Returns the number of days between two dates (end, start)." },
+  { name: "DATEDIF", usage: "DATEDIF(A1,B1,\"Y\")", desc: "Difference between two dates in Y, M, D, YM, MD or YD units." },
+  { name: "COUNTBLANK", usage: "COUNTBLANK(A1:A10)", desc: "Counts empty cells in a range." },
+  { name: "MAXIFS", usage: "MAXIFS(B1:B10,A1:A10,\"x\")", desc: "Largest value among cells that meet all conditions." },
+  { name: "MINIFS", usage: "MINIFS(B1:B10,A1:A10,\"x\")", desc: "Smallest value among cells that meet all conditions." },
+  { name: "SUBTOTAL", usage: "SUBTOTAL(9,B1:B10)", desc: "Subtotal of a list: 1-11 (include) or 101-111 (ignore hidden rows); skips other SUBTOTAL cells." },
+  { name: "ISERROR", usage: "ISERROR(A1/B1)", desc: "TRUE if the value is any error." },
+  { name: "ISERR", usage: "ISERR(A1/B1)", desc: "TRUE if the value is an error other than #N/A." },
+  { name: "ISNA", usage: "ISNA(MATCH(A1,B:B,0))", desc: "TRUE if the value is the #N/A error." },
+  { name: "ISTEXT", usage: "ISTEXT(A1)", desc: "TRUE if the value is text." },
+  { name: "IFNA", usage: "IFNA(MATCH(A1,B:B,0),\"Not found\")", desc: "Returns a fallback value only when the result is #N/A." },
+  { name: "LOG", usage: "LOG(8,2)", desc: "Logarithm of a number to a given base (default 10)." },
+  { name: "LOG10", usage: "LOG10(1000)", desc: "Base-10 logarithm." },
+  { name: "LN", usage: "LN(2.718)", desc: "Natural logarithm." },
+  { name: "EXP", usage: "EXP(1)", desc: "Returns e raised to a power." },
+  { name: "PI", usage: "PI()", desc: "Returns the value of pi." },
+  { name: "SIGN", usage: "SIGN(A1)", desc: "Returns 1, 0 or -1 for positive, zero or negative numbers." },
+  { name: "TRUNC", usage: "TRUNC(3.14159,2)", desc: "Cuts a number to the given digits without rounding." },
+  { name: "RANDBETWEEN", usage: "RANDBETWEEN(1,6)", desc: "Returns a random whole number between two values." },
+  { name: "FV", usage: "FV(0.06/12,10,-200,-500,1)", desc: "Future value of an investment with constant payments and rate." },
+  { name: "PV", usage: "PV(0.08/12,240,500)", desc: "Present value of a loan or investment." },
+  { name: "NPER", usage: "NPER(0.01,-100,-1000,10000,1)", desc: "Number of periods for an investment or loan." },
+  { name: "NPV", usage: "NPV(0.1,-10000,3000,4200,6800)", desc: "Net present value of future cash flows (first flow is one period away)." },
+  { name: "IRR", usage: "IRR(A1:A6)", desc: "Internal rate of return of a series of cash flows." },
+  { name: "RATE", usage: "RATE(48,-200,8000)", desc: "Interest rate per period of a loan or annuity." },
+  { name: "REPLACE", usage: "REPLACE(\"abcdefghijk\",6,5,\"*\")", desc: "Replaces part of a text by position." },
+  { name: "REPT", usage: "REPT(\"ab\",3)", desc: "Repeats text a given number of times." },
+  { name: "EXACT", usage: "EXACT(A1,B1)", desc: "TRUE if two texts are exactly equal (case-sensitive)." },
+  { name: "PERCENTILE", usage: "PERCENTILE(A1:A10,0.9)", desc: "Returns the k-th percentile of a range (0 to 1)." },
+  { name: "QUARTILE", usage: "QUARTILE(A1:A10,1)", desc: "Returns a quartile (0-4) of a range." },
+  { name: "MODE", usage: "MODE(A1:A10)", desc: "Returns the most frequent number (#N/A if none repeats)." },
   {
     name: "CONVERT",
     usage: 'CONVERT(100,"USD","BDT")',
@@ -935,6 +978,17 @@ const FUNCTION_CATEGORIES: Record<string, string> = {
   SUBSTITUTE: "Text", FIND: "Text", SEARCH: "Text", PROPER: "Text", CONCATENATE: "Text", VALUE: "Text",
   AVERAGEIF: "Statistical", AVERAGEIFS: "Statistical", SUMPRODUCT: "Math", LARGE: "Statistical", SMALL: "Statistical", RANK: "Statistical",
   CEILING: "Math", FLOOR: "Math", ISBLANK: "Logical", ISNUMBER: "Logical", ROW: "Lookup", COLUMN: "Lookup", RAND: "Math", PMT: "Financial",
+  INDEX: "Lookup", MATCH: "Lookup", HLOOKUP: "Lookup", CHOOSE: "Lookup",
+  DATE: "Date", YEAR: "Date", MONTH: "Date", DAY: "Date",
+  WEEKDAY: "Date", EOMONTH: "Date", EDATE: "Date", DAYS: "Date",
+  DATEDIF: "Date", COUNTBLANK: "Statistical", MAXIFS: "Statistical", MINIFS: "Statistical",
+  SUBTOTAL: "Math", ISERROR: "Logical", ISERR: "Logical", ISNA: "Logical",
+  ISTEXT: "Logical", IFNA: "Logical", LOG: "Math", LOG10: "Math",
+  LN: "Math", EXP: "Math", PI: "Math", SIGN: "Math",
+  TRUNC: "Math", RANDBETWEEN: "Math", FV: "Financial", PV: "Financial",
+  NPER: "Financial", NPV: "Financial", IRR: "Financial", RATE: "Financial",
+  REPLACE: "Text", REPT: "Text", EXACT: "Text", PERCENTILE: "Statistical",
+  QUARTILE: "Statistical", MODE: "Statistical",
 };
 
 const GALLERY_STAMPS = ["✔", "✖", "★", "⚠", "📌", "🏢", "💰", "📈", "📉", "🕒", "✍", "📎"];
@@ -2052,6 +2106,11 @@ function tokenize(rawSrc: string): Token[] {
       let j = i;
       let out = "";
       while (j < src.length && /[A-Za-z0-9_]/.test(src[j])) out += src[j++];
+      // [ধাপ ২] ডট-যুক্ত ফাংশনের নাম: PERCENTILE.INC( , RANK.EQ( , MODE.SNGL(
+      while (src[j] === "." && /^\.[A-Za-z][A-Za-z0-9_]*\(/.test(src.slice(j))) {
+        out += src[j++];
+        while (j < src.length && /[A-Za-z0-9_]/.test(src[j])) out += src[j++];
+      }
 
       if (src[j] === "!") {
         let k = j + 1;
@@ -2623,7 +2682,8 @@ function evalExtraFunction(
       return Number.isFinite(payment) ? cleanNumber(payment) : "#NUM!";
     }
     default:
-      return undefined;
+      // [ধাপ ২] নতুন ফাংশন (INDEX, MATCH, DATE, SUBTOTAL ...) — একই লজিক lib/formula-core.mjs-এ
+      return libEvalMoreFunction(node, getCell, expandRange, evalNode, currentEvalContext);
   }
 }
 
@@ -4995,12 +5055,16 @@ export default function ExcelStudioPage() {
         };
 
         const previousCellKey = currentEvalCellKey;
+        const previousEvalContext = currentEvalContext;
         currentEvalCellKey = targetKey;
+        // [ধাপ ২] SUBTOTAL-এর লুকানো সারি ও পুরো-কলাম রেঞ্জের জন্য বর্তমান শিটের তথ্য
+        currentEvalContext = { sheet: currentSheet, allSheets };
         let result: EvalResult;
         try {
           result = evaluateFormula(raw.slice(1), getCell, expandRange);
         } finally {
           currentEvalCellKey = previousCellKey;
+          currentEvalContext = previousEvalContext;
         }
         evaluationCache.set(visitKey, result);
         return result;
