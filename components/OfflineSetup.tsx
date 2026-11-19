@@ -5,6 +5,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 
 type NoticeKind =
@@ -25,6 +26,14 @@ interface OfflineNotice {
   autoHideMs?: number;
 }
 
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{
+    outcome: "accepted" | "dismissed";
+    platform: string;
+  }>;
+}
+
 interface OfflineStatus {
   release: string;
   documents: {
@@ -33,10 +42,22 @@ interface OfflineStatus {
   }[];
 }
 
+interface GuideSection {
+  title: string;
+  steps: string[];
+}
+
 const SCRIPT_PATH = "/sw.js";
 const SCOPE_PATH = "/";
 
 const CACHE_PREFIX = "alimxl-shell-";
+
+/**
+ * Any part of the app can open the install / offline guide with:
+ *   window.dispatchEvent(new Event("alimxl:open-offline-guide"))
+ * (for example from a Help menu item).
+ */
+const OPEN_GUIDE_EVENT = "alimxl:open-offline-guide";
 
 const STATUS_TIMEOUT_MS = 6000;
 const UPDATE_INTERVAL_MS = 10 * 60 * 1000;
@@ -47,6 +68,50 @@ const EXPECTED_ROUTES = [
   "/settings",
   "/photo-studio",
 ] as const;
+
+const GUIDE_SECTIONS: GuideSection[] = [
+  {
+    title: "কম্পিউটারে (Google Chrome / Microsoft Edge)",
+    steps: [
+      "ইন্টারনেট চালু রেখে ALIMXL ওয়েবসাইটটি Chrome বা Edge-এ খুলুন।",
+      "ঠিকানা-বারের ডান পাশে ইনস্টল আইকন (কম্পিউটার বা ⊕ চিহ্ন) দেখা গেলে তাতে ক্লিক করুন। অথবা এই বক্সের “ইনস্টল করুন” বোতাম চাপুন।",
+      "আইকন না দেখা গেলে ব্রাউজারের মেনু (⋮) খুলে “Install ALIMXL”, “Install page as app” বা “Apps → Install this site as an app” বেছে নিন (নাম ব্রাউজারের সংস্করণ অনুযায়ী সামান্য আলাদা হতে পারে)।",
+      "ইনস্টল শেষ হলে ডেস্কটপ বা স্টার্ট মেনুতে ALIMXL আইকন পাবেন। সেখান থেকে খুলুন।",
+    ],
+  },
+  {
+    title: "অ্যান্ড্রয়েড ফোনে (Chrome)",
+    steps: [
+      "Chrome-এ ওয়েবসাইটটি খুলুন।",
+      "মেনু (⋮) থেকে “Install app” বা “Add to Home screen” বেছে নিন।",
+      "এরপর হোম স্ক্রিনের ALIMXL আইকন থেকে খুলুন।",
+    ],
+  },
+  {
+    title: "আইফোন / আইপ্যাডে (Safari)",
+    steps: [
+      "Safari-তে ওয়েবসাইটটি খুলুন।",
+      "Share বোতাম চেপে “Add to Home Screen” বেছে নিন।",
+    ],
+  },
+  {
+    title: "অফলাইনে চলবে কি না যাচাই করুন",
+    steps: [
+      "প্রথমবার অবশ্যই ইন্টারনেট চালু রেখে সাইট খুলুন। “প্রধান page-এর cache পাওয়া গেছে” বার্তা না আসা পর্যন্ত কিছুক্ষণ অপেক্ষা করুন।",
+      "তারপর ইন্টারনেট বন্ধ করে ইনস্টল করা অ্যাপটি খুলে দেখুন। স্প্রেডশিটের কাজ চলবে।",
+      "নতুন সংস্করণ এলে ইন্টারনেট থাকা অবস্থায় নিজে থেকেই নামবে। “নতুন সংস্করণ প্রস্তুত” বার্তা এলে কাজ সেভ করে অ্যাপ বন্ধ করে আবার খুলুন।",
+    ],
+  },
+  {
+    title: "গুরুত্বপূর্ণ সতর্কতা",
+    steps: [
+      "গুরুত্বপূর্ণ ফাইল নিয়মিত .xlsx হিসেবে নিজের কম্পিউটারে সেভ করে রাখুন।",
+      "ব্রাউজারের “Cookies and site data” মুছলে ব্রাউজারে রাখা ফাইল ও অফলাইন ক্যাশ চলে যেতে পারে।",
+      "লগইন, অ্যাকাউন্ট ও Photo Studio-র AI সুবিধা ইন্টারনেট ছাড়া কাজ করে না।",
+      "কম্পিউটারের Firefox-এ অ্যাপ ইনস্টল সমর্থিত নয়। Chrome বা Edge ব্যবহার করুন।",
+    ],
+  },
+];
 
 function isRecord(
   value: unknown
@@ -309,11 +374,75 @@ async function cleanupDevelopmentOffline(): Promise<void> {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* External-store helpers (no setState inside effects).               */
+/* ------------------------------------------------------------------ */
+
+/** True when the app runs as an installed app window (not a browser tab). */
+function subscribeStandalone(
+  onChange: () => void
+): () => void {
+  const query = window.matchMedia("(display-mode: standalone)");
+
+  query.addEventListener("change", onChange);
+
+  return () => {
+    query.removeEventListener("change", onChange);
+  };
+}
+
+function getStandaloneSnapshot(): boolean {
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    (navigator as Navigator & { standalone?: boolean })
+      .standalone === true
+  );
+}
+
+function getStandaloneServerSnapshot(): boolean {
+  return false;
+}
+
+/** False while rendering on the server, true in the browser. */
+function subscribeNever(): () => void {
+  return () => undefined;
+}
+
+function getMountedSnapshot(): boolean {
+  return true;
+}
+
+function getMountedServerSnapshot(): boolean {
+  return false;
+}
+
 export default function OfflineSetup() {
   const [notice, setNotice] =
     useState<OfflineNotice | null>(null);
 
   const [attempt, setAttempt] = useState(0);
+  const [canInstall, setCanInstall] = useState(false);
+  const [installingApp, setInstallingApp] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [pillHidden, setPillHidden] = useState(false);
+
+  const mounted = useSyncExternalStore(
+    subscribeNever,
+    getMountedSnapshot,
+    getMountedServerSnapshot
+  );
+
+  const isStandalone = useSyncExternalStore(
+    subscribeStandalone,
+    getStandaloneSnapshot,
+    getStandaloneServerSnapshot
+  );
+
+  const deferredPromptRef =
+    useRef<BeforeInstallPromptEvent | null>(null);
+
+  const guideRef = useRef<HTMLDivElement | null>(null);
+  const lastFocusRef = useRef<HTMLElement | null>(null);
 
   /*
    * Key of the notice the user closed. A notice with the same key is not
@@ -331,6 +460,129 @@ export default function OfflineSetup() {
       return null;
     });
   }, []);
+
+  const openGuide = useCallback((): void => {
+    lastFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+
+    setGuideOpen(true);
+  }, []);
+
+  const closeGuide = useCallback((): void => {
+    setGuideOpen(false);
+
+    lastFocusRef.current?.focus();
+    lastFocusRef.current = null;
+  }, []);
+
+  /* Other parts of the app (e.g. a Help menu) can open the guide. */
+  useEffect(() => {
+    const handleOpenGuide = (): void => {
+      openGuide();
+    };
+
+    window.addEventListener(OPEN_GUIDE_EVENT, handleOpenGuide);
+
+    return () => {
+      window.removeEventListener(
+        OPEN_GUIDE_EVENT,
+        handleOpenGuide
+      );
+    };
+  }, [openGuide]);
+
+  /* Move keyboard focus into the guide dialog when it opens. */
+  useEffect(() => {
+    if (guideOpen) {
+      guideRef.current?.focus();
+    }
+  }, [guideOpen]);
+
+  /* Capture browser PWA install prompt when available. */
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (event: Event): void => {
+      event.preventDefault();
+      deferredPromptRef.current =
+        event as BeforeInstallPromptEvent;
+      setCanInstall(true);
+    };
+
+    const handleAppInstalled = (): void => {
+      deferredPromptRef.current = null;
+      setCanInstall(false);
+      dismissedKeyRef.current = null;
+      setNotice({
+        key: "app-installed",
+        kind: "info",
+        title: "অ্যাপ ইনস্টল সম্পন্ন হয়েছে",
+        text: "এখন ডেস্কটপ বা স্টার্ট মেনুর ALIMXL আইকন থেকে অ্যাপটি খুলে অফলাইনে ব্যবহার করুন। আপনার কাজ ও ফাইল নিরাপদ আছে।",
+        autoHideMs: SUCCESS_AUTO_HIDE_MS,
+      });
+    };
+
+    window.addEventListener(
+      "beforeinstallprompt",
+      handleBeforeInstallPrompt
+    );
+    window.addEventListener(
+      "appinstalled",
+      handleAppInstalled
+    );
+
+    return () => {
+      window.removeEventListener(
+        "beforeinstallprompt",
+        handleBeforeInstallPrompt
+      );
+      window.removeEventListener(
+        "appinstalled",
+        handleAppInstalled
+      );
+    };
+  }, []);
+
+  const handleInstallClick = useCallback(async (): Promise<void> => {
+    const promptEvent = deferredPromptRef.current;
+    if (!promptEvent || installingApp) return;
+
+    setInstallingApp(true);
+    try {
+      await promptEvent.prompt();
+      const choice = await promptEvent.userChoice;
+      deferredPromptRef.current = null;
+      setCanInstall(false);
+
+      dismissedKeyRef.current = null;
+      if (choice.outcome === "accepted") {
+        setNotice({
+          key: "install-accepted",
+          kind: "info",
+          title: "ইনস্টল প্রক্রিয়া শুরু হয়েছে",
+          text: "ইনস্টল শেষ হলে ALIMXL আইকন থেকে অ্যাপটি খুলে অফলাইনে ব্যবহার করুন।",
+          autoHideMs: SUCCESS_AUTO_HIDE_MS,
+        });
+      } else {
+        setNotice({
+          key: "install-dismissed",
+          kind: "info",
+          title: "ইনস্টল বাতিল করা হয়েছে",
+          text: "আপনি চাইলে যেকোনো সময় “অফলাইন গাইড” দেখে অ্যাপটি ইনস্টল করতে পারেন।",
+          autoHideMs: SUCCESS_AUTO_HIDE_MS,
+        });
+      }
+    } catch {
+      setNotice({
+        key: "install-error",
+        kind: "warning",
+        title: "ইনস্টল প্রম্পট চালু করা যায়নি",
+        text: "ব্রাউজারের মেনু থেকেও অ্যাপটি ইনস্টল করা যায়। ধাপগুলো দেখতে “অফলাইন গাইড” খুলুন।",
+      });
+    } finally {
+      setInstallingApp(false);
+    }
+  }, [installingApp]);
 
   /* Success confirmations fade away on their own. */
   useEffect(() => {
@@ -819,74 +1071,244 @@ export default function OfflineSetup() {
         handleVisibilityChange
       );
     };
+    /*
+     * `canInstall` is intentionally NOT a dependency: the install button
+     * is decided at render time, so a browser install prompt arriving
+     * must not tear down and re-run the whole service-worker setup.
+     */
   }, [attempt]);
 
-  if (!notice) {
-    return null;
-  }
-
   const borderColor =
-    notice.kind === "error"
+    notice?.kind === "error"
       ? "#DC7373"
-      : notice.kind === "warning"
+      : notice?.kind === "warning"
         ? "#D7AD47"
         : "#A9CDB7";
 
+  /* Install is pointless inside an already-installed app window. */
+  const showInstallButton = canInstall && !isStandalone;
+
+  const showPill =
+    mounted && !notice && !isStandalone && !pillHidden;
+
   return (
-    <aside
-      aria-label="ALIMXL offline status"
-      onKeyDown={(event) => {
-        if (event.key === "Escape") {
-          event.stopPropagation();
-          dismiss();
-        }
-      }}
-      className="fixed bottom-4 right-4 z-[10000] max-h-[65vh] w-[calc(100%-2rem)] max-w-sm overflow-y-auto rounded-2xl border bg-white p-4 text-[#163B28] shadow-xl print:hidden"
-      style={{ borderColor }}
-    >
-      <div
-        role={
-          notice.kind === "error"
-            ? "alert"
-            : "status"
-        }
-        aria-live={
-          notice.kind === "error"
-            ? "assertive"
-            : "polite"
-        }
-        aria-atomic="true"
-      >
-        <h2 className="text-sm font-bold">
-          {notice.title}
-        </h2>
-
-        <p className="mt-2 text-xs leading-6 text-[#4D6758]">
-          {notice.text}
-        </p>
-      </div>
-
-      <div className="mt-3 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            dismissedKeyRef.current = null;
-            setNotice(null);
-            setAttempt((value) => value + 1);
+    <>
+      {notice && (
+        <aside
+          aria-label="ALIMXL offline status"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.stopPropagation();
+              dismiss();
+            }
           }}
-          className="rounded-lg border border-[#CDDCD2] px-3 py-2 text-xs font-semibold text-[#107C41] hover:bg-[#EFF6F1] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#107C41]"
+          className="fixed bottom-4 right-4 z-10000 max-h-[65vh] w-[calc(100%-2rem)] max-w-sm overflow-y-auto rounded-2xl border bg-white p-4 text-[#163B28] shadow-xl print:hidden"
+          style={{ borderColor }}
         >
-          আবার পরীক্ষা
-        </button>
+          <div
+            role={
+              notice.kind === "error"
+                ? "alert"
+                : "status"
+            }
+            aria-live={
+              notice.kind === "error"
+                ? "assertive"
+                : "polite"
+            }
+            aria-atomic="true"
+          >
+            <h2 className="text-sm font-bold">
+              {notice.title}
+            </h2>
 
-        <button
-          type="button"
-          onClick={dismiss}
-          className="rounded-lg px-3 py-2 text-xs font-semibold text-[#51695A] hover:bg-[#F1F5F2] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#107C41]"
+            <p className="mt-2 text-xs leading-6 text-[#4D6758]">
+              {notice.text}
+            </p>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {showInstallButton && (
+              <button
+                type="button"
+                disabled={installingApp}
+                onClick={() => {
+                  void handleInstallClick();
+                }}
+                className="rounded-lg bg-[#107C41] px-3 py-2 text-xs font-semibold text-white hover:bg-[#0D6635] disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#107C41]"
+              >
+                {installingApp
+                  ? "ইনস্টল হচ্ছে..."
+                  : "ইনস্টল করুন"}
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={openGuide}
+              className="rounded-lg border border-[#CDDCD2] px-3 py-2 text-xs font-semibold text-[#107C41] hover:bg-[#EFF6F1] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#107C41]"
+            >
+              অফলাইন গাইড
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                dismissedKeyRef.current = null;
+                setNotice(null);
+                setAttempt((value) => value + 1);
+              }}
+              className="rounded-lg border border-[#CDDCD2] px-3 py-2 text-xs font-semibold text-[#107C41] hover:bg-[#EFF6F1] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#107C41]"
+            >
+              আবার পরীক্ষা
+            </button>
+
+            <button
+              type="button"
+              onClick={dismiss}
+              className="rounded-lg px-3 py-2 text-xs font-semibold text-[#51695A] hover:bg-[#F1F5F2] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#107C41]"
+            >
+              বন্ধ করুন
+            </button>
+          </div>
+        </aside>
+      )}
+
+      {showPill && (
+        <div
+          role="group"
+          aria-label="ALIMXL install and offline help"
+          className="fixed bottom-14 right-4 z-10000 flex items-center gap-1 rounded-full border bg-white p-1 text-[#163B28] shadow-lg print:hidden"
+          style={{ borderColor: "#A9CDB7" }}
         >
-          বন্ধ করুন
-        </button>
-      </div>
-    </aside>
+          {showInstallButton && (
+            <button
+              type="button"
+              disabled={installingApp}
+              onClick={() => {
+                void handleInstallClick();
+              }}
+              className="rounded-full bg-[#107C41] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0D6635] disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#107C41]"
+            >
+              {installingApp
+                ? "ইনস্টল হচ্ছে..."
+                : "ইনস্টল করুন"}
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={openGuide}
+            className="rounded-full px-3 py-1.5 text-xs font-semibold text-[#107C41] hover:bg-[#EFF6F1] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#107C41]"
+          >
+            অফলাইন গাইড
+          </button>
+
+          <button
+            type="button"
+            aria-label="এই বোতামগুলো লুকান"
+            onClick={() => setPillHidden(true)}
+            className="rounded-full px-2 py-1.5 text-xs font-semibold text-[#51695A] hover:bg-[#F1F5F2] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#107C41]"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {guideOpen && (
+        <div
+          className="fixed inset-0 flex items-center justify-center bg-black/40 p-4 print:hidden"
+          style={{ zIndex: 10001 }}
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              closeGuide();
+            }
+          }}
+        >
+          <div
+            ref={guideRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="alimxl-offline-guide-title"
+            tabIndex={-1}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.stopPropagation();
+                closeGuide();
+              }
+            }}
+            className="max-h-[85vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-5 text-[#163B28] shadow-2xl outline-none"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <h2
+                id="alimxl-offline-guide-title"
+                className="text-base font-bold"
+              >
+                ALIMXL ইনস্টল ও অফলাইন ব্যবহারের গাইড
+              </h2>
+
+              <button
+                type="button"
+                aria-label="গাইড বন্ধ করুন"
+                onClick={closeGuide}
+                className="rounded-lg px-2 py-1 text-sm font-semibold text-[#51695A] hover:bg-[#F1F5F2] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#107C41]"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="mt-2 text-xs leading-6 text-[#4D6758]">
+              একবার ইনস্টল করলে ইন্টারনেট ছাড়াই স্প্রেডশিটের কাজ করা যায়।
+              নিচের ধাপগুলো অনুসরণ করুন।
+            </p>
+
+            {isStandalone && (
+              <p className="mt-3 rounded-lg bg-[#EFF6F1] px-3 py-2 text-xs font-semibold text-[#107C41]">
+                আপনি এখন ইনস্টল করা অ্যাপেই আছেন।
+              </p>
+            )}
+
+            {showInstallButton && (
+              <button
+                type="button"
+                disabled={installingApp}
+                onClick={() => {
+                  void handleInstallClick();
+                }}
+                className="mt-3 rounded-lg bg-[#107C41] px-4 py-2 text-xs font-semibold text-white hover:bg-[#0D6635] disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#107C41]"
+              >
+                {installingApp
+                  ? "ইনস্টল হচ্ছে..."
+                  : "এখনই ইনস্টল করুন"}
+              </button>
+            )}
+
+            {GUIDE_SECTIONS.map((section) => (
+              <section key={section.title} className="mt-4">
+                <h3 className="text-sm font-bold text-[#107C41]">
+                  {section.title}
+                </h3>
+
+                <ol className="mt-1 list-decimal space-y-1 pl-5 text-xs leading-6 text-[#31483B]">
+                  {section.steps.map((step) => (
+                    <li key={step}>{step}</li>
+                  ))}
+                </ol>
+              </section>
+            ))}
+
+            <div className="mt-5 flex justify-end">
+              <button
+                type="button"
+                onClick={closeGuide}
+                className="rounded-lg border border-[#CDDCD2] px-4 py-2 text-xs font-semibold text-[#107C41] hover:bg-[#EFF6F1] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#107C41]"
+              >
+                বন্ধ করুন
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
