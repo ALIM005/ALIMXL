@@ -42,6 +42,9 @@ ALIMXL
 │  ├─ SettingsProvider.tsx
 │  ├─ WelcomeGate.tsx
 │  └─ WelcomeScreen.tsx
+├─ docs
+│  └─ testing
+│     └─ ALIMXL_4.0.0_MANUAL_PRACTICAL_TEST_LEDGER.md
 ├─ eslint.config.mjs
 ├─ FINAL-CHECK-BN.txt
 ├─ formula-engine-extracted.txt
@@ -50,6 +53,7 @@ ALIMXL
 │  ├─ app-settings.ts
 │  ├─ auth-db.ts
 │  ├─ auth-session.ts
+│  ├─ batch1-functions.mjs
 │  ├─ built-in-templates.ts
 │  ├─ chart-geometry.d.mts
 │  ├─ chart-geometry.mjs
@@ -66,7 +70,8 @@ ALIMXL
 │  ├─ workbook-backup.d.mts
 │  ├─ workbook-backup.mjs
 │  ├─ workbook-integrity.d.mts
-│  └─ workbook-integrity.mjs
+│  ├─ workbook-integrity.mjs
+│  └─ xlsx-format-io.mjs
 ├─ next.config.ts
 ├─ package-lock.json
 ├─ package.json
@@ -81,14 +86,18 @@ ALIMXL
 ├─ tests
 │  ├─ chart-geometry.test.mjs
 │  ├─ formula-core.all-functions.test.mjs
+│  ├─ formula-core.batch1.test.mjs
 │  ├─ formula-core.edge.test.mjs
 │  ├─ formula-core.integration.test.mjs
 │  ├─ formula-core.step2-functions.test.mjs
 │  ├─ formula-core.step3-functions.test.mjs
 │  ├─ formula-core.test.mjs
+│  ├─ oracle
+│  │  └─ batch1.oracle.json
 │  ├─ recovery-policy.test.mjs
 │  ├─ workbook-backup.test.mjs
-│  └─ workbook-integrity.test.mjs
+│  ├─ workbook-integrity.test.mjs
+│  └─ xlsx-round-trip.test.mjs
 ├─ tsconfig.json
 ├─ UPDATE-CHANGES.patch
 ├─ UPDATE-COMPARISON.txt

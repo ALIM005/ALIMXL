@@ -40,6 +40,10 @@ import AlimxlHome from "../components/AlimxlHome";
 import MyFiles from "../components/MyFiles";
 import RecoveryDrafts from "../components/RecoveryDrafts";
 import { saveDeviceFile } from "../lib/device-files";
+import {
+  importXlsxFile,
+  exportXlsxWorkbook,
+} from "../lib/xlsx-format-io.mjs";
 import { BUILT_IN_TEMPLATES } from "../lib/built-in-templates";
 import {
   saveLocalWorkbook,
@@ -471,7 +475,7 @@ function evaluateSpillFormula(functionName: string, args: string[], bridge: Spil
       getValue,
       getArrayOrExpression,
     });
-  
+
     if (typeof result === "string") {
       return { error: result, refs };
     }
@@ -3781,30 +3785,40 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
           if (typeof lookup === "string" && FORMULA_ERRORS.has(lookup)) return lookup;
           const tableArg = node.args[1];
           if (tableArg.kind !== "range") return "#VALUE!";
-          const nr = normalizeRange(tableArg.value);
+
+          const tableRef = splitSheetReference(tableArg.value.replace(/\$/g, ""));
+          const nr = normalizeRange(tableRef.reference);
           if (!nr) return "#REF!";
-          const colIndex = operandNumber(evalNode(node.args[2], getCell, expandRange));
-          if (colIndex === "#VALUE!") return colIndex;
-          const col = Math.trunc(colIndex);
-          if (col < 1 || col > nr.c2 - nr.c1 + 1) return "#REF!";
-          const approximate = node.args[3] ? evalNode(node.args[3], getCell, expandRange) : true;
-          const exact = typeof approximate === "boolean" ? !approximate : Number(approximate) === 0;
-
-          const tableRef = splitSheetReference(tableArg.value);
           const tableSheetName = tableRef.sheetName;
-
           const contextSheet = tableSheetName
             ? currentEvalContext?.allSheets?.find(
-              (s) => sameSheetName(s.name, tableSheetName)
+              (candidate) => sameSheetName(candidate.name, tableSheetName)
             ) ?? null
             : currentEvalContext?.sheet ?? null;
+          if (tableSheetName && currentEvalContext && !contextSheet) return "#REF!";
+
+          const colRaw = evalNode(node.args[2], getCell, expandRange);
+          if (typeof colRaw === "string" && FORMULA_ERRORS.has(colRaw)) return colRaw;
+          const colIndex = operandNumber(colRaw);
+          if (colIndex === "#VALUE!") return colIndex;
+          const col = Math.trunc(colIndex);
+          if (col < 1) return "#VALUE!";
+          if (col > nr.c2 - nr.c1 + 1) return "#REF!";
+          const approximate = node.args[3] ? evalNode(node.args[3], getCell, expandRange) : true;
+          if (typeof approximate === "string" && FORMULA_ERRORS.has(approximate)) return approximate;
+          const mode = operandNumber(approximate);
+          if (mode === "#VALUE!") return mode;
+          const exact = mode === 0;
+
           const tableLastRow = contextSheet ? getLastUsedRow(contextSheet.cells) : nr.r2;
           const endRow = Math.min(nr.r2, Math.max(nr.r1, tableLastRow));
+          const readTableCell = (row: number, column: number): EvalResult =>
+            getCell(`${tableSheetName ? `${tableSheetName}!` : ""}${cellKey(row, column)}`);
           const firstColumn: EvalResult[] = [];
           const resultColumn: EvalResult[] = [];
           for (let r = nr.r1; r <= endRow; r++) {
-            firstColumn.push(getCell(cellKey(r, nr.c1)));
-            resultColumn.push(getCell(cellKey(r, nr.c1 + col - 1)));
+            firstColumn.push(readTableCell(r, nr.c1));
+            resultColumn.push(readTableCell(r, nr.c1 + col - 1));
           }
           if (exact) {
             const index = firstColumn.findIndex((value) => matchesCriterion(value, lookup));
@@ -5412,7 +5426,7 @@ export default function ExcelStudioPage() {
   const spillRegistryRef = useRef<ReturnType<typeof createSpillRegistry>>(createSpillRegistry());
   const spillDependencyManagerRef = useRef(createSpillDependencyManager());
   const [spillRanges, setSpillRanges] = useState<SpillRange[]>([]);
-    const [spillCalculationStatus, setSpillCalculationStatus] = useState<{
+  const [spillCalculationStatus, setSpillCalculationStatus] = useState<{
     sourceSheets: WorkbookSheet[] | null;
     errors: Record<string, string>;
   }>({
@@ -5432,7 +5446,7 @@ export default function ExcelStudioPage() {
     return map;
   }, [spillRanges, spillSettings.showSpillBorders]);
   useEffect(() => {
-        const nextSpillErrors: Record<string, string> = {};
+    const nextSpillErrors: Record<string, string> = {};
     const pending = Array.from(pendingSpillWrites.values());
     pendingSpillWrites.clear();
     const draft = structuredClone(sheets);
@@ -5440,17 +5454,19 @@ export default function ExcelStudioPage() {
     const manager = spillDependencyManagerRef.current;
     const host = createSpillHost(
       { sheets: draft, cellKey },
-      { spillRegistry: registry, spillDependencyManager: manager, onSpillChanged: () => {} }
-    ) as any;
+      { spillRegistry: registry, spillDependencyManager: manager, onSpillChanged: () => { } }
+    );
     if (spillSettings.status !== "enabled") {
       let clearedAny = false;
       for (const spill of registry.getAll()) {
-        clearSpill(spill as any, host);
+        clearSpill(spill as SpillRange, host);
         clearedAny = true;
       }
       registry.clear();
       manager.clear();
-      setSpillRanges([]);
+      queueMicrotask(() => {
+        setSpillRanges([]);
+      });
       if (clearedAny) {
         setSheets(() => draft);
       }
@@ -5510,8 +5526,12 @@ export default function ExcelStudioPage() {
         { sheetId: entry.sheetId, row: entry.row, col: entry.col },
         entry.array,
         host
-      ) as any;
-         if (!writeResult || writeResult.ok !== true) {
+      ) as unknown as {
+        ok?: boolean;
+        error?: string;
+        spillRange?: SpillRange;
+      };
+      if (!writeResult || writeResult.ok !== true) {
         const errorKey =
           `${entry.sheetId}!${cellKey(entry.row, entry.col)}`;
 
@@ -5556,14 +5576,18 @@ export default function ExcelStudioPage() {
             }
           }
         }
-        manager.registerSpill(spillRange, changedCells, host as any);
+        manager.registerSpill(
+          spillRange,
+          changedCells,
+          host as unknown as Parameters<typeof manager.registerSpill>[2]
+        );
       }
       activeAnchors.add(anchorMapKey);
     }
     for (const spill of registry.getAll()) {
       const anchorMapKey = `${spill.sheetId}!${spill.anchorRow}:${spill.anchorCol}`;
       if (!activeAnchors.has(anchorMapKey)) {
-        clearSpill(spill as any, host);
+        clearSpill(spill as SpillRange, host);
       }
     }
     const changedCells: {
@@ -5598,9 +5622,11 @@ export default function ExcelStudioPage() {
         });
       }
     }
-     setSpillCalculationStatus({
-      sourceSheets: sheets,
-      errors: nextSpillErrors,
+    queueMicrotask(() => {
+      setSpillCalculationStatus({
+        sourceSheets: sheets,
+        errors: nextSpillErrors,
+      });
     });
 
     if (changedCells.length > 0) {
@@ -5609,7 +5635,7 @@ export default function ExcelStudioPage() {
 
     setSpillRanges(registry.getAll() as SpillRange[]);
   }, [sheets, spillSettings, setSheets]);
- 
+
   const updateSheetStructural = useCallback(
     (patch: (s: WorkbookSheet) => Partial<WorkbookSheet>, change: StructuralChange) => {
       setSheets((prev) => {
@@ -5646,7 +5672,7 @@ export default function ExcelStudioPage() {
         currentVisiting: Set<string>,
         currentSheet: WorkbookSheet
       ): EvalResult => {
-         const cell = currentSheet.cells[targetKey];
+        const cell = currentSheet.cells[targetKey];
 
         const storedValue: unknown = cell?.value;
         const raw: string =
@@ -5710,16 +5736,16 @@ export default function ExcelStudioPage() {
         currentEvalContext = { sheet: currentSheet, allSheets };
         currentSpillBridge = anchorPosition
           ? {
-              sheet: currentSheet,
-              allSheets,
-              visiting: currentVisiting,
-              anchorSheetId: currentSheet.id,
-              anchorRow: anchorPosition.row,
-              anchorCol: anchorPosition.col,
-              anchorKey: targetKey,
-              getCell,
-              expandRange,
-            }
+            sheet: currentSheet,
+            allSheets,
+            visiting: currentVisiting,
+            anchorSheetId: currentSheet.id,
+            anchorRow: anchorPosition.row,
+            anchorCol: anchorPosition.col,
+            anchorKey: targetKey,
+            getCell,
+            expandRange,
+          }
           : null;
         let result: EvalResult;
         try {
@@ -5727,7 +5753,7 @@ export default function ExcelStudioPage() {
         } finally {
           currentEvalCellKey = previousCellKey;
           currentEvalContext = previousEvalContext;
-           currentSpillBridge = previousSpillBridge;
+          currentSpillBridge = previousSpillBridge;
         }
 
         if (
@@ -5743,7 +5769,7 @@ export default function ExcelStudioPage() {
           }
         }
 
-             evaluationCache.set(visitKey, result);
+        evaluationCache.set(visitKey, result);
         return result;
       };
 
@@ -9461,130 +9487,17 @@ export default function ExcelStudioPage() {
     }
 
     try {
-      const XLSX = await import("xlsx");
-      const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, {
-        type: "array",
-        cellFormula: true,
-        cellNF: true,
+      const { sheets: importedSheets } = await importXlsxFile(file, {
+        maxRows: MAX_ROWS,
+        maxCols: MAX_COLS,
+        defaultRows: DEFAULT_ROWS,
+        defaultCols: DEFAULT_COLS,
       });
 
+      const nextSheets = importedSheets.length
+        ? importedSheets
+        : [createSheet("Sheet 1")];
 
-      const importedSheets: WorkbookSheet[] = wb.SheetNames.map(
-        (name: string) => {
-          const ws = wb.Sheets[name];
-
-          if (!ws) {
-            throw new Error(`শিট পাওয়া যায়নি: ${name}`);
-          }
-
-          const sh = createSheet(
-            name,
-            crypto.randomUUID()
-          );
-
-          let requiredRows = 1;
-          let requiredCols = 1;
-
-          for (const address of Object.keys(ws)) {
-            if (address.startsWith("!")) {
-              continue;
-            }
-
-            const position = parseKey(address);
-
-            if (!position) {
-              continue;
-            }
-
-            if (
-              position.row < 0 ||
-              position.col < 0 ||
-              position.row >= MAX_ROWS ||
-              position.col >= MAX_COLS
-            ) {
-              throw new Error(
-                `শিট "${name}"-এর ${address} অ্যাপের সীমার বাইরে।`
-              );
-            }
-
-            const source = ws[address];
-
-            if (!source || source.t === "z") {
-              continue;
-            }
-
-            const hasFormula =
-              typeof source.f === "string" &&
-              source.f.length > 0;
-
-            if (!hasFormula && source.v == null) {
-              continue;
-            }
-
-            let value: string;
-
-            if (hasFormula) {
-              value = `=${source.f}`;
-            } else if (source.t === "b") {
-              value = source.v ? "TRUE" : "FALSE";
-            } else if (source.t === "e") {
-              value = source.w || "#ERROR!";
-            } else {
-              value = String(source.v ?? "");
-            }
-
-            const style: CellStyle = {
-              wrap: true,
-            };
-
-            if (
-              !hasFormula &&
-              (source.t === "s" || source.t === "str")
-            ) {
-              style.numberFormat = "text";
-            } else if (
-              !hasFormula &&
-              source.t === "n" &&
-              typeof source.z === "string" &&
-              XLSX.SSF.is_date(source.z)
-            ) {
-              value = XLSX.utils.format_cell(source);
-              style.numberFormat = "text";
-            }
-
-            sh.cells[cellKey(position.row, position.col)] = {
-              value,
-              style,
-            };
-
-            requiredRows = Math.max(
-              requiredRows,
-              position.row + 1
-            );
-
-            requiredCols = Math.max(
-              requiredCols,
-              position.col + 1
-            );
-          }
-
-          sh.gridRows = Math.min(
-            MAX_ROWS,
-            Math.max(DEFAULT_ROWS, requiredRows)
-          );
-
-          sh.gridCols = Math.min(
-            MAX_COLS,
-            Math.max(DEFAULT_COLS, requiredCols)
-          );
-
-          return sh;
-        }
-      );
-
-
-      const nextSheets = importedSheets.length ? importedSheets : [createSheet("Sheet 1")];
       setSheets(nextSheets);
       setWorkbookId(null);
       setActiveSheetIndex(0);
@@ -9594,8 +9507,6 @@ export default function ExcelStudioPage() {
       showToast("Workbook loaded.");
 
       recordRecentFile(file.name.replace(/\.[^/.]+$/, ""));
-
-      showToast("Workbook loaded.");
     } catch (error) {
       console.error("ALIMXL XLSX import failed:", error);
 
@@ -9686,155 +9597,35 @@ export default function ExcelStudioPage() {
 
   const handleExportAlimxl = async (): Promise<void> => {
     try {
-      const XLSX = await import("xlsx");
-      const workbook = XLSX.utils.book_new();
-      const usedSheetNames = new Set<string>();
-
-      for (const sourceSheet of sheets) {
-        const worksheet = XLSX.utils.aoa_to_sheet([]);
-
-        let lastRow = 0;
-        let lastCol = 0;
-
-        for (const [key, cell] of Object.entries(sourceSheet.cells)) {
-          const position = parseKey(key);
-
-          if (
-            !position ||
-            position.row < 0 ||
-            position.col < 0 ||
-            position.row >= sourceSheet.gridRows ||
-            position.col >= sourceSheet.gridCols
-          ) {
-            throw new Error(`সেলের ঠিকানা সঠিক নয়: ${key}`);
-          }
-
-          if (cell.mergedInto || cell.value === "") {
-            continue;
-          }
-
-          const address = XLSX.utils.encode_cell({
-            r: position.row,
-            c: position.col,
-          });
-
-          const raw = cell.value;
-
-          if (
-            raw.startsWith("=") &&
-            cell.style?.numberFormat !== "text"
-          ) {
-            const evaluated = getCellValueInSheet(sourceSheet, key, new Set<string>(), sheets);
-
-            // [স্টেপ ১] এক্সেলে বাংলা/আরবি অঙ্ক ও ; ، চিহ্নযুক্ত ফর্মুলা চলে না — ইংরেজি অঙ্ক/কমায় বদলে লেখা হয়।
-            // CONVERT (মুদ্রা) এক্সেলের CONVERT (একক) থেকে আলাদা, তাই শুধু মান লেখা হয়; ভুল ফর্মুলা নয়।
-            const excelFormula = normalizeDigitsOutsideQuotes(raw.slice(1));
-            const usesAppOnlyFunction = /\bCONVERT\s*\(/i.test(excelFormula);
-            const isErrorValue = typeof evaluated === "string" && FORMULA_ERRORS.has(evaluated);
-            const errorCodes: Record<string, number> = { "#NULL!": 0, "#DIV/0!": 7, "#VALUE!": 15, "#REF!": 23, "#NAME?": 29, "#NUM!": 36, "#N/A": 42 };
-            const cellObject: { t: string; v: string | number | boolean; f?: string; z?: string } = isErrorValue
-              ? { t: "e", v: errorCodes[evaluated as string] ?? 15 }
-              : {
-                t:
-                  typeof evaluated === "number"
-                    ? "n"
-                    : typeof evaluated === "boolean"
-                      ? "b"
-                      : "s",
-                v: evaluated,
-              };
-            if (!usesAppOnlyFunction) cellObject.f = excelFormula;
-            if (/\bTODAY\s*\(/i.test(excelFormula)) {
-              cellObject.z = "yyyy-mm-dd";
-            } else if (/\bNOW\s*\(/i.test(excelFormula)) {
-              cellObject.z = "yyyy-mm-dd hh:mm:ss";
-            }
-            if (cell.style?.numberFormat === "percentage") {
-              const exportDecimals = Math.max(0, Math.min(cell.style.decimals ?? 0, 10));
-              cellObject.z = `0${exportDecimals ? "." + "0".repeat(exportDecimals) : ""}%`;
-            } else if (cell.style?.numberFormat === "currency") {
-              const exportCurrency = findCurrency(cell.style.currencyCode || "USD");
-              const exportDecimals = Math.max(0, Math.min(cell.style.decimals ?? 2, 10));
-              cellObject.z = `"${exportCurrency.symbol}"#,##0${exportDecimals ? "." + "0".repeat(exportDecimals) : ""}`;
-            }
-            worksheet[address] = cellObject;
-          } else {
-            const value =
-              cell.style?.numberFormat === "text"
-                ? raw
-                : (parseDateTextToSerial(raw.trim()) ?? strictNumber(raw) ?? raw);
-
-            const exportedCell: { t: string; v: string | number | boolean; z?: string } =
-              typeof value === "number"
-                ? { t: "n", v: value }
-                : { t: "s", v: value };
-            if (typeof value === "number" && parseDateTextToSerial(raw.trim()) !== null) {
-              exportedCell.z = "yyyy-mm-dd";
-            }
-            if (cell.style?.numberFormat === "percentage") {
-              const exportDecimals = Math.max(0, Math.min(cell.style.decimals ?? 0, 10));
-              exportedCell.z = `0${exportDecimals ? "." + "0".repeat(exportDecimals) : ""}%`;
-            } else if (cell.style?.numberFormat === "currency") {
-              const exportCurrency = findCurrency(cell.style.currencyCode || "USD");
-              const exportDecimals = Math.max(0, Math.min(cell.style.decimals ?? 2, 10));
-              exportedCell.z = `"${exportCurrency.symbol}"#,##0${exportDecimals ? "." + "0".repeat(exportDecimals) : ""}`;
-            }
-            worksheet[address] = exportedCell;
-          }
-
-          lastRow = Math.max(lastRow, position.row);
-          lastCol = Math.max(lastCol, position.col);
-        }
-
-        worksheet["!ref"] = XLSX.utils.encode_range({
-          s: { r: 0, c: 0 },
-          e: { r: lastRow, c: lastCol },
-        });
-
-        const originalName = sourceSheet.name || "Sheet";
-
-        const baseName =
-          originalName
-            .replace(/[\\/?*[\]:]/g, "_")
-            .replace(/^'+|'+$/g, "")
-            .trim()
-            .slice(0, 31) || "Sheet";
-
-        let sheetName = baseName;
-        let suffixNumber = 2;
-
-        while (usedSheetNames.has(sheetName.toLowerCase())) {
-          const suffix = ` (${suffixNumber++})`;
-          sheetName = baseName.slice(0, 31 - suffix.length) + suffix;
-        }
-
-        usedSheetNames.add(sheetName.toLowerCase());
-
-        XLSX.utils.book_append_sheet(
-          workbook,
-          worksheet,
-          sheetName
-        );
-      }
-
-      const data = XLSX.write(workbook, {
-        bookType: "xlsx",
-        type: "array",
-      }) as ArrayBuffer;
+      const blob = await exportXlsxWorkbook({
+        workbookName,
+        sheets,
+        helpers: {
+          getCellValueInSheet,
+          normalizeDigitsOutsideQuotes,
+          parseDateTextToSerial,
+          strictNumber,
+          findCurrency,
+          FORMULA_ERRORS,
+        },
+        options: {
+          maxRows: MAX_ROWS,
+          maxCols: MAX_COLS,
+          defaultRows: DEFAULT_ROWS,
+          defaultCols: DEFAULT_COLS,
+        },
+      });
 
       const result = await saveDeviceFile({
-        suggestedName:
-          `${workbookName.trim() || "workbook"}.xlsx`,
-        blob: new Blob([data], {
-          type:
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        }),
+        suggestedName: `${workbookName.trim() || "workbook"}.xlsx`,
+        blob,
         types: [
           {
             description: "Excel Workbook",
             accept: {
-              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
-                [".xlsx"],
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [
+                ".xlsx",
+              ],
             },
           },
         ],
@@ -13224,6 +13015,8 @@ export default function ExcelStudioPage() {
                                 }`}
 
                               style={{
+                                userSelect: isEditing ? "text" : "none",
+                                WebkitUserSelect: isEditing ? "text" : "none",
                                 width: sheet.colWidths[c] || DEFAULT_COL_WIDTH,
                                 minWidth: sheet.colWidths[c] || DEFAULT_COL_WIDTH,
                                 maxWidth: sheet.colWidths[c] || DEFAULT_COL_WIDTH,
@@ -13335,10 +13128,17 @@ export default function ExcelStudioPage() {
                                   dir={style?.textDirection || "ltr"}
                                   value={editValue}
                                   onChange={(e) => setEditValue(e.target.value)}
+                                  onMouseDown={(e) => {
+                                    dragging.current = false;
+                                    e.stopPropagation();
+                                  }}
+                                  onDoubleClick={(e) => e.stopPropagation()}
                                   onBlur={() => commitEdit("none")}
                                   rows={1} // ⬅️ শুধু ১ লাইনের height, নিচে র‍্যাপ করে বাড়বে না
                                   className="resize-none bg-transparent outline-none text-[#000000]"
                                   style={{
+                                    userSelect: "text",
+                                    WebkitUserSelect: "text",
                                     // ⬇️ Excel/LibreOffice-এর মতো বিহেভিয়ার:
                                     //    টেক্সট লাইন ভাঙবে না (nowrap), সেলের বাইরেও দেখা যাবে (overflow visible)
                                     position: "absolute",
