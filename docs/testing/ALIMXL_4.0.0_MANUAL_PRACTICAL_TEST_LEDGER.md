@@ -1,3 +1,8 @@
+> CURRENT READER NOTE — Documentation revision 1.2, 2026-11-23 (UTC+06:00).
+> Read the final “Revision 1.2” section first for current overrides. Earlier sections
+> are historical: the old 14-warning and unknown-recovery-cause statements are not
+> the current conclusion. No new software release or automated run is claimed.
+
 ALIMXL 4.0.0 — Manual & Practical Test Ledger
 Ledger revision: 1.1 (documentation review; NOT a new software release)
 Last reviewed: 2026-11-20 21:32 UTC+06:00
@@ -903,3 +908,209 @@ commit হয়েছে—এমন নয়। ব্যবহারকারী �
 সংযোজন হিসেবে সংরক্ষণ করবেন।
 
 ===================== নোটের সমাপ্তি =====================
+
+---
+# Revision 1.2 — Consolidated handoff / বর্তমান অবস্থার সংযোজন
+
+Documentation date: 2026-11-23, UTC+06:00; conversation cutoff approximately 00:16.
+This is a documentation update, NOT a software release or newly executed app test.
+This section supersedes older CURRENT-STATUS statements where explicitly noted below;
+all older historical observations and their evidence levels are retained above.
+
+## A. Primary record and research scope
+
+Update THIS file for all future manual/practical results:
+`docs/testing/ALIMXL_4.0.0_MANUAL_PRACTICAL_TEST_LEDGER.md`.
+The uploaded ZIP already contains this file: do not create a second competing master ledger.
+Review covered the complete ZIP member inventory, existing documentation/test-result files,
+package scripts, recovery policy, and locations of the proposed rounding call.
+It was NOT a line-by-line audit of all application code, fresh browser execution,
+or a new TypeScript/lint/build/Node test run. ZIP source is an uploaded snapshot,
+not necessarily the user's latest working source. Commit/build hash remains unavailable.
+
+Archive result logs such as UPDATE-TEST-RESULTS.txt and update-docs/TEST-RESULTS.txt
+are historical automated/packaging outputs. Preserve them; do not append manual
+screenshots as if they were fresh automated test output.
+
+## B. Current status overrides
+
+### BUILD-01-UPDATE — Latest local command status
+Status: PASS_USER / precise command outputs not independently re-inspected here.
+User reports the commands had been run about two hours before the earlier discussion
+and that there are now no warnings, skipped tests, or build errors.
+This supersedes the old claim that 14 warnings are necessarily still current.
+Do NOT invent a new test count, elapsed time, exact command list or current commit.
+The historical 154/154 log remains historical and is not a new post-rounding regression run.
+The rounding patch below has not been verified by a fresh full suite in this session.
+
+### PERSIST-01-UPDATE — Recovery limit explained
+Status: CONFIGURED_LIMIT_OBSERVED + DESIGN_CONFIRMED_USER.
+Expanded screenshot explicitly displays:
+“Recovery limit reached (30 drafts). Remove unneeded drafts from Recovery panel.”
+User confirms the 30-draft cap was intentional to avoid unlimited browser accumulation.
+ZIP source lib/recovery-policy.mjs declares MAX_RECOVERY_DRAFTS = 30.
+canWriteRecovery permits an existing key to update even at the cap, but refuses a new
+key when the cap is full. Thus a full store is not proof that every draft update fails.
+Supersedes earlier undiagnosed-warning status for THIS observed warning only.
+Generic main Save failure, data loss or a recovery-engine defect is NOT established.
+User states no important data is present and elects to defer recovery cleanup/testing.
+Delete-then-new-draft success has NOT been observed; do not label it tested PASS.
+Performance benefit of this cap was not benchmarked.
+
+## C. Additional manual/practical records
+
+### BANK-05 — Opening/input balance mutation and dependent range
+Status: PASS_RECORDED (earlier conversation screenshot assessment; original durable evidence path absent).
+Mutation: I2 changed from 5000 to 6000 in the banking fixture.
+Actual: each J2:J11 value increased by 1000; J12:J15 remained unchanged.
+Scope: that dependency/recalculation scenario only. Account separation was implemented
+by formulas, NOT automatic bank-account recognition by the application.
+Exact formula text, sheet name and full source dataset are not retained here.
+
+### ROUND-01 — Calculated decimal discrepancy before proposed change
+Status: ISSUE_RECORDED; targeted reproduction later passes ROUND-02.
+Observed direct formula =ROUND(53.865,2) -> 53.87.
+Observed calculated formula =ROUND(3*19.95*(1-0.1),2) -> 53.86.
+A cell-reference equivalent also displayed 53.86.
+Observed rounded total: 1391.57; expected fixture total: 1391.58.
+Root cause was not proven with runtime intermediate-value instrumentation.
+Excel/LibreOffice execution of the same fixture was NOT independently verified.
+Do not call this a proven universal compatibility failure or final engine-wide fix.
+
+### ROUND-PATCH-01 — Minimal proposed edit and source divergence
+Status: PATCH_PROPOSED + POST-CHANGE_OUTPUT_OBSERVED; exact latest saved diff unverified.
+The supplied paste.txt was previously reviewed for roundHalfAway and cleanNumber.
+Proposed replacement, after backing up the actual source file:
+Before: const result = roundHalfAway(numeric, digits);
+After:  const result = roundHalfAway(cleanNumber(numeric), digits);
+cleanNumber was described in the earlier review as 15-significant-digit normalization.
+Do not infer all near-boundary/high-precision cases are safe.
+Important ZIP finding: BOTH app/page.tsx and lib/formula-core.mjs in the uploaded
+snapshot still contain the uncleaned call. The new cleaned call is absent in these
+locations. This is snapshot divergence, NOT proof the user's current local edit failed.
+Record actual edited file/commit and verify browser versus core evaluator parity
+before treating this as a repository-wide merged fix. No code was modified by this report.
+
+### ROUND-02 — Eight-case screenshot regression
+Status: PASS_OBSERVED for eight displayed Actual/Expected pairs.
+Evidence: latest two rounding-sheet screenshots in this conversation; not embedded
+or assigned invented durable filenames. Selected cell is blank D5, so formula-bar
+contents do not independently establish every B-cell formula.
+The sequence of the discussion links these outputs to the proposed regression set.
+
+| Case | Displayed actual | Displayed expected | Formula evidence boundary |
+|---|---:|---:|---|
+| Direct | 53.87 | 53.87 | Proposed direct ROUND case |
+| Calculated | 53.87 | 53.87 | Proposed calculated ROUND case |
+| Negative calculated | -53.87 | -53.87 | Negative calculated input; exact stored formula not inspected |
+| Below boundary | 53.86 | 53.86 | Exact input literal not retained |
+| Above boundary | 53.87 | 53.87 | Exact input literal not retained |
+| Basic positive half | 3 | 3 | Proposed ROUND(2.5,0) |
+| Basic negative half | -3 | -3 | Proposed ROUND(-2.5,0) |
+| Negative digits | 1300 | 1300 | Proposed ROUND(1250,-2) |
+
+Eight matching pairs are nested assertions in this scenario, not eight independently
+certified features. Positive calculated discrepancy no longer appears in this fixture.
+No global ROUND certification, all-functions pass percentage or release verdict follows.
+
+### ROUND-03 — Original product fixture end-to-end recheck
+Status: NOT_CONFIRMED_EXECUTED.
+Suggested recheck: original F2 = 53.87 and =ROUND(SUM(F2:F7),2) = 1391.58.
+No final screenshot/user confirmation received. Do not mark the original total fixed yet.
+
+### PAY-11 — Large monetary salary-sheet request deferred
+Status: DEFERRED_USER; not an executed test.
+User initially requested a 50-crore-taka salary sheet, then stopped that direction
+and prioritised difficult formula tests. Neither dataset creation nor full salary
+validation is established by this request. Keep old PAY-01 through PAY-10 boundaries.
+
+## D. Current handoff / what not to repeat
+
+- Prioritise difficult formula correctness and unsupported-function discovery.
+- Do not keep treating the known 30-draft cap as an undiagnosed defect.
+- Do not repeat completed colour-copy/basic examples without a concrete new risk.
+- Preserve earlier ten-row Payroll successes; do not promote them to 150 audited rows.
+- Keep Sales, banking reconciliation, Results and colourful Timesheet records above.
+- Preserve user-reported Save/Restore completion without inventing exact coverage.
+- No global numerical product score is a reproducible certification; earlier 70–75/100
+  was an approximate assessment, not a formal benchmark.
+- Latest build report, uploaded ZIP state, pasted source and browser session may differ.
+
+## E. Historical automated evidence reconciliation
+
+Uploaded update-docs/TEST-RESULTS.txt records 49 print tests and 151 other tests;
+its mocked UI section explicitly says realBrowser:false. UPDATE-TEST-RESULTS.txt
+records a separate 24-test chart run. The earlier ledger records a 154-test full run
+including 3 XLSX tests. These are different historical runs/snapshots and overlapping
+suites. NEVER sum 49 + 151 + 24 + 154 into a unique current test count.
+A test title mentioning Excel/LibreOffice is not by itself fresh execution in either app.
+No automated commands were rerun while preparing this documentation.
+
+## F. Future append-only entry template
+
+### TEST-ID — Short title
+- Date/time/timezone:
+- App version / commit / build identifier:
+- Environment: browser/version, OS, device; if unrecorded say UNKNOWN.
+- Evidence level: screenshot / user report / raw log / summary / prepared only.
+- Preconditions: workbook/sheet, exact source and destination ranges:
+- Exact inputs or formulas (copyable block, no explanatory prose mixed in):
+- Mutation:
+- Independently derived expected output:
+- Actual output:
+- Status: PASS_OBSERVED / PASS_USER / FAIL_OBSERVED / INCONCLUSIVE /
+  BLOCKED_SETUP / PREPARED / NOT_EXECUTED / DEFERRED_USER.
+- Evidence artifact: real project-relative filename; UNKNOWN if not saved.
+- Restore/Undo result:
+- Timing, only if measured:
+- Scope/limitations and next action:
+
+Store future real evidence under docs/testing/evidence/ using unique dated names.
+That directory is a recommendation, not a claim that past screenshots were recovered.
+Do not overwrite earlier failures with later passes: append the retest and link IDs.
+Do not recalculate the old 43-entry table as a current feature pass percentage;
+it is explicitly a historical register with nested and overlapping assertions.
+
+## G. Revision 1.2 limits and completion
+
+Retained the entire original ledger and its later XLSX/Timesheet addendum verbatim.
+Added known recent banking, rounding, build-report and recovery-design information.
+All identifiable history in the available ledger/conversation is preserved, but missing
+historical chats, raw logs and screenshots were NOT recovered or invented.
+This delivered document is not yet saved/committed in the user's local repository.
+Release verdict remains NOT ESTABLISHED; this is an evidence/handoff record.
+### BUILD-02 — Latest supplied local verification log
+
+Recorded: 2026-11-23, UTC+06:00
+Evidence: User-pasted terminal output
+Project: C:/ALIMXL
+Branch shown: main
+Package version shown: alimxl@4.0.0
+Commit/build hash: NOT RECORDED
+
+1. npm run typecheck
+   Result: PASS
+   tsc --noEmit completed with no displayed error.
+
+2. npx eslint app/page.tsx
+   Result: PASS for the specified file.
+   No ESLint error/warning diagnostics displayed.
+   Babel emitted a code-generation styling note because
+   app/page.tsx exceeds 500KB.
+
+3. npm run build
+   Result: PASS
+   Next.js 16.4.5 (Turbopack).
+   Compiled successfully in 11.4s.
+   Build TypeScript phase completed.
+   Static page generation completed: 19/19.
+   Final page optimization completed.
+
+Scope and limitations:
+- This is direct supplied terminal evidence, replacing the
+  earlier user-report-only status for these three commands.
+- ESLint was run against app/page.tsx, not the entire project.
+- No automated test-suite command appears in this log.
+- No fresh browser/manual regression is established by this log.
+- Exact source diff and commit are not recorded.
+- No production-readiness or all-features-pass claim is made.

@@ -18,7 +18,6 @@ import {
   clearSpillByAnchor,
   createSpillRegistry,
   createSpillHost,
-  SPILL_CIRCULAR_ERROR,
 } from "../lib/spill-engine.mjs";
 import {
   createSpillDependencyManager,
@@ -433,22 +432,14 @@ function serializeFormulaNode(node: unknown): string {
     case "range":
       return String(value.value ?? "");
     case "neg":
-      return `-${serializeFormulaNode(value.node)}`;
+      return `-(${serializeFormulaNode(value.node)})`;
     case "bin":
-      return `${serializeFormulaNode(value.left)}${String(value.op ?? "")}${serializeFormulaNode(value.right)}`;
+      return `(${serializeFormulaNode(value.left)}${String(value.op ?? "")}${serializeFormulaNode(value.right)})`;
     case "call":
       return `${String(value.name ?? "")}(${(Array.isArray(value.args) ? value.args : []).map(serializeFormulaNode).join(",")})`;
     default:
       return typeof value.raw === "string" ? value.raw : "";
   }
-}
-function shiftFormulaRows(formula: string, delta: number): string {
-  if (delta === 0) return formula;
-  return formula.replace(
-    /(^|[^$A-Za-z0-9_])([A-Za-z]{1,3})(\d+)/g,
-    (_match: string, boundary: string, letters: string, digits: string) =>
-      `${boundary}${letters}${Math.max(1, parseInt(digits, 10) + delta)}`
-  );
 }
 function extractCellReferences(formula: string): string[] {
   const matches = formula.match(/(?:[A-Za-z0-9_ ]+!)?\$?[A-Za-z]{1,3}\$?\d+(?::\$?[A-Za-z]{1,3}\$?\d+)?/g);
@@ -478,27 +469,16 @@ function evaluateSpillFormula(functionName: string, args: string[], bridge: Spil
     }
     return grid;
   };
-  let lastGrid: EvalResult[][] = [];
-  const getGrid = (rangeText: string): EvalResult[][] => {
-    const grid = rangeToGrid(rangeText);
-    if (!grid) throw new Error("SPILL_RANGE_INVALID");
-    lastGrid = grid;
+  const getGrid = (expression: string): EvalResult[][] => {
+    const direct = rangeToGrid(expression);
+    const grid = direct ?? evalArrayNode(new FormulaParser(expression).parse(), getCell, expandRange);
+    const error = grid.flat().find(value => typeof value === "string" && FORMULA_ERRORS.has(value));
+    if (error) throw new Error(String(error));
     return grid;
   };
   const getValue = (expression: string): EvalResult =>
     evaluateFormula(expression, getCell, expandRange);
-  const getArrayOrExpression = (expression: string): EvalResult[][] => {
-    const normalized = normalizeRange(expression);
-    if (normalized) {
-      const grid = rangeToGrid(expression);
-      if (!grid) throw new Error("SPILL_RANGE_INVALID");
-      return grid;
-    }
-    const rowCount = Math.max(1, lastGrid.length);
-    return Array.from({ length: rowCount }, (_unused: unknown, index: number) => [
-      evaluateFormula(shiftFormulaRows(expression, index), getCell, expandRange),
-    ]);
-  };
+  const getArrayOrExpression = (expression: string): EvalResult[][] => getGrid(expression);
   const refs = extractCellReferences(args.join(","));
   try {
     const result = evaluateSpillFunction(functionName, args, {
@@ -553,8 +533,9 @@ function evaluateSpillFormula(functionName: string, args: string[], bridge: Spil
 
     return { error: "#VALUE!", refs };
 
-  } catch {
-    return { error: SPILL_CIRCULAR_ERROR, refs };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    return { error: FORMULA_ERRORS.has(message) ? message : "#VALUE!", refs };
   }
 }
 
@@ -2383,7 +2364,7 @@ function tokenize(rawSrc: string): Token[] {
     }
     // #REF!, #DIV/0! ইত্যাদি এরর লিটারেল (রেফারেন্স মুছে গেলে এটাই থাকে)
     if (ch === "#") {
-      const errorMatch = /^#(?:REF!|DIV\/0!|NAME\?|VALUE!|N\/A|NUM!|ERROR!|CIRCULAR!)/i.exec(src.slice(i));
+      const errorMatch = /^#(?:REF!|DIV\/0!|NAME\?|VALUE!|N\/A|NUM!|ERROR!|CIRCULAR!|SPILL!|CALC!|NULL!)/i.exec(src.slice(i));
       if (errorMatch) {
         tokens.push({ type: "str", value: errorMatch[0].toUpperCase() });
         i += errorMatch[0].length;
@@ -2710,7 +2691,7 @@ const NUMERIC_RE = /^-?(?:(?:0|[1-9]\d*|[1-9]\d{0,2}(?:,\d{3})+)(?:\.\d+)?|\.\d+
 // ভারতীয়/বাংলাদেশি গ্রুপিং: 1,25,000 / 12,50,000.50 / 1,00,00,000
 const INDIAN_GROUPED_RE = /^-?[1-9]\d{0,1}(?:,\d{2})+,\d{3}(?:\.\d+)?$/;
 
-const FORMULA_ERRORS = new Set<string>(["#DIV/0!", "#NAME?", "#ERROR!", "#CIRCULAR!", "#VALUE!", "#REF!", "#N/A", "#NUM!"]);
+const FORMULA_ERRORS = new Set<string>(["#DIV/0!", "#NAME?", "#ERROR!", "#CIRCULAR!", "#VALUE!", "#REF!", "#N/A", "#NUM!", "#SPILL!", "#CALC!", "#NULL!"]);
 
 // শুধু http(s)/mailto/tel এবং সাইটের নিজস্ব পাথ (/...) অনুমোদিত; javascript:, data: ইত্যাদি বাতিল
 function sanitizeUrl(input: unknown): string | null {
@@ -2787,6 +2768,51 @@ let currentEvalCellKey: string | null = null;
 
 // [নতুন ফাংশন] SUBSTITUTE, FIND, SEARCH, PROPER, CONCATENATE, VALUE, AVERAGEIF(S), SUMPRODUCT, LARGE, SMALL,
 // RANK, CEILING, FLOOR, ISBLANK, ISNUMBER, ROW, COLUMN, RAND, PMT — চেনা না গেলে undefined (তখন #NAME? আসে)
+// Keep arrays intact inside array-aware consumers; scalar formulas keep their existing semantics.
+function evalArrayNode(
+  node: Node,
+  getCell: (key: string) => EvalResult,
+  expandRange: (range: string) => EvalResult[]
+): EvalResult[][] {
+  if (node.kind === "range") {
+    const { reference } = splitSheetReference(node.value);
+    const range = normalizeRange(reference);
+    if (!range) return [["#REF!"]];
+    const cols = range.c2 - range.c1 + 1;
+    const rows = range.r2 - range.r1 + 1;
+    if (rows * cols > 1000000) return [["#NUM!"]];
+    const values = expandRange(node.value);
+    return Array.from({ length: rows }, (_, r) =>
+      Array.from({ length: cols }, (_, c) => values[r * cols + c] ?? ""));
+  }
+  if (node.kind === "call" && currentSpillBridge && isSpillFunction(node.name.toUpperCase())) {
+    const result = evaluateSpillFormula(node.name.toUpperCase(), node.args.map(serializeFormulaNode), currentSpillBridge);
+    return result.error ? [[result.error]] : result.array?.values ?? [["#VALUE!"]];
+  }
+  if (node.kind === "neg") {
+    return evalArrayNode(node.node, getCell, expandRange).map(row => row.map(value =>
+      evalNode({ kind: "neg", node: { kind: "ref", value: "__array_value" } },
+        key => key === "__array_value" ? value : getCell(key), expandRange)));
+  }
+  if (node.kind === "bin") {
+    const left = evalArrayNode(node.left, getCell, expandRange);
+    const right = evalArrayNode(node.right, getCell, expandRange);
+    const rows = Math.max(left.length, right.length);
+    const cols = Math.max(left[0].length, right[0].length);
+    if ((left.length !== rows && left.length !== 1) || (right.length !== rows && right.length !== 1) ||
+        (left[0].length !== cols && left[0].length !== 1) || (right[0].length !== cols && right[0].length !== 1)) return [["#VALUE!"]];
+    if (rows * cols > 1000000) return [["#NUM!"]];
+    return Array.from({ length: rows }, (_, r) => Array.from({ length: cols }, (_, c) => {
+      const l = left[left.length === 1 ? 0 : r][left[0].length === 1 ? 0 : c];
+      const v = right[right.length === 1 ? 0 : r][right[0].length === 1 ? 0 : c];
+      return evalNode({ kind: "bin", op: node.op,
+        left: { kind: "ref", value: "__array_left" }, right: { kind: "ref", value: "__array_right" } },
+        key => key === "__array_left" ? l : key === "__array_right" ? v : getCell(key), expandRange);
+    }));
+  }
+  return [[evalNode(node, getCell, expandRange)]];
+}
+
 function evalExtraFunction(
   node: { kind: "call"; name: string; args: Node[] },
   getCell: (key: string) => EvalResult,
@@ -2916,7 +2942,9 @@ function evalExtraFunction(
     }
     case "SUMPRODUCT": {
       if (args.length < 1) return "#VALUE!";
-      const arrays = args.map((a) => listOf(a));
+      const grids = args.map((a) => evalArrayNode(a, getCell, expandRange));
+      if (grids.some(grid => grid.length !== grids[0].length || grid[0].length !== grids[0][0].length)) return "#VALUE!";
+      const arrays = grids.map(grid => grid.flat());
       const len = arrays[0].length;
       if (arrays.some((a) => a.length !== len)) return "#VALUE!";
       let total = 0;
@@ -3456,7 +3484,7 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
           }
 
           // 1.005 → 1.01 (আগে Math.round(100.49999…) এর কারণে 1 আসত)
-          const result = roundHalfAway(numeric, digits);
+          const result = roundHalfAway(cleanNumber(numeric), digits);
 
           if (!Number.isFinite(result)) {
             return "#VALUE!";
@@ -3978,11 +4006,11 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
           const parts: string[] = [];
           for (let i = 2; i < node.args.length; i++) {
             const a = node.args[i];
-            const vals = a.kind === "range" ? expandRange(a.value) : [evalNode(a, getCell, expandRange)];
+            const vals = evalArrayNode(a, getCell, expandRange).flat();
             for (const v of vals) {
               if (typeof v === "string" && FORMULA_ERRORS.has(v)) return v;
-              const text = String(v);
-              if (ignoreEmpty && text.trim() === "") continue;
+              const text = typeof v === "boolean" ? (v ? "TRUE" : "FALSE") : String(v);
+              if (ignoreEmpty && text === "") continue;
               parts.push(text);
             }
           }
@@ -4949,6 +4977,7 @@ export default function ExcelStudioPage() {
   const [dataSourceText, setDataSourceText] = useState("");
 
   const [findText, setFindText] = useState("");
+  const [replaceAllStatus, setReplaceAllStatus] = useState("");
   const [replaceText, setReplaceText] = useState("");
   const [matchCase, setMatchCase] = useState(false);
 
@@ -6129,7 +6158,7 @@ export default function ExcelStudioPage() {
       ...prepared, headerFooter, printTime,
       sheetName: sheet.name, workbookName, showGridlines: options.showGridlines,
     };
-   }, [
+  }, [
     newPageSetup,
     newPrintOptions,
     pageSize,
@@ -6436,8 +6465,12 @@ export default function ExcelStudioPage() {
 
   // [মাউস ফিক্স] দ্রুত ড্র্যাগে সেল স্কিপ না হয় — pointer position থেকে সেল/হেডার নির্ধারণ
   useEffect(() => {
-    const move = (e: MouseEvent) => {
-      const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+    let pointer: { x: number; y: number } | null = null;
+    let frame: number | null = null;
+    let lastTime = 0;
+    const active = () => dragging.current || isFilling.current || draggingHeader.current !== null;
+    const updateSelectionAt = (x: number, y: number) => {
+      const el = document.elementFromPoint(x, y) as HTMLElement | null;
       if (!el) return;
       if (isFilling.current) {
         const cell = el.closest("td[data-row]") as HTMLElement | null;
@@ -6473,8 +6506,56 @@ export default function ExcelStudioPage() {
         }
       }
     };
+    const stop = () => {
+      if (frame !== null) cancelAnimationFrame(frame);
+      frame = null;
+      pointer = null;
+      lastTime = 0;
+    };
+    const tick = (time: number) => {
+      frame = null;
+      if (!pointer || !active()) { stop(); return; }
+      const grid = document.getElementById("awm-print-area");
+      if (!grid) { stop(); return; }
+      const rect = grid.getBoundingClientRect();
+      const left = Math.max(0, rect.left + grid.clientLeft);
+      const top = Math.max(0, rect.top + grid.clientTop);
+      const right = Math.min(window.innerWidth, left + grid.clientWidth);
+      const bottom = Math.min(window.innerHeight, top + grid.clientHeight);
+      if (right <= left || bottom <= top) { stop(); return; }
+      const speed = (position: number, start: number, end: number) => {
+        const edge = Math.min(40, (end - start) / 3);
+        if (position < start + edge) return -Math.min(900, (start + edge - position) * 24);
+        if (position > end - edge) return Math.min(900, (position - end + edge) * 24);
+        return 0;
+      };
+      const seconds = lastTime ? Math.min(0.05, (time - lastTime) / 1000) : 1 / 60;
+      lastTime = time;
+      if (draggingHeader.current !== "row") grid.scrollLeft += speed(pointer.x, left, right) * seconds;
+      if (draggingHeader.current !== "col") grid.scrollTop += speed(pointer.y, top, bottom) * seconds;
+      // Clamp hit-testing to the grid, including its sticky headers.
+      updateSelectionAt(
+        Math.max(left + 2, Math.min(right - 2, pointer.x)),
+        Math.max(top + 2, Math.min(bottom - 2, pointer.y)),
+      );
+      frame = requestAnimationFrame(tick);
+    };
+    const move = (e: MouseEvent) => {
+      if (!active()) return;
+      if (!(e.buttons & 1)) { stop(); return; }
+      pointer = { x: e.clientX, y: e.clientY };
+      updateSelectionAt(e.clientX, e.clientY);
+      if (frame === null) frame = requestAnimationFrame(tick);
+    };
     window.addEventListener("mousemove", move);
-    return () => window.removeEventListener("mousemove", move);
+    window.addEventListener("mouseup", stop);
+    window.addEventListener("blur", stop);
+    return () => {
+      stop();
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", stop);
+      window.removeEventListener("blur", stop);
+    };
   }, [dragFillTo, selectEntireRow, selectEntireColumn]);
 
   useEffect(() => {
@@ -6608,12 +6689,15 @@ export default function ExcelStudioPage() {
       showToast("Selection cleared.");
     } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c") {
       e.preventDefault();
+      e.stopPropagation();
       doCopy("copy");
     } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "x") {
       e.preventDefault();
+      e.stopPropagation();
       doCopy("cut");
     } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "v") {
       e.preventDefault();
+      e.stopPropagation();
       doPaste();
     } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
       e.preventDefault();
@@ -7035,15 +7119,18 @@ export default function ExcelStudioPage() {
     setActiveDrawTool("select");
   };
 
-  const doCopy = (mode: ClipboardMode) => {
+  const doCopy = async (mode: ClipboardMode) => {
     const r1 = Math.min(selection.r1, selection.r2);
     const r2 = Math.max(selection.r1, selection.r2);
     const c1 = Math.min(selection.c1, selection.c2);
     const c2 = Math.max(selection.c1, selection.c2);
     const collected: ClipboardData["cells"] = [];
+    const textRows: string[] = [];
     for (let r = r1; r <= r2; r++) {
+      const textColumns: string[] = [];
       for (let c = c1; c <= c2; c++) {
         const k = cellKey(r, c);
+        textColumns.push(sheet.cells[k]?.value ?? "");
         if (sheet.cells[k]) {
           collected.push({
             row: r - r1,
@@ -7053,6 +7140,7 @@ export default function ExcelStudioPage() {
           });
         }
       }
+      textRows.push(textColumns.join("\t"));
     }
     setClipboard({
       mode,
@@ -7065,7 +7153,17 @@ export default function ExcelStudioPage() {
       rows: r2 - r1 + 1,
       cols: c2 - c1 + 1,
     });
-    showToast(mode === "cut" ? "Cut completed." : "Copy completed.");
+    const action = mode === "cut" ? "Cut" : "Copy";
+    try {
+      if (!navigator.clipboard?.writeText) {
+        showToast(`${action} stored inside ALIMXL only. System clipboard is unavailable; Find/external paste is not ready.`);
+        return;
+      }
+      await navigator.clipboard.writeText(textRows.join("\n"));
+      showToast(`${action} ready: ALIMXL cells and system text clipboard.`);
+    } catch {
+      showToast(`${action} stored inside ALIMXL only. System clipboard write failed; Find/external paste is not ready.`);
+    }
   };
 
   // ব্রাউজারের OS ক্লিপবোর্ড থেকে টেক্সট পড়ে তা সেলে বসানো হচ্ছে।
@@ -8403,81 +8501,136 @@ export default function ExcelStudioPage() {
     showToast("Time inserted.");
   };
 
+  const [sortDialogOpen, setSortDialogOpen] = useState(false);
+  const [sortColumnInput, setSortColumnInput] = useState("A");
+  const [sortOrderInput, setSortOrderInput] =
+    useState<"asc" | "desc">("asc");
+  const [sortHasHeader, setSortHasHeader] = useState(true);
 
+  const openSortDialog = () => {
+    const firstCol = Math.min(selection.c1, selection.c2);
+    const lastCol = Math.max(selection.c1, selection.c2);
+
+    let previousCol = 0;
+
+    for (const character of sortColumnInput) {
+      previousCol =
+        previousCol * 26 + character.charCodeAt(0) - 64;
+    }
+
+    previousCol -= 1;
+
+    if (previousCol < firstCol || previousCol > lastCol) {
+      const fallbackCol =
+        activePos.col >= firstCol && activePos.col <= lastCol
+          ? activePos.col
+          : firstCol;
+
+      setSortColumnInput(colToLetter(fallbackCol));
+    }
+
+    setSortDialogOpen(true);
+  };
   const sortColumn = useCallback(
-    (col: number, direction: "asc" | "desc") => {
-      const lastRow = getLastUsedRow(sheet.cells);
-      if (lastRow < 1) {
-        showToast("Nothing to sort.");
-        return;
+    (
+      col: number,
+      direction: "asc" | "desc",
+      hasHeader = true
+    ) => {
+      const range = {
+        r1: Math.min(selection.r1, selection.r2),
+        r2: Math.max(selection.r1, selection.r2),
+        c1: Math.min(selection.c1, selection.c2),
+        c2: Math.max(selection.c1, selection.c2),
+      };
+
+      const startRow = range.r1 + (hasHeader ? 1 : 0);
+
+      if (startRow >= range.r2) {
+        showToast("Select the full table with at least two data rows.");
+        return false;
       }
 
-      // হেডার সারি (যেমন "Amount") সর্টের ভেতরে ঢুকে যেত — এখন টেক্সট-হেডার + নিচে সংখ্যা থাকলে বাদ যায়
-      const firstValue = getCellValue(cellKey(0, col));
-      const hasNumbersBelow = Array.from({ length: lastRow }, (_, i) => getCellValue(cellKey(i + 1, col))).some(
-        (v) => typeof v === "number"
+      if (col < range.c1 || col > range.c2) {
+        showToast("Choose a sort column inside the selected range.");
+        return false;
+      }
+
+      if (rangeTouchesMergedCells(sheet, range)) {
+        showToast("Unmerge cells in this range before sorting.");
+        return false;
+      }
+
+      const rows = Array.from(
+        { length: range.r2 - startRow + 1 },
+        (_, index) => ({
+          row: startRow + index,
+          value: getCellValue(cellKey(startRow + index, col)),
+        })
       );
-      const headerBold = Boolean(sheet.cells[cellKey(0, col)]?.style?.bold) && !sheet.cells[cellKey(1, col)]?.style?.bold;
-      const looksLikeHeader =
-        typeof firstValue === "string" &&
-        firstValue !== "" &&
-        !FORMULA_ERRORS.has(firstValue) &&
-        (hasNumbersBelow || headerBold);
-      const startRow = looksLikeHeader ? 1 : 0;
 
-      const rowsData = Array.from({ length: lastRow + 1 - startRow }, (_, index) => ({
-        row: index + startRow,
-        val: getCellValue(cellKey(index + startRow, col)),
-      }));
+      rows.sort((a, b) => {
+        const aBlank = a.value === "";
+        const bBlank = b.value === "";
 
-      const sorted = [...rowsData].sort((a, b) => {
-        const aBlank = a.val === "";
-        const bBlank = b.val === "";
-
-        // খালি সেল সবসময় শেষে (asc/desc দুই ক্ষেত্রেই)
         if (aBlank || bBlank) {
           if (aBlank && bBlank) return a.row - b.row;
           return aBlank ? 1 : -1;
         }
 
-        let cmp: number;
-        if (typeof a.val === "number" && typeof b.val === "number") {
-          cmp = a.val - b.val;
-        } else if (typeof a.val === "number") {
-          cmp = -1; // সংখ্যা আগে, টেক্সট পরে
-        } else if (typeof b.val === "number") {
-          cmp = 1;
+        let result: number;
+
+        if (
+          typeof a.value === "number" &&
+          typeof b.value === "number"
+        ) {
+          result = a.value - b.value;
+        } else if (typeof a.value === "number") {
+          result = -1;
+        } else if (typeof b.value === "number") {
+          result = 1;
         } else {
-          cmp = String(a.val).localeCompare(String(b.val), undefined, {
-            numeric: true,
-            sensitivity: "base",
-          });
+          result = String(a.value).localeCompare(
+            String(b.value),
+            undefined,
+            { numeric: true, sensitivity: "base" }
+          );
         }
 
-        if (cmp === 0) return a.row - b.row; // সমান হলে আগের ক্রম ঠিক থাকবে
-        return direction === "asc" ? cmp : -cmp;
+        if (result === 0) return a.row - b.row;
+        return direction === "asc" ? result : -result;
       });
 
-      updateSheet((s) => {
-        const next = { ...s.cells };
+      updateSheet((current) => {
+        const next = { ...current.cells };
 
-        sorted.forEach(({ row: sourceRow }, index) => {
-          const targetRow = index + startRow;
+        rows.forEach(({ row: sourceRow }, index) => {
+          const targetRow = startRow + index;
 
-          for (let c = 0; c < s.gridCols; c++) {
-            const data = s.cells[cellKey(sourceRow, c)];
-            const k = cellKey(targetRow, c);
+          for (let c = range.c1; c <= range.c2; c++) {
+            const source = current.cells[cellKey(sourceRow, c)];
+            const targetKey = cellKey(targetRow, c);
 
-            if (!data) {
-              delete next[k]; // খালি সেলের অবজেক্ট জমা হবে না
+            if (!source) {
+              delete next[targetKey];
               continue;
             }
 
-            // সারি সরলে সূত্রের আপেক্ষিক রেফারেন্সও সরে, নাহলে =A2*B2 অন্য সারির মান দেখাত
-            next[k] =
-              targetRow !== sourceRow && typeof data.value === "string" && data.value.startsWith("=")
-                ? { ...data, value: "=" + shiftFormulaRefs(data.value.slice(1), targetRow - sourceRow, 0) }
-                : data;
+            next[targetKey] =
+              targetRow !== sourceRow &&
+                source.value.startsWith("=") &&
+                source.style?.numberFormat !== "text"
+                ? {
+                  ...source,
+                  value:
+                    "=" +
+                    shiftFormulaRefs(
+                      source.value.slice(1),
+                      targetRow - sourceRow,
+                      0
+                    ),
+                }
+                : source;
           }
         });
 
@@ -8485,20 +8638,21 @@ export default function ExcelStudioPage() {
       });
 
       setSortDir(direction === "asc" ? "desc" : "asc");
-
-      showToast(`Sorted ${direction === "asc" ? "ascending" : "descending"} by column ${colToLetter(col)}.`);
+      showToast(
+        `Sorted selected range by column ${colToLetter(col)}.`
+      );
+      return true;
     },
-    [sheet.cells, getCellValue, updateSheet, showToast]
+    [selection, sheet, getCellValue, updateSheet, showToast]
   );
 
-
   const sortByActiveColumn = useCallback(
-
     (direction?: "asc" | "desc") => {
-      sortColumn(activePos.col, direction || sortDir);
+      sortColumn(activePos.col, direction || sortDir, true);
     },
     [activePos.col, sortDir, sortColumn]
   );
+
 
   const sortColumnByColor = useCallback(
     (col: number, kind: "bg" | "font", color: string) => {
@@ -8551,16 +8705,62 @@ export default function ExcelStudioPage() {
     [sheet.cells, updateSheet, showToast]
   );
 
-  const getColumnUniqueValues = useCallback(
-    (col: number): AutoFilterOption[] => {
-      const map = new Map<string, number>();
+  const autoFilterColumnBounds = useMemo(() => {
+    const bounds = new Map<
+      number,
+      { headerRow: number; lastRow: number }
+    >();
 
-      for (let r = 0; r < sheet.gridRows; r++) {
-        const value = getDisplayValue(cellKey(r, col));
-        map.set(value, (map.get(value) || 0) + 1);
+    for (const [key, cell] of Object.entries(sheet.cells)) {
+      if (String(cell.value ?? "").trim() === "") continue;
+
+      const position = parseKey(key);
+      if (!position) continue;
+
+      const { row, col } = position;
+
+      if (
+        row < 0 ||
+        row >= sheet.gridRows ||
+        col < 0 ||
+        col >= sheet.gridCols
+      ) {
+        continue;
       }
 
-      return Array.from(map.entries())
+      const current = bounds.get(col);
+
+      if (current) {
+        current.headerRow = Math.min(current.headerRow, row);
+        current.lastRow = Math.max(current.lastRow, row);
+      } else {
+        bounds.set(col, {
+          headerRow: row,
+          lastRow: row,
+        });
+      }
+    }
+
+    return bounds;
+  }, [sheet.cells, sheet.gridRows, sheet.gridCols]);
+
+  const getColumnUniqueValues = useCallback(
+    (col: number): AutoFilterOption[] => {
+      const bounds = autoFilterColumnBounds.get(col);
+      if (!bounds) return [];
+
+      const counts = new Map<string, number>();
+
+      for (
+        let row = bounds.headerRow + 1;
+        row <= bounds.lastRow;
+        row++
+      ) {
+        const value = getDisplayValue(cellKey(row, col));
+        counts.set(value, (counts.get(value) || 0) + 1);
+      }
+
+      return Array.from(counts.entries())
         .map(([value, count]) => ({
           value,
           label: value === "" ? "(Empty)" : value,
@@ -8573,25 +8773,32 @@ export default function ExcelStudioPage() {
           })
         );
     },
-    [sheet.gridRows, getDisplayValue]
+    [autoFilterColumnBounds, getDisplayValue]
   );
 
   const getColumnColorOptions = useCallback(
     (col: number, kind: "bg" | "font"): AutoFilterColorOption[] => {
-      const map = new Map<string, number>();
+      const bounds = autoFilterColumnBounds.get(col);
+      if (!bounds) return [];
 
-      for (let r = 0; r < sheet.gridRows; r++) {
-        const style = sheet.cells[cellKey(r, col)]?.style;
+      const counts = new Map<string, number>();
+
+      for (
+        let row = bounds.headerRow + 1;
+        row <= bounds.lastRow;
+        row++
+      ) {
+        const style = sheet.cells[cellKey(row, col)]?.style;
 
         const color =
           kind === "bg"
             ? normalizeFilterColor(style?.bg || "#FFFFFF")
             : normalizeFilterColor(style?.color || "#000000");
 
-        map.set(color, (map.get(color) || 0) + 1);
+        counts.set(color, (counts.get(color) || 0) + 1);
       }
 
-      return Array.from(map.entries()).map(([color, count]) => ({
+      return Array.from(counts.entries()).map(([color, count]) => ({
         color,
         label:
           color === "#FFFFFF"
@@ -8606,122 +8813,151 @@ export default function ExcelStudioPage() {
         count,
       }));
     },
-    [sheet.gridRows, sheet.cells]
+    [autoFilterColumnBounds, sheet.cells]
   );
 
   const buildHiddenRowsFromFilterRecords = useCallback(
     (filters: Record<number, string>): number[] => {
       const parsedFilters = Object.entries(filters)
-        .map(([col, raw]) => ({
-          col: parseInt(col, 10),
-          state: parseAutoFilterState(raw),
-        }))
-        .filter(({ col, state }) => Number.isFinite(col) && isAutoFilterActive(state));
+        .map(([column, raw]) => {
+          const col = Number.parseInt(column, 10);
+          const state = parseAutoFilterState(raw);
+
+          return {
+            col,
+            state,
+            bounds: autoFilterColumnBounds.get(col),
+            selected:
+              state.selectedValues === null
+                ? null
+                : new Set(state.selectedValues),
+          };
+        })
+        .filter(
+          ({ col, state, bounds }) =>
+            Number.isFinite(col) &&
+            bounds !== undefined &&
+            isAutoFilterActive(state)
+        );
 
       if (parsedFilters.length === 0) return [];
 
+      const candidateRows = new Set<number>();
       const topBottomSets = new Map<string, Set<number>>();
 
-      parsedFilters.forEach(({ col, state }) => {
-        if (state.condition !== "top10" && state.condition !== "bottom10") return;
+      for (const { col, state, bounds } of parsedFilters) {
+        if (!bounds) continue;
 
         const numericRows: { row: number; value: number }[] = [];
+        const needsRanking =
+          state.condition === "top10" ||
+          state.condition === "bottom10";
 
-        for (let r = 0; r < sheet.gridRows; r++) {
-          const raw = getCellValue(cellKey(r, col));
+        for (
+          let row = bounds.headerRow + 1;
+          row <= bounds.lastRow;
+          row++
+        ) {
+          candidateRows.add(row);
 
-          const numeric = strictNumber(typeof raw === "boolean" ? String(raw) : raw) ?? NaN;
+          if (!needsRanking) continue;
+
+          const raw = getCellValue(cellKey(row, col));
+          const numeric =
+            strictNumber(
+              typeof raw === "boolean" ? String(raw) : raw
+            ) ?? NaN;
 
           if (Number.isFinite(numeric)) {
-            numericRows.push({ row: r, value: numeric });
+            numericRows.push({ row, value: numeric });
           }
         }
 
-        numericRows.sort((a, b) =>
-          state.condition === "top10" ? b.value - a.value : a.value - b.value
-        );
+        if (needsRanking) {
+          numericRows.sort((a, b) =>
+            state.condition === "top10"
+              ? b.value - a.value
+              : a.value - b.value
+          );
 
-        topBottomSets.set(
-          `${col}:${state.condition}`,
-          new Set(numericRows.slice(0, 10).map((item) => item.row))
-        );
-      });
+          topBottomSets.set(
+            `${col}:${state.condition}`,
+            new Set(numericRows.slice(0, 10).map((item) => item.row))
+          );
+        }
+      }
 
       const hidden: number[] = [];
 
-      for (let r = 0; r < sheet.gridRows; r++) {
+      for (const row of candidateRows) {
         let visible = true;
 
-        for (const { col, state } of parsedFilters) {
-          const key = cellKey(r, col);
+        for (const { col, state, bounds, selected } of parsedFilters) {
+          if (
+            !bounds ||
+            row <= bounds.headerRow ||
+            row > bounds.lastRow
+          ) {
+            continue;
+          }
+
+          const key = cellKey(row, col);
           const display = getDisplayValue(key);
-          const raw = getCellValue(key);
           const style = sheet.cells[key]?.style;
 
-          /*
-           * Checkbox/value filter
-           */
-          if (state.selectedValues !== null) {
-            const selected = new Set(state.selectedValues);
-
-            if (!selected.has(display)) {
-              visible = false;
-              break;
-            }
-          }
-
-          /*
-           * Background color filter
-           */
-          if (state.bgColor) {
-            const bg = normalizeFilterColor(style?.bg || "#FFFFFF");
-
-            if (bg !== normalizeFilterColor(state.bgColor)) {
-              visible = false;
-              break;
-            }
-          }
-
-          /*
-           * Font color filter
-           */
-          if (state.fontColor) {
-            const font = normalizeFilterColor(style?.color || "#000000");
-
-            if (font !== normalizeFilterColor(state.fontColor)) {
-              visible = false;
-              break;
-            }
-          }
-
-          /*
-           * Empty / Not Empty
-           */
-          if (state.condition === "empty" && display.trim() !== "") {
+          if (selected !== null && !selected.has(display)) {
             visible = false;
             break;
           }
 
-          if (state.condition === "notEmpty" && display.trim() === "") {
+          if (
+            state.bgColor &&
+            normalizeFilterColor(style?.bg || "#FFFFFF") !==
+            normalizeFilterColor(state.bgColor)
+          ) {
             visible = false;
             break;
           }
 
-          /*
-           * Top 10 / Bottom 10
-           */
-          if (state.condition === "top10" || state.condition === "bottom10") {
-            const set = topBottomSets.get(`${col}:${state.condition}`);
+          if (
+            state.fontColor &&
+            normalizeFilterColor(style?.color || "#000000") !==
+            normalizeFilterColor(state.fontColor)
+          ) {
+            visible = false;
+            break;
+          }
 
-            if (!set?.has(r)) {
+          if (
+            state.condition === "empty" &&
+            display.trim() !== ""
+          ) {
+            visible = false;
+            break;
+          }
+
+          if (
+            state.condition === "notEmpty" &&
+            display.trim() === ""
+          ) {
+            visible = false;
+            break;
+          }
+
+          if (
+            state.condition === "top10" ||
+            state.condition === "bottom10"
+          ) {
+            const rankedRows = topBottomSets.get(
+              `${col}:${state.condition}`
+            );
+
+            if (!rankedRows?.has(row)) {
               visible = false;
               break;
             }
           }
 
-          /*
-           * Standard Filter
-           */
           if (state.condition === "standard") {
             const standardValue = state.standard.value.trim();
 
@@ -8729,7 +8965,7 @@ export default function ExcelStudioPage() {
               standardValue &&
               !matchStandardAutoFilter(
                 state.standard.operator,
-                raw,
+                getCellValue(key),
                 display,
                 standardValue
               )
@@ -8740,13 +8976,19 @@ export default function ExcelStudioPage() {
           }
         }
 
-        if (!visible) hidden.push(r);
+        if (!visible) hidden.push(row);
       }
 
-      return hidden;
+      return hidden.sort((a, b) => a - b);
     },
-    [sheet.gridRows, sheet.cells, getDisplayValue, getCellValue]
+    [
+      autoFilterColumnBounds,
+      sheet.cells,
+      getDisplayValue,
+      getCellValue,
+    ]
   );
+
 
   const openAutoFilterMenu = useCallback(
     (col: number, e?: React.MouseEvent) => {
@@ -9391,7 +9633,34 @@ export default function ExcelStudioPage() {
     });
   }, []);
 
+  const [pdfViewer, setPdfViewer] = useState<{ url: string; name: string } | null>(null);
+  useEffect(() => {
+    if (!pdfViewer) return;
+    const url = pdfViewer.url;
+    return () => URL.revokeObjectURL(url);
+  }, [pdfViewer]);
+  useEffect(() => {
+    if (!pdfViewer) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPdfViewer(null);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [pdfViewer]);
+
   const onFileSelected = async (file: File) => {
+    if (file.name.toLowerCase().endsWith(".pdf")) {
+      if (!file.size || file.size > 50 * 1024 * 1024) {
+        throw new Error("খালি PDF নয়; সর্বোচ্চ 50 MB PDF ব্যবহার করুন।");
+      }
+      const signature = await file.slice(0, 1024).text();
+      if (!signature.includes("%PDF-")) {
+        throw new Error("ফাইলটিতে PDF header পাওয়া যায়নি। সঠিক PDF নির্বাচন করুন।");
+      }
+      const blob = new Blob([file], { type: "application/pdf" });
+      setPdfViewer({ url: URL.createObjectURL(blob), name: file.name });
+      return;
+    }
     if (file.name.toLowerCase().endsWith(".json")) {
       if (localSaveInProgressRef.current) {
         throw new Error("সেভ সম্পন্ন হওয়া পর্যন্ত অপেক্ষা করুন।");
@@ -10172,20 +10441,58 @@ export default function ExcelStudioPage() {
   };
 
   const replaceAll = () => {
-    if (!findText) return;
+    if (!findText) {
+      setReplaceAllStatus("Enter text in Find first.");
+      return;
+    }
+    const currentSheets = sheetsRef.current;
+    const target = currentSheets[activeSheetIndex];
+    if (!target) {
+      setReplaceAllStatus("No active sheet. Nothing was changed.");
+      return;
+    }
     const pattern = findText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const flags = matchCase ? "g" : "gi";
-    updateSheet((s) => {
-      const next = { ...s.cells };
-      Object.keys(next).forEach((k) => {
-        const current = next[k].value;
-        if (typeof current !== "string") return;
-        const replaced = current.replace(new RegExp(pattern, flags), () => replaceText);
-        if (replaced !== current) next[k] = { ...next[k], value: replaced };
+    const expression = new RegExp(pattern, matchCase ? "g" : "gi");
+    const nextCells = { ...target.cells };
+    let matchedCells = 0;
+    let changedCells = 0;
+    let occurrences = 0;
+    for (const [key, cell] of Object.entries(target.cells)) {
+      if (!cell || typeof cell.value !== "string") continue;
+      let cellMatches = 0;
+      const replaced = cell.value.replace(expression, () => {
+        cellMatches += 1;
+        return replaceText;
       });
-      return { cells: next };
-    });
-    showToast("All matches replaced.");
+      if (!cellMatches) continue;
+      matchedCells += 1;
+      occurrences += cellMatches;
+      if (replaced !== cell.value) {
+        nextCells[key] = { ...cell, value: replaced };
+        changedCells += 1;
+      }
+    }
+    if (!matchedCells) {
+      const message = `No matches for ${JSON.stringify(findText)} in sheet ${JSON.stringify(target.name)}. Nothing changed. Check spaces, hyphens and Match case.`;
+      setReplaceAllStatus(message);
+      showToast("No matches found. Nothing changed.");
+      return;
+    }
+    if (!changedCells) {
+      setReplaceAllStatus(`Found ${occurrences} match(es) in ${matchedCells} cell(s), but replacement leaves the text unchanged.`);
+      return;
+    }
+    const nextSheets = currentSheets.map((item, index) =>
+      index === activeSheetIndex ? { ...item, cells: nextCells } : item
+    );
+    setSheets(nextSheets);
+    if (editingKey && nextCells[editingKey] &&
+      nextCells[editingKey].value !== target.cells[editingKey]?.value) {
+      setEditValue(nextCells[editingKey].value);
+    }
+    const message = `Replaced ${occurrences} match(es) in ${changedCells} cell(s) on sheet ${JSON.stringify(target.name)}.`;
+    setReplaceAllStatus(message);
+    showToast(message);
   };
 
   const getChartData = (
@@ -11107,6 +11414,9 @@ export default function ExcelStudioPage() {
         grabFormat();
         break;
       case "DATA_SORT":
+        openSortDialog();
+        break;
+
       case "DATA_SORT_ASC":
         sortByActiveColumn("asc");
         break;
@@ -11218,6 +11528,7 @@ export default function ExcelStudioPage() {
   useEffect(() => {
 
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
       // Home screen খোলা থাকলে editor-এর global shortcuts চালাবেন না।
       if (showHomeScreen) return;
 
@@ -11889,7 +12200,7 @@ export default function ExcelStudioPage() {
   return (
     <div
       dir="ltr"
-      className="h-screen bg-[#FFFFFF] text-[#000000] font-sans flex flex-col overflow-hidden"
+      className="alx-workspace h-screen bg-[#FFFFFF] text-[#000000] font-sans flex flex-col overflow-hidden"
       style={
         darkMode
           ? { filter: "invert(1) hue-rotate(180deg)" }
@@ -11897,14 +12208,34 @@ export default function ExcelStudioPage() {
       }
     >
 
-      <input ref={homeDataInput} type="file" accept=".xlsx,.xls,.csv,.json" className="hidden" aria-label="Import data or restore workbook backup"
+      {pdfViewer && (
+        <div className="fixed inset-0 z-100000 flex flex-col bg-white text-black" role="dialog" aria-modal="true" aria-label="PDF viewer">
+          <div className="flex items-center justify-between gap-3 border-b bg-slate-100 p-3">
+            <div className="min-w-0"><div className="truncate font-semibold">{pdfViewer.name}</div>
+              <div className="text-sm">PDF শুধু দেখার জন্য খোলা হয়েছে; মূল শিট অপরিবর্তিত আছে।</div></div>
+            <button type="button" autoFocus className="shrink-0 rounded border bg-white px-4 py-2" onClick={() => setPdfViewer(null)}>বন্ধ করে শিটে ফিরুন</button>
+          </div>
+          <object data={pdfViewer.url} type="application/pdf" className="min-h-0 flex-1 w-full" aria-label={pdfViewer.name}>
+            <p className="p-4">এখানে PDF দেখা না গেলে <a className="underline" href={pdfViewer.url} target="_blank" rel="noopener noreferrer">আলাদা ট্যাবে PDF খুলুন</a>।</p>
+          </object>
+        </div>
+      )}
+
+      <input ref={homeDataInput} type="file" accept=".xlsx,.xls,.csv,.json,.pdf" className="hidden" aria-label="Import data or restore workbook backup"
         onChange={async e => {
           const input = e.currentTarget, file = input.files?.[0], mode = homeDataMode.current;
           if (!file) return;
           if (homeDataLoading.current || localSaveInProgressRef.current) { input.value = ""; showToast("অন্য ফাইলের কাজ চলছে।"); return; }
           const ext = file.name.split(".").pop()?.toLowerCase();
-          if (!(mode === "restore" ? ext === "json" : ["xlsx", "xls", "csv", "json"].includes(ext ?? ""))) { input.value = ""; window.alert("সমর্থিত workbook ফাইল নির্বাচন করুন।"); return; }
+          if (!(mode === "restore" ? ext === "json" : ["xlsx", "xls", "csv", "json", "pdf"].includes(ext ?? ""))) { input.value = ""; window.alert("সমর্থিত workbook ফাইল নির্বাচন করুন।"); return; }
           if (!file.size || file.size > 50 * 1024 * 1024) { input.value = ""; window.alert("খালি ফাইল নয়; সর্বোচ্চ 50 MB ফাইল ব্যবহার করুন।"); return; }
+          if (mode !== "restore" && ext === "pdf") {
+            homeDataLoading.current = true;
+            try { await onFileSelected(file); setHomeDataTools(null); }
+            catch (error) { window.alert(error instanceof Error ? error.message : "PDF খোলা যায়নি।"); }
+            finally { homeDataLoading.current = false; input.value = ""; }
+            return;
+          }
           if (!window.confirm(mode === "restore" ? "এই backup দিয়ে বর্তমান workbook প্রতিস্থাপিত হবে। Unsaved কাজ হারাবে। আগে backup রেখে থাকলে Continue করুন।" : "এই ফাইল খুললে বর্তমান workbook-এর ডেটা প্রতিস্থাপিত বা পরিবর্তিত হতে পারে। Unsaved কাজ হারাতে পারে। Continue?")) { input.value = ""; return; }
           homeDataLoading.current = true;
           try {
@@ -12055,7 +12386,7 @@ export default function ExcelStudioPage() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".xlsx,.xls,.csv,.json"
+        accept=".xlsx,.xls,.csv,.json,.pdf"
         className="hidden"
         onChange={async (e) => {
           const input = e.currentTarget;
@@ -12065,7 +12396,7 @@ export default function ExcelStudioPage() {
 
           try {
             await onFileSelected(file);
-            setShowHomeScreen(false);
+            if (!file.name.toLowerCase().endsWith(".pdf")) setShowHomeScreen(false);
           } catch (error) {
             console.error("ALIMXL workbook open failed:", error);
 
@@ -12217,7 +12548,7 @@ export default function ExcelStudioPage() {
 
 
 
-        <div className="ml-auto flex items-center gap-2 px-3">
+        <div className="alx-workbook-title ml-auto flex items-center gap-2 px-3">
           <div className="ml-auto hidden items-center gap-2 rounded-lg border border-[#C8C6C4] bg-linear-to-b from-white to-[#EDEBE9] px-3 py-1 text-xs font-black text-[#3B3A39] shadow-sm md:flex">
             <Icons.Crown size={16} className="text-amber-500" />
             SMART FAMILY IT SOLUTIONS WORLD LLC
@@ -12277,7 +12608,7 @@ export default function ExcelStudioPage() {
         </div>
 
         {/* Row 1: Standard Toolbar */}
-        <div className="flex flex-wrap items-center gap-o.75px] border-b border-[#D2D0CE] px-2 py-1">
+        <div className="alx-toolbar-row flex flex-wrap items-center gap-o.75px] border-b border-[#D2D0CE] px-2 py-1">
           {/* Toolbar callbacks read refs only when clicked, not while rendering. */}
           {standardToolbarButtons.map((button, index) => (
             <React.Fragment key={button.label}>
@@ -12375,7 +12706,7 @@ export default function ExcelStudioPage() {
         </div>
 
         {/* Row 2: Formatting Toolbar */}
-        <div className="flex flex-wrap items-center gap-[0.75px] border-b border-[#D2D0CE] px-2 py-1">
+        <div className="alx-toolbar-row flex flex-wrap items-center gap-[0.75px] border-b border-[#D2D0CE] px-2 py-1">
           <AdvancedFontPicker
             value={activeCellStyle.fontFamily || "Inter"}
             onChange={(fontFamily) => { applyStyleToSelection({ fontFamily }); showToast(`Font changed to ${fontFamily}.`); }}
@@ -12657,7 +12988,7 @@ export default function ExcelStudioPage() {
         </div>
 
         {/* Row 3: Formula Bar */}
-        <div className={`flex items-start gap-2 px-2 py-1 bg-linear-to-b from-[#FFFFFF] to-[#F7F7F7] transition-all ${formulaExpanded ? "min-h-[4.75px]" : "min-h-[2.5px]"}`}>
+        <div className={`alx-formula-bar flex items-start gap-2 px-2 py-1 bg-linear-to-b from-[#FFFFFF] to-[#F7F7F7] transition-all ${formulaExpanded ? "min-h-[4.75px]" : "min-h-[2.5px]"}`}>
           <input
             value={activeCell}
             onChange={(e) => {
@@ -12733,7 +13064,7 @@ export default function ExcelStudioPage() {
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1">
+      <div className="alx-work-area flex min-h-0 min-w-0 flex-1">
         <div className={`flex min-h-0 min-w-0 flex-1 flex-col ${printPreview ? "bg-[#A19F9D] p-6" : ""}`}>
           {showDrawFunctions && (
             <div className="flex flex-wrap items-center gap-2 border-b border-[#D2D0CE] bg-[#FBFBFB] px-3 py-2 text-xs">
@@ -12840,7 +13171,7 @@ export default function ExcelStudioPage() {
               });
             }}
             className={`flex-1 overflow-auto bg-[#F3F2F1] relative awm-premium-scrollbar ${printPreview ? "mx-auto w-full max-w-6xl rounded-xl bg-white shadow-2xl" : ""}`}
-            style={{ overflowAnchor: "none", overscrollBehavior: "contain" }}
+            style={{ overflowAnchor: "none", overscrollBehavior: "contain", touchAction: "pan-x pan-y", minHeight: 0, minWidth: 0 }}
           >
             <table
               className="table-fixed text-sm bg-[#FFFFFF]"
@@ -13429,7 +13760,7 @@ export default function ExcelStudioPage() {
           </div>
 
           {showStatusBar && (
-            <div className="flex shrink-0 items-center justify-between border-t border-[#D2D0CE] bg-[#F3F2F1] px-3 py-1 text-xs text-[#3B3A39]">
+            <div className="alx-status-bar flex shrink-0 items-center justify-between border-t border-[#D2D0CE] bg-[#F3F2F1] px-3 py-1 text-xs text-[#3B3A39]">
               <div className="flex items-center gap-4">
                 <span>Selected: {selectionStats.count}</span>
                 {selectionStats.numericCount > 0 && (
@@ -13527,7 +13858,7 @@ export default function ExcelStudioPage() {
           )}
           {/* Sheet Tabs */}
           <div
-            className="flex items-center gap-1 border-t border-[#D2D0CE] bg-[#F3F2F1] px-2 py-1 shrink-0 overflow-x-auto">
+            className="alx-sheet-tabs flex items-center gap-1 border-t border-[#D2D0CE] bg-[#F3F2F1] px-2 py-1 shrink-0 overflow-x-auto">
             <button onClick={addSheet} className="rounded-md border border-[#D2D0CE] bg-[#FFFFFF] px-3 py-1.5 text-xs font-bold hover:bg-[#E1DFDD] shadow-sm">+</button>
             {sheets.map((s, i) => (
               <button key={s.id} onClick={() => { setActiveSheetIndex(i); setActiveCell("A1"); setSelection({ r1: 0, c1: 0, r2: 0, c2: 0 }); }} className={`rounded-t-lg border px-4 py-1.5 text-xs font-bold shadow-sm min-w-20px ${i === activeSheetIndex ? "border-[#106EBE] bg-[#FFFFFF] text-[#106EBE] border-b-2" : "border-[#D2D0CE] bg-[#E1DFDD] text-[#000000] hover:bg-[#FFFFFF]"}`}>
@@ -13543,7 +13874,7 @@ export default function ExcelStudioPage() {
         {/* LibreOffice Calc Style Right Sidebar */}
         {rightSidebarOpen && (
           <aside
-            className={`${rightSidebarUndocked ? "fixed right-5 top-28 z-9000 h-[72vh] rounded-2xl shadow-2xl" : "relative"} flex shrink-0 border-l border-[#C8C6C4] bg-linear-to-b from-[#F8F9FA] to-[#ECEFF3]`}
+            className={`alx-right-sidebar ${rightSidebarUndocked ? "fixed right-5 top-28 z-9000 h-[72vh] rounded-2xl shadow-2xl" : "relative"} flex shrink-0 border-l border-[#C8C6C4] bg-linear-to-b from-[#F8F9FA] to-[#ECEFF3]`}
             style={{ width: sidebarWidth }}
           >
             <div
@@ -14478,6 +14809,129 @@ export default function ExcelStudioPage() {
               <ToolBtn onClick={replaceCurrent}>Replace Current</ToolBtn>
               <ToolBtn onClick={replaceAll}>Replace All</ToolBtn>
             </div>
+            {replaceAllStatus && (
+              <p role="status" aria-live="polite" className="wrap-break-word rounded-md border border-[#D2D0CE] bg-[#F8F9FA] p-3 text-sm text-[#000000]">
+                {replaceAllStatus}
+              </p>
+            )}
+          </div>
+        </Modal>
+      )}
+
+      {sortDialogOpen && (
+        <Modal
+          title="Sort selected range"
+          onClose={() => setSortDialogOpen(false)}
+        >
+          <div className="space-y-4 text-sm">
+            <p>
+              Range: {selectedRangeText}. Only cells inside this
+              selection will move.
+            </p>
+
+            <label className="block">
+              Sort by column
+              <select
+                className="ml-2 rounded border p-2"
+                value={sortColumnInput}
+                onChange={(event) =>
+                  setSortColumnInput(event.target.value)
+                }
+              >
+                {Array.from(
+                  {
+                    length:
+                      Math.abs(selection.c2 - selection.c1) + 1,
+                  },
+                  (_, index) => {
+                    const col =
+                      Math.min(selection.c1, selection.c2) + index;
+                    const letter = colToLetter(col);
+                    const header = getDisplayValue(
+                      cellKey(
+                        Math.min(selection.r1, selection.r2),
+                        col
+                      )
+                    );
+
+                    return (
+                      <option key={letter} value={letter}>
+                        {letter}
+                        {sortHasHeader && header
+                          ? ` — ${header}`
+                          : ""}
+                      </option>
+                    );
+                  }
+                )}
+              </select>
+            </label>
+
+            <label className="block">
+              Order
+              <select
+                className="ml-2 rounded border p-2"
+                value={sortOrderInput}
+                onChange={(event) =>
+                  setSortOrderInput(
+                    event.target.value as "asc" | "desc"
+                  )
+                }
+              >
+                <option value="asc">
+                  Smallest to Largest / A to Z
+                </option>
+                <option value="desc">
+                  Largest to Smallest / Z to A
+                </option>
+              </select>
+            </label>
+
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={sortHasHeader}
+                onChange={(event) =>
+                  setSortHasHeader(event.target.checked)
+                }
+              />
+              My selection has headers
+            </label>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded border px-4 py-2"
+                onClick={() => setSortDialogOpen(false)}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className="rounded bg-blue-700 px-4 py-2 text-white"
+                onClick={() => {
+                  let columnNumber = 0;
+
+                  for (const character of sortColumnInput) {
+                    columnNumber =
+                      columnNumber * 26 +
+                      character.charCodeAt(0) -
+                      64;
+                  }
+
+                  const success = sortColumn(
+                    columnNumber - 1,
+                    sortOrderInput,
+                    sortHasHeader
+                  );
+
+                  if (success) setSortDialogOpen(false);
+                }}
+              >
+                Apply Sort
+              </button>
+            </div>
           </div>
         </Modal>
       )}
@@ -15041,13 +15495,17 @@ function AutoFilterDropdown({
       ref={refObject}
       style={{
         position: "fixed",
-        left: x,
-        top: y,
+        left: Math.max(8, x),
+        top: Math.max(8, y),
+        maxHeight: `calc(100dvh - ${Math.max(8, y) + 8}px)`,
         zIndex: 99999,
       }}
-      className="w-85 overflow-hidden rounded-xl border border-[#C8C6C4] bg-white text-[#201F1E] shadow-2xl"
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
+      className="flex w-85 flex-col overflow-hidden rounded-xl border border-[#C8C6C4] bg-white text-[#201F1E] shadow-2xl"
     >
-      <div className="flex items-center justify-between border-b border-[#E1DFDD] bg-linear-to-b from-[#FFFFFF] to-[#F3F2F1] px-3 py-2">
+      <div className="flex shrink-0 items-center justify-between border-b border-[#E1DFDD] bg-linear-to-b from-[#FFFFFF] to-[#F3F2F1] px-3 py-2">
         <div className="flex items-center gap-2">
           <Icons.Filter size={16} className="text-[#106EBE]" />
           <span className="text-sm font-black text-[#106EBE]">
@@ -15066,7 +15524,7 @@ function AutoFilterDropdown({
         </button>
       </div>
 
-      <div className="max-h-[74vh] overflow-auto p-3 awm-premium-scrollbar">
+      <div className="min-h-0 flex-1 overflow-auto p-3 awm-premium-scrollbar">
         {/* Sorting */}
         <div className="space-y-2">
           <button
@@ -15356,11 +15814,16 @@ function AutoFilterDropdown({
                 className="w-full bg-transparent text-sm outline-none"
                 style={{ direction: "ltr", unicodeBidi: "plaintext" }}
                 onKeyDown={(e) => {
+                  e.stopPropagation();
+
                   if (e.key === "Escape") {
+                    e.preventDefault();
                     onClose();
+                    return;
                   }
 
                   if (e.key === "Enter") {
+                    e.preventDefault();
                     onApply();
                   }
                 }}
@@ -15415,7 +15878,7 @@ function AutoFilterDropdown({
       </div>
 
       {/* Footer buttons */}
-      <div className="flex items-center justify-between border-t border-[#E1DFDD] bg-[#F8F8F8] px-3 py-2">
+      <div className="flex shrink-0 items-center justify-between border-t border-[#E1DFDD] bg-[#F8F8F8] px-3 py-2">
         <button
           type="button"
           onClick={onClear}
