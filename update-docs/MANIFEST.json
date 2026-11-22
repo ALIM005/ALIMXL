@@ -1,0 +1,60 @@
+{
+  "source_zip_bytes": 7513699,
+  "source_zip_sha256": "e348464355b44d30cf662b036bebfbec21fc39be080bb6d0ee67bf49b3d83415",
+  "modified": {
+    "lib/print-i18n.ts": {
+      "before_sha256": "42ef4bd0e01fb02d1fbef217493045002b9046406d71f3bd29e8f80005716d48",
+      "after_sha256": "84f0ce9c9c52aa18e00dc79f7c5b06adcfe8223a0747057847c0eda26069c625"
+    },
+    "app/page.tsx": {
+      "before_sha256": "f08a64a0d71fc0ba9972813c9c3eeed864871925b55e648c26b0f80ae0031955",
+      "after_sha256": "76fbf57c957f8973f7db007f9108f4c04ef717533e670c41c9e5a281d811e981"
+    },
+    "components/print/print-output.tsx": {
+      "before_sha256": "36e3843124e1dd47ac3deaafdc7ad5b8f96dc23f17cb64b0a5ff64c678fbc01c",
+      "after_sha256": "b2a46fecb5c6fe930ca1a3ae054a5708b46ee521582201da55f6911b2f469ab8"
+    },
+    "components/print/PageSetupDialog.tsx": {
+      "before_sha256": "5216e4a24e7fcf50abe815a1686f3a1e56626c1871b6c1035273984f0be2b2f9",
+      "after_sha256": "47a71a32a7c33e3e6f39bd1334441fc9911c0a7aa2e75cc7b4f97fad56bbe2fb"
+    },
+    "components/print/PrintPreviewModal.tsx": {
+      "before_sha256": "a2ac59004c47a393c19fc40f60ea3e133b5df6b95888c79c68fab4fb09232d27",
+      "after_sha256": "15c9c83cd659281dce5872c0155b32e5410c80484149aa5794609511ff7338c1"
+    },
+    "components/print/PrintBreakEditor.tsx": {
+      "before_sha256": "eb427cd45203509ef0539eabcab67f9acc9dad6ea4306873a59a436625e02a14",
+      "after_sha256": "bba3294089bb431a974c3b4c18dc0906ffccd1f0b7a1c21d0ccfc5648e689b58"
+    },
+    "components/print/LivePrintPreview.tsx": {
+      "before_sha256": "f49cede44c79f484ede07a3f2d415aa715064f7dbda15582ccbb695226162fa0",
+      "after_sha256": "197abba8eafe54386baa8c2fb64f1d4218af6204eac4a8801349bd2abb0f294b"
+    },
+    "components/print/PrintDialog.tsx": {
+      "before_sha256": "f389bf46380942cb910df634a20943a9ded90363f18e7111ffe13bcc8644f05c",
+      "after_sha256": "de51985263c4ba007c57a469d7b9d32e4f2c3fa9e6c7843baa576e683acf5bbb"
+    }
+  },
+  "added": {
+    "lib/print-frame.ts": "f2b9eced6a79b12a83da8978c4f2e56833094382c27739a2904bd392fea62046",
+    "tests/print-phase4.test.mjs": "4a981dcd1629265b7e8180490711efba0822f44ca03969da109db4a2fa3fd664",
+    "components/print/PrintLanguageSetting.tsx": "f8e77c32c8f62ee6ddb4473a486967331638a858a35a51bb4b77df5b2df7c8d8",
+    "components/print/usePrintI18n.ts": "321a8f9a34f68cf32fc8872f55aa8245b7e81a9b85a615fb25ae6097cb960683"
+  },
+  "verification": {
+    "print_engine_and_frame_language_tests": 49,
+    "existing_tests": 151,
+    "mock_ui_assertions": 30,
+    "syntax_files": 17,
+    "translation_keys_per_language": 164
+  },
+  "not_verified": [
+    "full_typecheck",
+    "lint",
+    "production_build",
+    "real_Edge_print_cancel",
+    "PDF",
+    "physical_printer",
+    "XLSX_round_trip"
+  ]
+}

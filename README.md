@@ -38,6 +38,16 @@ ALIMXL
 │  ├─ AlimxlHome.tsx
 │  ├─ MyFiles.tsx
 │  ├─ OfflineSetup.tsx
+│  ├─ print
+│  │  ├─ LivePrintPreview.tsx
+│  │  ├─ PageSetupDialog.tsx
+│  │  ├─ print-output.tsx
+│  │  ├─ PrintBreakEditor.tsx
+│  │  ├─ PrintDialog.tsx
+│  │  ├─ PrintHeaderFooter.tsx
+│  │  ├─ PrintLanguageSetting.tsx
+│  │  ├─ PrintPreviewModal.tsx
+│  │  └─ usePrintI18n.ts
 │  ├─ RecoveryDrafts.tsx
 │  ├─ SettingsProvider.tsx
 │  ├─ WelcomeGate.tsx
@@ -61,6 +71,14 @@ ALIMXL
 │  ├─ device-files.ts
 │  ├─ formula-core.mjs
 │  ├─ local-workbooks.ts
+│  ├─ print-borders.ts
+│  ├─ print-frame.ts
+│  ├─ print-i18n.ts
+│  ├─ print-layout.ts
+│  ├─ print-pages.ts
+│  ├─ print-preparation.ts
+│  ├─ print-render.ts
+│  ├─ print-text-measure.ts
 │  ├─ recovery-policy.d.mts
 │  ├─ recovery-policy.mjs
 │  ├─ recovery-store.ts
@@ -94,6 +112,8 @@ ALIMXL
 │  ├─ formula-core.test.mjs
 │  ├─ oracle
 │  │  └─ batch1.oracle.json
+│  ├─ print-phase3.test.mjs
+│  ├─ print-phase4.test.mjs
 │  ├─ recovery-policy.test.mjs
 │  ├─ workbook-backup.test.mjs
 │  ├─ workbook-integrity.test.mjs
@@ -101,6 +121,11 @@ ALIMXL
 ├─ tsconfig.json
 ├─ UPDATE-CHANGES.patch
 ├─ UPDATE-COMPARISON.txt
+├─ update-docs
+│  ├─ INSTALL-BN.txt
+│  ├─ MANIFEST.json
+│  ├─ README.txt
+│  └─ TEST-RESULTS.txt
 ├─ UPDATE-NOTES.md
 ├─ UPDATE-TEST-RESULTS.txt
 └─ WARNING-REMEDIATION-NOTES-BN.txt

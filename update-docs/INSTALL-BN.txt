@@ -1,0 +1,20 @@
+শুধু আপডেটের ZIP — সম্পূর্ণ প্রজেক্ট নয়
+
+১. বর্তমান প্রজেক্ট ও workbook-এর ব্যাকআপ রাখুন। Dev server বন্ধ করুন।
+২. ZIP আলাদা স্থানে আনজিপ করুন। app, components, lib, tests-এর ফাইলগুলো
+   আপনার প্রজেক্টের একই path-এ replace/add করুন। অন্য ফাইল মুছবেন না।
+৩. আপনার বসানো lib/print-i18n.ts-ও নতুন কপি দিয়ে replace করতে হবে।
+৪. update-docs শুধু নির্দেশনা; অ্যাপে কপি করার প্রয়োজন নেই।
+৫. npm run typecheck, npm run lint, npm run build চালিয়ে ভুল আছে কি না দেখুন।
+৬. node --test tests/print-phase3.test.mjs tests/print-phase4.test.mjs চালান।
+৭. সব ঠিক হলে npm run dev চালিয়ে workbook-এর কপিতে পরীক্ষা করুন।
+
+এবার আলাদা দৃশ্যমান about:blank window নয়; একই পেজের hidden print frame
+থেকে শেষ browser Print dialog খোলার কোড দেওয়া হয়েছে। শেষ dialog থাকবে।
+Print/Cancel-এর পরে অ্যাপ স্বাভাবিক হচ্ছে কি না, PDF একই হচ্ছে কি না আগে দেখুন।
+ইংরেজি প্রাথমিক ভাষা। Print settings-এ বাংলা ও আরবি বেছে নিতে পারবেন।
+শিটের নিজের লেখা ও আপনার header/footer অনুবাদ হবে না।
+
+বাস্তব Edge/PDF/printer এবং full typecheck/build এখানে পরীক্ষা হয়নি।
+Mock পরীক্ষাকে বাস্তব প্রিন্ট সফল হওয়ার নিশ্চয়তা ভাববেন না।
+সমস্যা হলে অফিসের মূল ফাইলে কাজ না করে backed-up সংস্করণে ফিরে যান।

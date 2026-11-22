@@ -1,0 +1,1028 @@
+{"syntaxParsed":17,"translationKeys":164,"issues":[]}
+
+MOCKED UI
+{"mockUiAndMarkupAssertionsPassed":30,"realBrowser":false}
+
+PRINT TESTS
+TAP version 13
+# Subtest: legacy fit-width still includes all ten columns
+ok 1 - legacy fit-width still includes all ten columns
+  ---
+  duration_ms: 16.412349
+  ...
+# Subtest: 15 workers plus total fit on two pages with repeated heading
+ok 2 - 15 workers plus total fit on two pages with repeated heading
+  ---
+  duration_ms: 14.263033
+  ...
+# Subtest: 10 workers plus total fit on three pages
+ok 3 - 10 workers plus total fit on three pages
+  ---
+  duration_ms: 11.863797
+  ...
+# Subtest: final row not implicitly assumed to be a total
+ok 4 - final row not implicitly assumed to be a total
+  ---
+  duration_ms: 13.300744
+  ...
+# Subtest: every page starts with original heading
+ok 5 - every page starts with original heading
+  ---
+  duration_ms: 12.712142
+  ...
+# Subtest: body rows occur once and none are lost
+ok 6 - body rows occur once and none are lost
+  ---
+  duration_ms: 7.368872
+  ...
+# Subtest: header-only print area does not duplicate header
+ok 7 - header-only print area does not duplicate header
+  ---
+  duration_ms: 0.682968
+  ...
+# Subtest: repeat header consumes printable capacity
+ok 8 - repeat header consumes printable capacity
+  ---
+  duration_ms: 14.533565
+  ...
+# Subtest: manual row break uses zero-based source boundary
+ok 9 - manual row break uses zero-based source boundary
+  ---
+  duration_ms: 7.409435
+  ...
+# Subtest: moving row break changes page distribution
+ok 10 - moving row break changes page distribution
+  ---
+  duration_ms: 7.694639
+  ...
+# Subtest: removing final manual row break merges vertical pages
+ok 11 - removing final manual row break merges vertical pages
+  ---
+  duration_ms: 8.252908
+  ...
+# Subtest: manual column break divides at selected column
+ok 12 - manual column break divides at selected column
+  ---
+  duration_ms: 11.92755
+  ...
+# Subtest: removing final manual column break fits width
+ok 13 - removing final manual column break fits width
+  ---
+  duration_ms: 11.894905
+  ...
+# Subtest: duplicate break indices normalize
+ok 14 - duplicate break indices normalize
+  ---
+  duration_ms: 0.253583
+  ...
+# Subtest: out-of-range stale breaks are excluded
+ok 15 - out-of-range stale breaks are excluded
+  ---
+  duration_ms: 0.123909
+  ...
+# Subtest: invalid break indices rejected
+ok 16 - invalid break indices rejected
+  ---
+  duration_ms: 0.346864
+  ...
+# Subtest: negative rows per page rejected
+ok 17 - negative rows per page rejected
+  ---
+  duration_ms: 0.38428
+  ...
+# Subtest: invalid print area rejected
+ok 18 - invalid print area rejected
+  ---
+  duration_ms: 0.312485
+  ...
+# Subtest: prepared rows fit page capacity after forced grouping
+ok 19 - prepared rows fit page capacity after forced grouping
+  ---
+  duration_ms: 12.56855
+  ...
+# Subtest: source workbook remains byte-equivalent after print fitting
+ok 20 - source workbook remains byte-equivalent after print fitting
+  ---
+  duration_ms: 14.660936
+  ...
+# Subtest: auto row fit removes vertical overflow for wrapped sample
+ok 21 - auto row fit removes vertical overflow for wrapped sample
+  ---
+  duration_ms: 17.714808
+  ...
+# Subtest: print-only wrapping does not change worksheet wrap
+ok 22 - print-only wrapping does not change worksheet wrap
+  ---
+  duration_ms: 19.590376
+  ...
+# Subtest: formatted display values used in prepared pages
+ok 23 - formatted display values used in prepared pages
+  ---
+  duration_ms: 6.983693
+  ...
+# Subtest: formula showing blank does not erase requested range
+ok 24 - formula showing blank does not erase requested range
+  ---
+  duration_ms: 7.276929
+  ...
+# Subtest: small overview available for dragging
+ok 25 - small overview available for dragging
+  ---
+  duration_ms: 13.061275
+  ...
+# Subtest: overview disabled beyond editor cap but normal printing works
+ok 26 - overview disabled beyond editor cap but normal printing works
+  ---
+  duration_ms: 80.749211
+  ...
+# Subtest: repeated heading counted in layout budgets
+ok 27 - repeated heading counted in layout budgets
+  ---
+  duration_ms: 0.323188
+  ...
+# Subtest: duplicate repeated rows rejected
+ok 28 - duplicate repeated rows rejected
+  ---
+  duration_ms: 0.189029
+  ...
+# Subtest: overlapping repeated body row rejected
+ok 29 - overlapping repeated body row rejected
+  ---
+  duration_ms: 0.182249
+  ...
+# Subtest: shared physical border deduplicated below repeated header
+ok 30 - shared physical border deduplicated below repeated header
+  ---
+  duration_ms: 12.866264
+  ...
+# Subtest: impossible manual segment below 10 percent gives error
+ok 31 - impossible manual segment below 10 percent gives error
+  ---
+  duration_ms: 0.664785
+  ...
+# Subtest: empty grid remains safe
+ok 32 - empty grid remains safe
+  ---
+  duration_ms: 0.272308
+  ...
+# Subtest: all three dictionaries have complete matching placeholders
+ok 33 - all three dictionaries have complete matching placeholders
+  ---
+  duration_ms: 3.102163
+  ...
+# Subtest: English is the default
+ok 34 - English is the default
+  ---
+  duration_ms: 0.116162
+  ...
+# Subtest: regional language codes normalize
+ok 35 - regional language codes normalize
+  ---
+  duration_ms: 0.226547
+  ...
+# Subtest: Arabic is RTL; English and Bengali are LTR
+ok 36 - Arabic is RTL; English and Bengali are LTR
+  ---
+  duration_ms: 0.138962
+  ...
+# Subtest: all translations interpolate
+ok 37 - all translations interpolate
+  ---
+  duration_ms: 16.850118
+  ...
+# Subtest: missing parameters rejected
+ok 38 - missing parameters rejected
+  ---
+  duration_ms: 0.411342
+  ...
+# Subtest: user parameters preserved literally
+ok 39 - user parameters preserved literally
+  ---
+  duration_ms: 0.131663
+  ...
+# Subtest: localized numbers preserve values
+ok 40 - localized numbers preserve values
+  ---
+  duration_ms: 0.263156
+  ...
+# Subtest: structured errors follow language
+ok 41 - structured errors follow language
+  ---
+  duration_ms: 0.43316
+  ...
+# Subtest: unknown errors do not leak mixed UI text
+ok 42 - unknown errors do not leak mixed UI text
+  ---
+  duration_ms: 0.464859
+  ...
+# Subtest: SSR preference access safe
+ok 43 - SSR preference access safe
+  ---
+  duration_ms: 0.175421
+  ...
+# Subtest: no browser gives structured error
+ok 44 - no browser gives structured error
+  ---
+  duration_ms: 0.552155
+  ...
+# Subtest: iframe prints without popup and cleans up
+ok 45 - iframe prints without popup and cleans up
+  ---
+  duration_ms: 102.729225
+  ...
+# Subtest: pending dialog keeps snapshot and prevents duplicate job
+ok 46 - pending dialog keeps snapshot and prevents duplicate job
+  ---
+  duration_ms: 141.040409
+  ...
+# Subtest: load error cleans up
+ok 47 - load error cleans up
+  ---
+  duration_ms: 0.537324
+  ...
+# Subtest: font error cleans up
+ok 48 - font error cleans up
+  ---
+  duration_ms: 0.556806
+  ...
+# Subtest: print failure releases lock for retry
+ok 49 - print failure releases lock for retry
+  ---
+  duration_ms: 202.155896
+  ...
+1..49
+# tests 49
+# suites 0
+# pass 49
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 923.044359
+
+OTHER TESTS
+TAP version 13
+# Subtest: positive
+ok 1 - positive
+  ---
+  duration_ms: 1.338815
+  ...
+# Subtest: negative
+ok 2 - negative
+  ---
+  duration_ms: 0.142163
+  ...
+# Subtest: mixed
+ok 3 - mixed
+  ---
+  duration_ms: 0.153601
+  ...
+# Subtest: asymmetric
+ok 4 - asymmetric
+  ---
+  duration_ms: 0.106114
+  ...
+# Subtest: empty
+ok 5 - empty
+  ---
+  duration_ms: 0.10315
+  ...
+# Subtest: zero
+ok 6 - zero
+  ---
+  duration_ms: 0.097235
+  ...
+# Subtest: bar geometry
+ok 7 - bar geometry
+  ---
+  duration_ms: 0.68163
+  ...
+# Subtest: horizontal bars
+ok 8 - horizontal bars
+  ---
+  duration_ms: 0.229779
+  ...
+# Subtest: category positions
+ok 9 - category positions
+  ---
+  duration_ms: 0.237353
+  ...
+# Subtest: extreme finite values
+ok 10 - extreme finite values
+  ---
+  duration_ms: 0.253143
+  ...
+# Subtest: 1000 deterministic geometry cases
+ok 11 - 1000 deterministic geometry cases
+  ---
+  duration_ms: 7.717291
+  ...
+# Subtest: numeric parsing
+ok 12 - numeric parsing
+  ---
+  duration_ms: 0.46459
+  ...
+# Subtest: invalid values are not zero
+ok 13 - invalid values are not zero
+  ---
+  duration_ms: 0.142151
+  ...
+# Subtest: source rows keep zero skip header errors
+ok 14 - source rows keep zero skip header errors
+  ---
+  duration_ms: 0.353505
+  ...
+# Subtest: single column label
+ok 15 - single column label
+  ---
+  duration_ms: 0.14515
+  ...
+# Subtest: oversized source
+ok 16 - oversized source
+  ---
+  duration_ms: 0.152969
+  ...
+# Subtest: negative pie error
+ok 17 - negative pie error
+  ---
+  duration_ms: 0.275246
+  ...
+# Subtest: all-zero pie error
+ok 18 - all-zero pie error
+  ---
+  duration_ms: 0.217284
+  ...
+# Subtest: real Of-Pie totals
+ok 19 - real Of-Pie totals
+  ---
+  duration_ms: 0.210866
+  ...
+# Subtest: two categories no fabricated split
+ok 20 - two categories no fabricated split
+  ---
+  duration_ms: 0.15721
+  ...
+# Subtest: single slice full circle
+ok 21 - single slice full circle
+  ---
+  duration_ms: 0.308222
+  ...
+# Subtest: huge pie weights
+ok 22 - huge pie weights
+  ---
+  duration_ms: 0.258037
+  ...
+# Subtest: Of-Pie overflow
+ok 23 - Of-Pie overflow
+  ---
+  duration_ms: 0.135739
+  ...
+# Subtest: pie input immutable
+ok 24 - pie input immutable
+  ---
+  duration_ms: 0.117919
+  ...
+# Subtest: exports version
+ok 25 - exports version
+  ---
+  duration_ms: 1.116859
+  ...
+# Subtest: math functions
+ok 26 - math functions
+  ---
+  duration_ms: 3.927064
+  ...
+# Subtest: statistical functions
+ok 27 - statistical functions
+  ---
+  duration_ms: 0.730703
+  ...
+# Subtest: conditional aggregates
+ok 28 - conditional aggregates
+  ---
+  duration_ms: 0.781378
+  ...
+# Subtest: text functions
+ok 29 - text functions
+  ---
+  duration_ms: 13.955001
+  ...
+# Subtest: lookup functions
+ok 30 - lookup functions
+  ---
+  duration_ms: 0.8122
+  ...
+# Subtest: logical functions
+ok 31 - logical functions
+  ---
+  duration_ms: 0.390868
+  ...
+# Subtest: row and column
+ok 32 - row and column
+  ---
+  duration_ms: 0.229465
+  ...
+# Subtest: financial functions
+ok 33 - financial functions
+  ---
+  duration_ms: 0.260157
+  ...
+# Subtest: dynamic array behavior (first value returned)
+ok 34 - dynamic array behavior (first value returned)
+  ---
+  duration_ms: 0.490324
+  ...
+# Subtest: known limitations
+ok 35 - known limitations
+  ---
+  duration_ms: 0.306781
+  ...
+# Subtest: non-deterministic functions return valid types
+ok 36 - non-deterministic functions return valid types
+  ---
+  duration_ms: 4.364708
+  ...
+# Subtest: oracle: প্রতিটি কেস LibreOffice/Excel-এর সঙ্গে মেলে
+ok 37 - oracle: প্রতিটি কেস LibreOffice/Excel-এর সঙ্গে মেলে
+  ---
+  duration_ms: 39.967216
+  ...
+# Subtest: Microsoft ডক-উদাহরণ ও হাতে-যাচাই করা কেস
+ok 38 - Microsoft ডক-উদাহরণ ও হাতে-যাচাই করা কেস
+  ---
+  duration_ms: 2.519705
+  ...
+# Subtest: সামঞ্জস্য: STDEV.S/STDEV.P/VAR.S/VAR.P বিদ্যমান STDEV/STDEVP/VAR/VARP-এর সমান
+ok 39 - সামঞ্জস্য: STDEV.S/STDEV.P/VAR.S/VAR.P বিদ্যমান STDEV/STDEVP/VAR/VARP-এর সমান
+  ---
+  duration_ms: 1.664534
+  ...
+# Subtest: সামঞ্জস্য: RANK.AVG ও বিদ্যমান RANK; ISNONTEXT বনাম ISTEXT
+ok 40 - সামঞ্জস্য: RANK.AVG ও বিদ্যমান RANK; ISNONTEXT বনাম ISTEXT
+  ---
+  duration_ms: 0.602864
+  ...
+# Subtest: কাঠামো: ঠিক ৫০টি, ডুপ্লিকেট নেই, বিদ্যমান ফাংশনের সঙ্গে সংঘাত নেই
+ok 41 - কাঠামো: ঠিক ৫০টি, ডুপ্লিকেট নেই, বিদ্যমান ফাংশনের সঙ্গে সংঘাত নেই
+  ---
+  duration_ms: 5.479658
+  ...
+# Subtest: কাঠামো: ৫০টির প্রতিটি ইঞ্জিনে স্বীকৃত (\#NAME? নয়)
+ok 42 - কাঠামো: ৫০টির প্রতিটি ইঞ্জিনে স্বীকৃত (\#NAME? নয়)
+  ---
+  duration_ms: 1.520886
+  ...
+# Subtest: নিরাপত্তা: ভুল আর্গুমেন্ট সংখ্যা ও অদ্ভুত ইনপুটে ক্র্যাশ নয়
+ok 43 - নিরাপত্তা: ভুল আর্গুমেন্ট সংখ্যা ও অদ্ভুত ইনপুটে ক্র্যাশ নয়
+  ---
+  duration_ms: 6.915117
+  ...
+# Subtest: exports version
+ok 44 - exports version
+  ---
+  duration_ms: 1.744338
+  ...
+# Subtest: localization: Bengali digits normalized
+ok 45 - localization: Bengali digits normalized
+  ---
+  duration_ms: 2.60546
+  ...
+# Subtest: localization: Arabic-Indic digits normalized
+ok 46 - localization: Arabic-Indic digits normalized
+  ---
+  duration_ms: 0.388753
+  ...
+# Subtest: error literal passes through
+ok 47 - error literal passes through
+  ---
+  duration_ms: 0.329054
+  ...
+# Subtest: text and number coercion
+ok 48 - text and number coercion
+  ---
+  duration_ms: 0.763626
+  ...
+# Subtest: row and column
+ok 49 - row and column
+  ---
+  duration_ms: 0.328689
+  ...
+# Subtest: population variance and stdev
+ok 50 - population variance and stdev
+  ---
+  duration_ms: 0.477658
+  ...
+# Subtest: CONVERT unit codes not supported (known limitation)
+ok 51 - CONVERT unit codes not supported (known limitation)
+  ---
+  duration_ms: 0.258001
+  ...
+# Subtest: exports version
+ok 52 - exports version
+  ---
+  duration_ms: 1.838567
+  ...
+# Subtest: sums local range
+ok 53 - sums local range
+  ---
+  duration_ms: 2.925283
+  ...
+# Subtest: cross-sheet reference
+ok 54 - cross-sheet reference
+  ---
+  duration_ms: 0.405759
+  ...
+# Subtest: dependent chain across sheets
+ok 55 - dependent chain across sheets
+  ---
+  duration_ms: 0.428643
+  ...
+# Subtest: cross-sheet range sum
+ok 56 - cross-sheet range sum
+  ---
+  duration_ms: 0.277012
+  ...
+# Subtest: self reference is circular
+ok 57 - self reference is circular
+  ---
+  duration_ms: 0.152812
+  ...
+# Subtest: error propagates through dependency
+ok 58 - error propagates through dependency
+  ---
+  duration_ms: 0.260073
+  ...
+# Subtest: MATCH: exact, case-insensitive, wildcard, approximate
+ok 59 - MATCH: exact, case-insensitive, wildcard, approximate
+  ---
+  duration_ms: 7.096667
+  ...
+# Subtest: MATCH: text '007' and '7' are different (like Excel)
+ok 60 - MATCH: text '007' and '7' are different (like Excel)
+  ---
+  duration_ms: 0.368122
+  ...
+# Subtest: INDEX: basic, vectors, bounds
+ok 61 - INDEX: basic, vectors, bounds
+  ---
+  duration_ms: 1.113405
+  ...
+# Subtest: HLOOKUP: exact and approximate
+ok 62 - HLOOKUP: exact and approximate
+  ---
+  duration_ms: 0.410592
+  ...
+# Subtest: CHOOSE
+ok 63 - CHOOSE
+  ---
+  duration_ms: 0.213005
+  ...
+# Subtest: DATE / YEAR / MONTH / DAY
+ok 64 - DATE / YEAR / MONTH / DAY
+  ---
+  duration_ms: 1.27272
+  ...
+# Subtest: WEEKDAY (সোমবার = ২০২৪-০১-১৫)
+ok 65 - WEEKDAY (সোমবার = ২০২৪-০১-১৫)
+  ---
+  duration_ms: 0.271817
+  ...
+# Subtest: EOMONTH / EDATE / DAYS
+ok 66 - EOMONTH / EDATE / DAYS
+  ---
+  duration_ms: 0.515343
+  ...
+# Subtest: DATEDIF
+ok 67 - DATEDIF
+  ---
+  duration_ms: 0.565102
+  ...
+# Subtest: COUNTBLANK
+ok 68 - COUNTBLANK
+  ---
+  duration_ms: 0.299115
+  ...
+# Subtest: MAXIFS / MINIFS
+ok 69 - MAXIFS / MINIFS
+  ---
+  duration_ms: 0.656653
+  ...
+# Subtest: SUBTOTAL: all functions, nested SUBTOTAL ignored, hidden rows
+ok 70 - SUBTOTAL: all functions, nested SUBTOTAL ignored, hidden rows
+  ---
+  duration_ms: 1.846758
+  ...
+# Subtest: ISERROR / ISERR / ISNA / ISTEXT / IFNA
+ok 71 - ISERROR / ISERR / ISNA / ISTEXT / IFNA
+  ---
+  duration_ms: 0.404256
+  ...
+# Subtest: LOG / LN / EXP / PI / SIGN / TRUNC
+ok 72 - LOG / LN / EXP / PI / SIGN / TRUNC
+  ---
+  duration_ms: 0.658321
+  ...
+# Subtest: RANDBETWEEN stays in range and errors when reversed
+ok 73 - RANDBETWEEN stays in range and errors when reversed
+  ---
+  duration_ms: 5.623149
+  ...
+# Subtest: FV / PV / NPER / NPV
+ok 74 - FV / PV / NPER / NPV
+  ---
+  duration_ms: 0.475328
+  ...
+# Subtest: IRR / RATE
+ok 75 - IRR / RATE
+  ---
+  duration_ms: 1.542503
+  ...
+# Subtest: REPLACE / REPT / EXACT
+ok 76 - REPLACE / REPT / EXACT
+  ---
+  duration_ms: 0.555605
+  ...
+# Subtest: PERCENTILE / QUARTILE / MODE and dotted names
+ok 77 - PERCENTILE / QUARTILE / MODE and dotted names
+  ---
+  duration_ms: 1.1003
+  ...
+# Subtest: unknown functions still give \#NAME? and old functions still work
+ok 78 - unknown functions still give \#NAME? and old functions still work
+  ---
+  duration_ms: 1.548293
+  ...
+# Subtest: works with sheet-qualified ranges through getCellValueInSheet
+ok 79 - works with sheet-qualified ranges through getCellValueInSheet
+  ---
+  duration_ms: 0.45418
+  ...
+# Subtest: OFFSET: single cell, inside SUM, with size
+ok 80 - OFFSET: single cell, inside SUM, with size
+  ---
+  duration_ms: 6.553515
+  ...
+# Subtest: INDIRECT: cell, range, text-built, bad
+ok 81 - INDIRECT: cell, range, text-built, bad
+  ---
+  duration_ms: 0.753559
+  ...
+# Subtest: OFFSET + INDIRECT nesting, VLOOKUP over dynamic range
+ok 82 - OFFSET + INDIRECT nesting, VLOOKUP over dynamic range
+  ---
+  duration_ms: 0.571501
+  ...
+# Subtest: ROWS / COLUMNS
+ok 83 - ROWS / COLUMNS
+  ---
+  duration_ms: 0.600578
+  ...
+# Subtest: TRANSPOSE (first value / INDEX)
+ok 84 - TRANSPOSE (first value / INDEX)
+  ---
+  duration_ms: 0.427628
+  ...
+# Subtest: TEXTSPLIT
+ok 85 - TEXTSPLIT
+  ---
+  duration_ms: 0.543828
+  ...
+# Subtest: HOUR / MINUTE / SECOND / TIME
+ok 86 - HOUR / MINUTE / SECOND / TIME
+  ---
+  duration_ms: 1.3354
+  ...
+# Subtest: NETWORKDAYS / WORKDAY
+ok 87 - NETWORKDAYS / WORKDAY
+  ---
+  duration_ms: 0.576521
+  ...
+# Subtest: WEEKNUM
+ok 88 - WEEKNUM
+  ---
+  duration_ms: 0.565396
+  ...
+# Subtest: FACT / GCD / LCM / MROUND
+ok 89 - FACT / GCD / LCM / MROUND
+  ---
+  duration_ms: 0.797738
+  ...
+# Subtest: trigonometry
+ok 90 - trigonometry
+  ---
+  duration_ms: 0.387672
+  ...
+# Subtest: CORREL / SLOPE / INTERCEPT / RSQ / FORECAST
+ok 91 - CORREL / SLOPE / INTERCEPT / RSQ / FORECAST
+  ---
+  duration_ms: 1.272544
+  ...
+# Subtest: CLEAN / CHAR / CODE / UNICODE / UNICHAR
+ok 92 - CLEAN / CHAR / CODE / UNICODE / UNICHAR
+  ---
+  duration_ms: 0.457266
+  ...
+# Subtest: IPMT / PPMT
+ok 93 - IPMT / PPMT
+  ---
+  duration_ms: 1.489792
+  ...
+# Subtest: XNPV / XIRR
+ok 94 - XNPV / XIRR
+  ---
+  duration_ms: 1.536742
+  ...
+# Subtest: errors propagate and old functions unchanged
+ok 95 - errors propagate and old functions unchanged
+  ---
+  duration_ms: 1.722947
+  ...
+# Subtest: exports version
+ok 96 - exports version
+  ---
+  duration_ms: 1.10264
+  ...
+# Subtest: math and rounding
+ok 97 - math and rounding
+  ---
+  duration_ms: 3.895505
+  ...
+# Subtest: statistics
+ok 98 - statistics
+  ---
+  duration_ms: 0.411189
+  ...
+# Subtest: conditional aggregates
+ok 99 - conditional aggregates
+  ---
+  duration_ms: 0.716694
+  ...
+# Subtest: text functions
+ok 100 - text functions
+  ---
+  duration_ms: 14.414896
+  ...
+# Subtest: lookup functions
+ok 101 - lookup functions
+  ---
+  duration_ms: 0.707488
+  ...
+# Subtest: logical and error
+ok 102 - logical and error
+  ---
+  duration_ms: 0.460827
+  ...
+# Subtest: financial
+ok 103 - financial
+  ---
+  duration_ms: 0.208999
+  ...
+# Subtest: multi-sheet cross reference
+ok 104 - multi-sheet cross reference
+  ---
+  duration_ms: 0.490933
+  ...
+# Subtest: dependent cell without false circular
+ok 105 - dependent cell without false circular
+  ---
+  duration_ms: 0.611725
+  ...
+# Subtest: saved workbook uses stable key
+ok 106 - saved workbook uses stable key
+  ---
+  duration_ms: 1.086918
+  ...
+# Subtest: different tabs do not overwrite drafts
+ok 107 - different tabs do not overwrite drafts
+  ---
+  duration_ms: 0.158481
+  ...
+# Subtest: different workbooks have separate drafts
+ok 108 - different workbooks have separate drafts
+  ---
+  duration_ms: 0.116225
+  ...
+# Subtest: untitled workbook uses first sheet identity
+ok 109 - untitled workbook uses first sheet identity
+  ---
+  duration_ms: 0.124459
+  ...
+# Subtest: ambiguous delimiters do not collide
+ok 110 - ambiguous delimiters do not collide
+  ---
+  duration_ms: 0.166704
+  ...
+# Subtest: missing session rejected
+ok 111 - missing session rejected
+  ---
+  duration_ms: 0.224815
+  ...
+# Subtest: missing identity rejected
+ok 112 - missing identity rejected
+  ---
+  duration_ms: 0.133798
+  ...
+# Subtest: empty store allows draft
+ok 113 - empty store allows draft
+  ---
+  duration_ms: 0.115635
+  ...
+# Subtest: full store refuses new draft
+ok 114 - full store refuses new draft
+  ---
+  duration_ms: 0.200719
+  ...
+# Subtest: full store still updates existing draft
+ok 115 - full store still updates existing draft
+  ---
+  duration_ms: 0.230361
+  ...
+# Subtest: record preserves backup
+ok 116 - record preserves backup
+  ---
+  duration_ms: 0.640489
+  ...
+# Subtest: empty backup rejected
+ok 117 - empty backup rejected
+  ---
+  duration_ms: 1.903399
+  ...
+# Subtest: roundtrip preserves cells, formulas and metadata
+ok 118 - roundtrip preserves cells, formulas and metadata
+  ---
+  duration_ms: 8.1034
+  ...
+# Subtest: restore removes original identity and timestamp
+ok 119 - restore removes original identity and timestamp
+  ---
+  duration_ms: 1.11891
+  ...
+# Subtest: export does not mutate source
+ok 120 - export does not mutate source
+  ---
+  duration_ms: 0.713956
+  ...
+# Subtest: tampering rejected
+ok 121 - tampering rejected
+  ---
+  duration_ms: 1.244729
+  ...
+# Subtest: truncated JSON rejected
+ok 122 - truncated JSON rejected
+  ---
+  duration_ms: 0.963714
+  ...
+# Subtest: unsupported version rejected
+ok 123 - unsupported version rejected
+  ---
+  duration_ms: 0.730791
+  ...
+# Subtest: plain legacy JSON not silently accepted
+ok 124 - plain legacy JSON not silently accepted
+  ---
+  duration_ms: 0.210266
+  ...
+# Subtest: missing checksum rejected
+ok 125 - missing checksum rejected
+  ---
+  duration_ms: 1.860899
+  ...
+# Subtest: UTF8 BOM accepted
+ok 126 - UTF8 BOM accepted
+  ---
+  duration_ms: 1.79302
+  ...
+# Subtest: invalid active sheet rejected
+ok 127 - invalid active sheet rejected
+  ---
+  duration_ms: 0.357751
+  ...
+# Subtest: duplicate sheet IDs rejected
+ok 128 - duplicate sheet IDs rejected
+  ---
+  duration_ms: 0.208899
+  ...
+# Subtest: oversized import rejected
+ok 129 - oversized import rejected
+  ---
+  duration_ms: 27.107728
+  ...
+# Subtest: oversized export rejected
+ok 130 - oversized export rejected
+  ---
+  duration_ms: 223.148526
+  ...
+# Subtest: bad cell address rejected
+ok 131 - bad cell address rejected
+  ---
+  duration_ms: 0.396535
+  ...
+# Subtest: multiple sheets survive roundtrip
+ok 132 - multiple sheets survive roundtrip
+  ---
+  duration_ms: 2.18204
+  ...
+# Subtest: nonfinite metadata fails instead of silently becoming null
+ok 133 - nonfinite metadata fails instead of silently becoming null
+  ---
+  duration_ms: 0.372695
+  ...
+# Subtest: function metadata fails instead of silently disappearing
+ok 134 - function metadata fails instead of silently disappearing
+  ---
+  duration_ms: 0.214371
+  ...
+# Subtest: undefined array items fail instead of becoming null
+ok 135 - undefined array items fail instead of becoming null
+  ---
+  duration_ms: 0.334738
+  ...
+# Subtest: valid workbook accepted
+ok 136 - valid workbook accepted
+  ---
+  duration_ms: 1.297807
+  ...
+# Subtest: empty name
+ok 137 - empty name
+  ---
+  duration_ms: 0.240994
+  ...
+# Subtest: bad ID
+ok 138 - bad ID
+  ---
+  duration_ms: 0.855545
+  ...
+# Subtest: empty sheets
+ok 139 - empty sheets
+  ---
+  duration_ms: 0.131588
+  ...
+# Subtest: invalid active index
+ok 140 - invalid active index
+  ---
+  duration_ms: 0.12661
+  ...
+# Subtest: invalid page size
+ok 141 - invalid page size
+  ---
+  duration_ms: 0.112123
+  ...
+# Subtest: null sheet
+ok 142 - null sheet
+  ---
+  duration_ms: 0.133619
+  ...
+# Subtest: duplicate sheet IDs
+ok 143 - duplicate sheet IDs
+  ---
+  duration_ms: 0.175753
+  ...
+# Subtest: invalid dimensions
+ok 144 - invalid dimensions
+  ---
+  duration_ms: 0.226422
+  ...
+# Subtest: invalid cell map
+ok 145 - invalid cell map
+  ---
+  duration_ms: 0.251407
+  ...
+# Subtest: invalid address
+ok 146 - invalid address
+  ---
+  duration_ms: 0.155302
+  ...
+# Subtest: invalid cell value
+ok 147 - invalid cell value
+  ---
+  duration_ms: 0.13342
+  ...
+# Subtest: snapshot isolates nested edits
+ok 148 - snapshot isolates nested edits
+  ---
+  duration_ms: 0.263574
+  ...
+# Subtest: unknown optional metadata preserved
+ok 149 - unknown optional metadata preserved
+  ---
+  duration_ms: 0.681855
+  ...
+# Subtest: non-cloneable data rejected
+ok 150 - non-cloneable data rejected
+  ---
+  duration_ms: 0.226619
+  ...
+# Subtest: null input rejected
+ok 151 - null input rejected
+  ---
+  duration_ms: 0.182917
+  ...
+1..151
+# tests 151
+# suites 0
+# pass 151
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1151.103741

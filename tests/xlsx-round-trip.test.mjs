@@ -1,11 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const {
   importXlsxFile,

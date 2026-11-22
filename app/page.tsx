@@ -50,6 +50,37 @@ import {
   listLocalWorkbooks,
   getLocalWorkbook,
 } from "../lib/local-workbooks";
+import { createPrintTextMeasurer } from "../lib/print-text-measure";
+import PrintDialogNew, {
+  type PrintDialogOptions,
+} from "../components/print/PrintDialog";
+
+import PageSetupDialogNew from "../components/print/PageSetupDialog";
+
+import {
+  printPreparedSession,
+} from "../components/print/print-output";
+import PrintPreviewModalNew from "../components/print/PrintPreviewModal";
+import LivePrintPreview from "../components/print/LivePrintPreview";
+import type { PrintPreviewPaneProps } from "../components/print/PrintPreviewModal";
+import { makePrintError, getPrintErrorMessage } from "../lib/print-i18n";
+import { getCurrentPrintLanguage } from "../components/print/usePrintI18n";
+// ===== NEW PRINT ENGINE IMPORTS =====
+import type { PrintSheetLike } from "../lib/print-pages";
+import { preparePrintDocument } from "../lib/print-preparation";
+
+import type {
+  PrintPageSetup as PrintPageSetupNew,
+} from "../components/print/PageSetupDialog";
+
+import type {
+  PrintHeaderFooterSettings as PrintHeaderFooterSettingsNew,
+} from "../components/print/PrintHeaderFooter";
+const optionsKeyNew = (options: PrintDialogOptions) => JSON.stringify([
+  options.showGridlines,
+  options.headerFooter.header.left, options.headerFooter.header.center, options.headerFooter.header.right,
+  options.headerFooter.footer.left, options.headerFooter.footer.center, options.headerFooter.footer.right,
+]);
 /* ============================================================================
  * AWM Excel Studio — Enterprise Spreadsheet Module
  * Frontend-only page. All cloud/database operations are performed through
@@ -1795,97 +1826,11 @@ function matchesCurrency(c: WorldCurrency, query: string): boolean {
   );
 }
 
-const EXCHANGE_RATE_SHEET_NAME = "Exchange Rates";
-
-const activeExchangeRates: Record<string, number> = {};
-let userExchangeRatesActive = false;
-
-const DEFAULT_EXCHANGE_RATES_TO_USD: Record<string, number> = {
-  USD: 1,
-  BDT: 0.0082,
-  EUR: 1.08,
-  GBP: 1.27,
-  INR: 0.0119,
-  PKR: 0.0036,
-  // [স্টেপ ১] SAR/AED/QAR ডলারের সাথে স্থির (peg) — সঠিক অনুপাত: 3.75 / 3.6725 / 3.64
-  SAR: 1 / 3.75,
-  AED: 1 / 3.6725,
-  QAR: 1 / 3.64,
-  KWD: 3.26,
-  OMR: 2.6,
-  JPY: 0.0067,
-  CNY: 0.14,
-  AUD: 0.66,
-  CAD: 0.73,
-  CHF: 1.12,
-  SGD: 0.74,
-  MYR: 0.22,
-  THB: 0.029,
-  IDR: 0.000063,
-  KRW: 0.00073,
-  TRY: 0.029,
-  RUB: 0.011,
-  BRL: 0.18,
-  MXN: 0.055,
-  ZAR: 0.055,
-  NGN: 0.00065,
-  EGP: 0.021,
-  KES: 0.0077,
-};
-
-function rateKey(from: string, to: string) {
-  return `${from}-${to}`;
-}
-
-function isValidRate(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value > 0;
-}
-
-function getUsdRate(currencyCode: string): number | null {
-  if (currencyCode === "USD") return 1;
-
-  const direct = activeExchangeRates[rateKey(currencyCode, "USD")];
-  if (isValidRate(direct)) return direct;
-
-  const reverse = activeExchangeRates[rateKey("USD", currencyCode)];
-  if (isValidRate(reverse)) return 1 / reverse;
-
-  const fallback = DEFAULT_EXCHANGE_RATES_TO_USD[currencyCode];
-  return typeof fallback === "number" && fallback > 0 ? fallback : null;
-}
-
+const userExchangeRatesActive = false;
 
 function getExchangeRate(from: string, to: string): number {
   return libGetExchangeRate(from, to);
 }
-
-
-function syncExchangeRates(allSheets: WorkbookSheet[]): void {
-  const rateSheet = allSheets.find(
-    (item) =>
-      item.name.trim().toLowerCase() === EXCHANGE_RATE_SHEET_NAME.toLowerCase()
-  );
-
-  const next: Record<string, number> = {};
-
-  if (rateSheet) {
-    for (let row = 1; row < rateSheet.gridRows; row += 1) {
-      const from = String(rateSheet.cells[cellKey(row, 0)]?.value ?? "").trim().toUpperCase();
-      const to = String(rateSheet.cells[cellKey(row, 1)]?.value ?? "").trim().toUpperCase();
-      // [স্টেপ ১] বাংলা/আরবি অঙ্কে লেখা রেটও (যেমন "১২২.৫০") গ্রহণযোগ্য
-      const rate = strictNumber(String(rateSheet.cells[cellKey(row, 2)]?.value ?? "")) ?? NaN;
-
-      if (from && to && Number.isFinite(rate) && rate > 0) {
-        next[rateKey(from, to)] = rate;
-      }
-    }
-  }
-
-  Object.keys(activeExchangeRates).forEach((key) => delete activeExchangeRates[key]);
-  Object.assign(activeExchangeRates, next);
-  userExchangeRatesActive = Object.keys(next).length > 0;
-}
-
 
 function formatCurrencyValue(rawNumeric: number, currencyCode: string, decimals: number): string {
   const currency = findCurrency(currencyCode);
@@ -5032,19 +4977,14 @@ export default function ExcelStudioPage() {
 
   const [showGridLines, setShowGridLines] = useState(true);
   const [printPreview, setPrintPreview] = useState(false);
-  const [showPageSetup, setShowPageSetup] = useState(false);
-  const [showPrintDialog, setShowPrintDialog] = useState(false);
-  const [printMarginTop, setPrintMarginTop] = useState(20);
-  const [printMarginBottom, setPrintMarginBottom] = useState(20);
-  const [printMarginLeft, setPrintMarginLeft] = useState(15);
-  const [printMarginRight, setPrintMarginRight] = useState(15);
-  const [printScale, setPrintScale] = useState(100);
-  const [printHeader, setPrintHeader] = useState("");
-  const [printFooter, setPrintFooter] = useState("Page &P of &N");
-  const [printArea, setPrintArea] = useState<string>("");
-  const [printTitleRows, setPrintTitleRows] = useState<string>(""); // যেমন "1:1"
-  const [printTitleCols, setPrintTitleCols] = useState<string>("");
-  const [showAdvancedPrintPreview, setShowAdvancedPrintPreview] = useState(false);
+  const [printMarginTop] = useState(20);
+  const [printMarginBottom] = useState(20);
+  const [printMarginLeft] = useState(15);
+  const [printMarginRight] = useState(15);
+  const [printScale] = useState(100);
+  const [printHeader] = useState("");
+  const [printFooter] = useState("Page &P of &N");
+  const [printArea] = useState<string>("");
   type SplitAxis = "vertical" | "horizontal" | null;
   const [splitAxis, setSplitAxis] = useState<SplitAxis>(null);
   const [splitRatio, setSplitRatio] = useState(0.5); // 0.1–0.9 এর মধ্যে clamp হবে
@@ -5419,7 +5359,7 @@ export default function ExcelStudioPage() {
   }, [activeSheetIndex, setSheets]);
   // সারি/কলাম ঢোকানো-মোছার সময়
   // ==================== Dynamic Array Spill Integration ====================
-  const [spillSettings, setSpillSettings] = useState<SpillSettings>(loadSpillSettings);
+  const [spillSettings] = useState<SpillSettings>(loadSpillSettings);
   useEffect(() => {
     saveSpillSettings(spillSettings);
   }, [spillSettings]);
@@ -6088,6 +6028,137 @@ export default function ExcelStudioPage() {
     [getCellValue, formatDisplayValue, sheet.cells]
   );
 
+  // ===== PRINT MANAGER: PREPARE DATA ONLY =====
+  // This does not open a modal, change workbook cells, or print.
+  const [newPrintDialogOpen, setNewPrintDialogOpen] =
+    useState(false);
+
+  const [newPageSetupOpen, setNewPageSetupOpen] =
+    useState(false);
+
+  const [newPrintBusy, setNewPrintBusy] =
+    useState(false);
+
+  const [newPrintError, setNewPrintError] =
+    useState<unknown>(null);
+
+  const newPrintLock = useRef(false);
+
+  const [newPrintOptions, setNewPrintOptions] =
+    useState<PrintDialogOptions | null>(null);
+
+  const [newPageSetup, setNewPageSetup] =
+    useState<PrintPageSetupNew | null>(null);
+
+  const currentPrintSetup: PrintPageSetupNew =
+    newPageSetup ?? {
+      paperSize: pageSize,
+      orientation,
+      margins: {
+        top: printMarginTop,
+        right: printMarginRight,
+        bottom: printMarginBottom,
+        left: printMarginLeft,
+      },
+      scale: printScale,
+      printArea,
+    };
+
+  const currentPrintOptions: PrintDialogOptions =
+    newPrintOptions ?? {
+      showGridlines: showGridLines,
+      headerFooter: {
+        header: {
+          left: "",
+          center: printHeader,
+          right: "",
+        },
+        footer: {
+          left: "",
+          center: printFooter,
+          right: "",
+        },
+      },
+    };
+  const preparePrintSessionNew = useCallback((
+    requestedOptions?: PrintDialogOptions,
+  ) => {
+    const requestedSettings: PrintPageSetupNew = newPageSetup ?? {
+      paperSize: pageSize,
+      orientation,
+      margins: {
+        top: printMarginTop,
+        right: printMarginRight,
+        bottom: printMarginBottom,
+        left: printMarginLeft,
+      },
+      scale: printScale,
+      printArea,
+    };
+
+    const options: PrintDialogOptions =
+      requestedOptions ?? newPrintOptions ?? {
+        showGridlines: showGridLines,
+        headerFooter: {
+          header: {
+            left: "",
+            center: printHeader,
+            right: "",
+          },
+          footer: {
+            left: "",
+            center: printFooter,
+            right: "",
+          },
+        },
+      };
+
+    const headerFooter: PrintHeaderFooterSettingsNew = {
+      header: { ...options.headerFooter.header },
+      footer: { ...options.headerFooter.footer },
+    };
+
+    const printTime = new Date();
+
+    const printSheet: PrintSheetLike = {
+      gridRows: sheet.gridRows, gridCols: sheet.gridCols,
+      cells: sheet.cells, colWidths: sheet.colWidths, rowHeights: sheet.rowHeights,
+    };
+    const prepared = preparePrintDocument(printSheet, requestedSettings, getDisplayValue, createPrintTextMeasurer());
+    return {
+      ...prepared, headerFooter, printTime,
+      sheetName: sheet.name, workbookName, showGridlines: options.showGridlines,
+    };
+   }, [
+    newPageSetup,
+    newPrintOptions,
+    pageSize,
+    orientation,
+    printMarginTop,
+    printMarginRight,
+    printMarginBottom,
+    printMarginLeft,
+    printScale,
+    printArea,
+    printHeader,
+    printFooter,
+    sheet,
+    getDisplayValue,
+    workbookName,
+    showGridLines,
+  ]);
+  const readyPrintSession = useRef<{
+    prepare: typeof preparePrintSessionNew; optionsKey: string; session: PrintPreviewPaneProps;
+  } | null>(null);
+  const rememberPrintSession = useCallback((session: PrintPreviewPaneProps, options: PrintDialogOptions) => {
+    readyPrintSession.current = { prepare: preparePrintSessionNew, optionsKey: optionsKeyNew(options), session };
+  }, [preparePrintSessionNew]);
+  // ===== END PRINT MANAGER: PREPARE DATA ONLY =====
+
+  // ===== PRINT MANAGER: ISOLATED PREVIEW SESSION =====
+  const [printTestSession, setPrintTestSession] = useState<
+    ReturnType<typeof preparePrintSessionNew> | null
+  >(null);
   const setCellData = useCallback(
     (key: string, rawPatch: Partial<CellData>) => {
       const patch: Partial<CellData> = { ...rawPatch };
@@ -9983,11 +10054,83 @@ export default function ExcelStudioPage() {
     );
   };
 
+  const openPrintDialogNew = () => {
+    if (newPrintLock.current) return;
 
+    readyPrintSession.current = null;
+    setPrintTestSession(null);
+
+    setPrintPreview(false);
+
+    setNewPageSetupOpen(false);
+    setNewPrintError(null);
+    setNewPrintDialogOpen(true);
+  };
+
+  const previewWithOptionsNew = (
+    options: PrintDialogOptions,
+  ) => {
+    if (newPrintLock.current) return;
+
+    try {
+      const session = preparePrintSessionNew(options);
+
+      if (session.pages.length === 0) {
+        throw makePrintError("noPages");
+      }
+
+      setNewPrintOptions(options);
+      setNewPrintError(null);
+
+
+      setPrintPreview(false);
+
+      setNewPageSetupOpen(false);
+      setNewPrintDialogOpen(false);
+      setPrintTestSession(session);
+    } catch (error: unknown) {
+      setNewPrintError(error);
+
+      if (!newPrintDialogOpen) {
+        window.alert(getPrintErrorMessage(error, getCurrentPrintLanguage()));
+      }
+    }
+  };
+
+  const openPrintPreviewNew = () => {
+    previewWithOptionsNew(currentPrintOptions);
+  };
+
+  const printWithOptionsNew = async (
+    options: PrintDialogOptions,
+  ) => {
+    if (newPrintLock.current) return;
+
+    newPrintLock.current = true;
+    setNewPrintBusy(true);
+    setNewPrintError(null);
+
+    try {
+      const ready = readyPrintSession.current;
+      const session = ready?.prepare === preparePrintSessionNew && ready.optionsKey === optionsKeyNew(options)
+        ? ready.session : preparePrintSessionNew(options);
+
+      if (session.pages.length === 0) {
+        throw makePrintError("noPages");
+      }
+
+      await printPreparedSession(session);
+      setNewPrintOptions(options);
+    } catch (error: unknown) {
+      setNewPrintError(error);
+    } finally {
+      newPrintLock.current = false;
+      setNewPrintBusy(false);
+    }
+  };
 
   const handleExportPdf = () => {
-    showToast("Preparing PDF export.");
-    window.setTimeout(() => window.print(), 80);
+    openPrintDialogNew();
   };
 
   const findMatches = useCallback(() => {
@@ -10816,17 +10959,23 @@ export default function ExcelStudioPage() {
       case "FILE_EXPORT_PDF":
         handleExportPdf();
         break;
+
       case "FILE_PRINT":
-        setShowPageSetup(false);
-        setShowPrintDialog(true);
+        openPrintDialogNew();
         break;
 
       case "FILE_PRINT_PREVIEW":
-        setPrintPreview(true);
+        openPrintPreviewNew();
         break;
+
       case "FILE_PAGE_STYLE":
       case "FORMAT_PAGE_STYLE":
-        setShowPageSetup(true);
+        if (newPrintLock.current) break;
+
+        setPrintTestSession(null);
+        setNewPrintDialogOpen(false);
+        setNewPrintError(null);
+        setNewPageSetupOpen(true);
         break;
 
 
@@ -11277,8 +11426,28 @@ export default function ExcelStudioPage() {
     { label: "Export Directly as PDF", icon: Icons.FileDown, onClick: () => handleToolbarAction("Export Directly as PDF", handleExportPdf) },
     { label: "Refresh", icon: Icons.RefreshCw, onClick: () => handleToolbarAction("Refresh", handleRefreshPage), },
     { label: "Export CSV", icon: Icons.FileSpreadsheet, onClick: () => handleToolbarAction("Export CSV", handleExportCsv) },
-    { label: "Print", icon: Icons.Printer, onClick: () => handleToolbarAction("Print", () => setShowPrintDialog(true)) },
-    { label: "Toggle Print Preview", icon: Icons.ScanSearch, active: showAdvancedPrintPreview, kind: "toggle", onClick: () => handleToolbarAction("Toggle Print Preview", () => setShowAdvancedPrintPreview(v => !v)) },
+    {
+      label: "Print", icon: Icons.Printer, onClick: () => handleToolbarAction("Print", openPrintDialogNew,),
+    },
+
+    {
+      label: "Toggle Print Preview",
+      icon: Icons.ScanSearch,
+      active: printTestSession !== null,
+      kind: "toggle",
+      onClick: () =>
+        handleToolbarAction(
+          "Toggle Print Preview",
+          () => {
+            if (printTestSession !== null) {
+              setPrintTestSession(null);
+            } else {
+              openPrintPreviewNew();
+            }
+          },
+        ),
+    },
+
     { label: "Cut", icon: Icons.Scissors, onClick: () => handleToolbarAction("Cut", () => doCopy("cut")) },
     { label: "Copy", icon: Icons.Copy, onClick: () => handleToolbarAction("Copy", () => doCopy("copy")) },
     { label: "Paste", icon: Icons.ClipboardPaste, onClick: () => handleToolbarAction("Paste", doPaste) },
@@ -14365,77 +14534,79 @@ export default function ExcelStudioPage() {
         </Modal>
       )}
 
-      {showAdvancedPrintPreview && (
-        <AdvancedPrintPreviewModal
-          sheet={sheet}
-          workbookName={workbookName}
-          pageSize={pageSize}
-          setPageSize={setPageSize}
-          orientation={orientation}
-          setOrientation={setOrientation}
-          printScale={printScale}
-          setPrintScale={setPrintScale}
-          printMarginTop={printMarginTop}
-          setPrintMarginTop={setPrintMarginTop}
-          printMarginRight={printMarginRight}
-          setPrintMarginRight={setPrintMarginRight}
-          printMarginBottom={printMarginBottom}
-          setPrintMarginBottom={setPrintMarginBottom}
-          printMarginLeft={printMarginLeft}
-          setPrintMarginLeft={setPrintMarginLeft}
-          printHeader={printHeader}
-          printFooter={printFooter}
-          printArea={printArea}
-          printTitleRows={printTitleRows}
-          printTitleCols={printTitleCols}
-          showGridLines={showGridLines}
-          getDisplayValue={getDisplayValue}
-          onClose={() => setShowAdvancedPrintPreview(false)}
-          onOpenPageSetup={() => setShowPageSetup(true)}
-          onPrint={() => { setShowAdvancedPrintPreview(false); setShowPrintDialog(true); }}
-        />
-      )}
+      <PrintDialogNew
+        open={newPrintDialogOpen}
+        settings={currentPrintSetup}
+        onSettingsChange={(settings) => {
+          if (!newPrintLock.current) {
+            setNewPrintError(null);
+            setNewPageSetup(settings);
+          }
+        }}
+        value={currentPrintOptions}
+        sheetName={sheet.name}
+        workbookName={workbookName}
+        busy={newPrintBusy}
+        error={newPrintError}
+        renderPreview={(options) => (
+          <LivePrintPreview
+            options={options}
+            prepareSession={preparePrintSessionNew}
+            onPrepared={rememberPrintSession}
+            onSettingsChange={(settings) => {
+              if (!newPrintLock.current) setNewPageSetup(settings);
+            }}
+          />
+        )}
+        onClose={() => {
+          if (!newPrintLock.current) {
+            setNewPrintDialogOpen(false);
+          }
+        }}
+        onPreview={previewWithOptionsNew}
+        onPrint={(options) => {
+          void printWithOptionsNew(options);
+        }}
+        onPageSetup={(options) => {
+          setNewPrintOptions(options);
+          setNewPrintDialogOpen(false);
+          setNewPageSetupOpen(true);
+        }}
+      />
 
+      <PageSetupDialogNew
+        open={newPageSetupOpen}
+        value={currentPrintSetup}
+        onApply={(settings) => {
+          setNewPageSetup(settings);
+        }}
+        onClose={() => {
+          setNewPageSetupOpen(false);
+          setNewPrintDialogOpen(true);
+        }}
+      />
 
-      {showPrintDialog && (
-        <PrintDialogModal
-          onClose={() => setShowPrintDialog(false)}
-          onConfirmPrint={() => {
-            setShowPrintDialog(false);
-            setPrintPreview(true);
-            window.setTimeout(() => window.print(), 150);
+      {/* ===== NEW PRINT PREVIEW ===== */}
+      {printTestSession !== null && (
+        <PrintPreviewModalNew
+          open={true}
+          pages={printTestSession.pages}
+          settings={printTestSession.settings}
+          headerFooter={printTestSession.headerFooter}
+          sheetName={printTestSession.sheetName}
+          workbookName={printTestSession.workbookName}
+          printTime={printTestSession.printTime}
+          showGridlines={printTestSession.showGridlines}
+          onPrint={openPrintDialogNew}
+          onPageSetup={() => {
+            setPrintTestSession(null);
+            setNewPageSetupOpen(true);
           }}
-          workbookName={workbookName}
-          sheet={sheet}
-          sheets={sheets}
-          getDisplayValue={getDisplayValue}
-          pageSize={pageSize}
-          setPageSize={setPageSize}
-          orientation={orientation}
-          setOrientation={setOrientation}
+          onClose={() => setPrintTestSession(null)}
         />
       )}
+      {/* ===== END NEW PRINT PREVIEW ===== */}
 
-
-      {showPageSetup && (
-        <PageSetupDialog
-          pageSize={pageSize} setPageSize={setPageSize}
-          orientation={orientation} setOrientation={setOrientation}
-          printScale={printScale} setPrintScale={setPrintScale}
-          printMarginTop={printMarginTop} setPrintMarginTop={setPrintMarginTop}
-          printMarginBottom={printMarginBottom} setPrintMarginBottom={setPrintMarginBottom}
-          printMarginLeft={printMarginLeft} setPrintMarginLeft={setPrintMarginLeft}
-          printMarginRight={printMarginRight} setPrintMarginRight={setPrintMarginRight}
-          printHeader={printHeader} setPrintHeader={setPrintHeader}
-          printFooter={printFooter} setPrintFooter={setPrintFooter}
-          printArea={printArea} setPrintArea={setPrintArea}
-          printTitleRows={printTitleRows} setPrintTitleRows={setPrintTitleRows}
-          printTitleCols={printTitleCols} setPrintTitleCols={setPrintTitleCols}
-          showGridLines={showGridLines} setShowGridLines={setShowGridLines}
-          onClose={() => setShowPageSetup(false)}
-          onApply={() => { setShowPageSetup(false); setPrintPreview(true); showToast("Page setup applied."); }}
-        />
-      )}
       {confirmDialog && (
         <Modal title={confirmDialog.title} onClose={() => setConfirmDialog(null)} zIndex={100001}>
           <p className="text-sm">{confirmDialog.message}</p>
@@ -17445,972 +17616,6 @@ function ChartPlot({ type, data: sourceData }: { type: ChartType; data: { label:
       })}
       {xLabels}
     </svg>
-  );
-}
-
-const PRINT_PAPER_SIZES: Record<string, { w: number; h: number; label: string }> = {
-  Letter: { w: 216, h: 279, label: "Letter (8.50in x 11.00in)" },
-  Legal: { w: 216, h: 356, label: "Legal (8.50in x 14.00in)" },
-  A4: { w: 210, h: 297, label: "A4 (8.27in x 11.69in)" },
-  A5: { w: 148, h: 210, label: "A5 (5.83in x 8.27in)" },
-  Executive: { w: 184, h: 267, label: "Executive (7.25in x 10.50in)" },
-};
-
-/* ============================================================================
- * Advanced Print Preview — LibreOffice Calc স্টাইল ফুল-ফিচার প্রিভিউ
- * ========================================================================== */
-
-const PRINT_PX_PER_MM = 3.78; // ~96dpi
-
-interface PrintPageDef {
-  r1: number; r2: number; c1: number; c2: number;
-  pageNumber: number;
-}
-
-// শীটের ভেতর যেসব সেলে ডাটা আছে তার বাউন্ডিং বক্স বের করা হচ্ছে
-function computeSheetBoundingBox(sheet: WorkbookSheet): { r1: number; c1: number; r2: number; c2: number } | null {
-  let minR = Infinity, minC = Infinity, maxR = -1, maxC = -1;
-  Object.entries(sheet.cells).forEach(([key, data]) => {
-    const value = (data?.value ?? "").toString();
-    if (!value.trim() && !data?.image && !data?.hyperlink) return;
-    const pos = parseKey(key);
-    if (!pos) return;
-    minR = Math.min(minR, pos.row);
-    minC = Math.min(minC, pos.col);
-    maxR = Math.max(maxR, pos.row);
-    maxC = Math.max(maxC, pos.col);
-  });
-  if (maxR === -1) return null;
-  return { r1: minR, c1: minC, r2: maxR, c2: maxC };
-}
-
-// printArea স্ট্রিং (যেমন "A1:F30") থেকে bounding box বের করে,
-// খালি থাকলে null রিটার্ন করে (তখন পুরো শীট ব্যবহার হবে)
-function parsePrintAreaBox(printArea: string): { r1: number; c1: number; r2: number; c2: number } | null {
-  if (!printArea.trim()) return null;
-  const nr = normalizeRange(printArea.trim().toUpperCase());
-  return nr ? { r1: nr.r1, c1: nr.c1, r2: nr.r2, c2: nr.c2 } : null;
-}
-
-// পেজ সাইজ, মার্জিন ও স্কেল অনুযায়ী কয়টা পেজে ডাটা ভাগ হবে তা হিসাব করা হচ্ছে
-function computePrintPages(
-  sheet: WorkbookSheet,
-  pageSize: "A4" | "Letter" | "Legal",
-  orientation: "portrait" | "landscape",
-  margins: { top: number; right: number; bottom: number; left: number },
-  scale: number,
-  printArea: string = ""   // ⬅️ নতুন প্যারামিটার
-): PrintPageDef[] {
-  const box = parsePrintAreaBox(printArea) || computeSheetBoundingBox(sheet); // ⬅️ পরিবর্তিত লাইন
-  if (!box) return [{ r1: 0, c1: 0, r2: 0, c2: 0, pageNumber: 1 }];
-
-
-  const dims = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
-  const pageWmm = orientation === "landscape" ? dims.h : dims.w;
-  const pageHmm = orientation === "landscape" ? dims.w : dims.h;
-
-  const printableWpx = Math.max(50, (pageWmm - margins.left - margins.right) * PRINT_PX_PER_MM) / (scale / 100);
-  const printableHpx = Math.max(50, (pageHmm - margins.top - margins.bottom - 14) * PRINT_PX_PER_MM) / (scale / 100);
-
-  const colBreaks: { start: number; end: number }[] = [];
-  let curStart = box.c1;
-  let acc = 0;
-  for (let c = box.c1; c <= box.c2; c++) {
-    const w = sheet.colWidths[c] || DEFAULT_COL_WIDTH;
-    if (acc + w > printableWpx && acc > 0) {
-      colBreaks.push({ start: curStart, end: c - 1 });
-      curStart = c;
-      acc = 0;
-    }
-    acc += w;
-  }
-  colBreaks.push({ start: curStart, end: box.c2 });
-
-  const rowBreaks: { start: number; end: number }[] = [];
-  curStart = box.r1;
-  acc = 0;
-  for (let r = box.r1; r <= box.r2; r++) {
-    const h = sheet.rowHeights[r] || DEFAULT_ROW_HEIGHT;
-    if (acc + h > printableHpx && acc > 0) {
-      rowBreaks.push({ start: curStart, end: r - 1 });
-      curStart = r;
-      acc = 0;
-    }
-    acc += h;
-  }
-  rowBreaks.push({ start: curStart, end: box.r2 });
-
-  const pages: PrintPageDef[] = [];
-  let pageNumber = 1;
-  colBreaks.forEach((cb) => {
-    rowBreaks.forEach((rb) => {
-      pages.push({ r1: rb.start, r2: rb.end, c1: cb.start, c2: cb.end, pageNumber: pageNumber++ });
-    });
-  });
-
-  return pages.length ? pages : [{ r1: 0, c1: 0, r2: 0, c2: 0, pageNumber: 1 }];
-}
-
-const PRINT_ZOOM_PRESETS = [
-  { label: "50%", value: 50 },
-  { label: "75%", value: 75 },
-  { label: "100%", value: 100 },
-  { label: "150%", value: 150 },
-  { label: "200%", value: 200 },
-];
-
-function AdvancedPrintPreviewModal({
-  sheet,
-  workbookName,
-  pageSize,
-  setPageSize,
-  orientation,
-  setOrientation,
-  printScale,
-  setPrintScale,
-  printMarginTop,
-  setPrintMarginTop,
-  printMarginRight,
-  setPrintMarginRight,
-  printMarginBottom,
-  setPrintMarginBottom,
-  printMarginLeft,
-  setPrintMarginLeft,
-  printHeader,
-  printFooter,
-  printArea,
-  printTitleRows,
-  printTitleCols,
-  showGridLines,
-  getDisplayValue,
-  onClose,
-  onOpenPageSetup,
-  onPrint,
-}: {
-  sheet: WorkbookSheet;
-  workbookName: string;
-  pageSize: "A4" | "Letter" | "Legal";
-  setPageSize: (v: "A4" | "Letter" | "Legal") => void;
-  orientation: "portrait" | "landscape";
-  setOrientation: (v: "portrait" | "landscape") => void;
-  printScale: number;
-  setPrintScale: (v: number) => void;
-  printMarginTop: number;
-  setPrintMarginTop: (v: number) => void;
-  printMarginRight: number;
-  setPrintMarginRight: (v: number) => void;
-  printMarginBottom: number;
-  setPrintMarginBottom: (v: number) => void;
-  printMarginLeft: number;
-  setPrintMarginLeft: (v: number) => void;
-  printHeader: string;
-  printFooter: string;
-  printArea: string;
-  printTitleRows: string;
-  printTitleCols: string;
-  showGridLines: boolean;
-  getDisplayValue: (key: string) => string;
-  onClose: () => void;
-  onOpenPageSetup: () => void;
-  onPrint: () => void;
-}) {
-
-  const [pageIndex, setPageIndex] = useState(0);
-  const [zoom, setZoom] = useState(90);
-  const [showMargins, setShowMargins] = useState(true);
-  const [viewMode, setViewMode] = useState<"single" | "continuous">("single");
-  const [pageJumpInput, setPageJumpInput] = useState("1");
-  const [draggingEdge, setDraggingEdge] = useState<"top" | "right" | "bottom" | "left" | null>(null);
-  const marginDragRef = useRef<{ edge: "top" | "right" | "bottom" | "left"; startClient: number; startMargin: number } | null>(null);
-
-  const margins = useMemo(
-    () => ({ top: printMarginTop, right: printMarginRight, bottom: printMarginBottom, left: printMarginLeft }),
-    [printMarginTop, printMarginRight, printMarginBottom, printMarginLeft]
-  );
-
-  const pages = useMemo(
-    () => computePrintPages(sheet, pageSize, orientation, margins, printScale, printArea), // ⬅️ printArea যোগ হলো
-    [sheet, pageSize, orientation, margins, printScale, printArea]
-  );
-
-  // ⬇️ Excel-এর মতো: Print Preview-এ মাউস দিয়ে টেনে মার্জিন সাজানোর লজিক
-  const pxPerMm = PRINT_PX_PER_MM * (zoom / 100);
-
-  const onMarginDragMove = useCallback((e: PointerEvent) => {
-    const d = marginDragRef.current;
-    if (!d) return;
-    const client = d.edge === "top" || d.edge === "bottom" ? e.clientY : e.clientX;
-    const deltaMm = (client - d.startClient) / pxPerMm;
-    let next = d.edge === "top" || d.edge === "left" ? d.startMargin + deltaMm : d.startMargin - deltaMm;
-    next = Math.max(0, Math.min(60, Math.round(next * 10) / 10));
-    if (d.edge === "top") setPrintMarginTop(next);
-    else if (d.edge === "right") setPrintMarginRight(next);
-    else if (d.edge === "bottom") setPrintMarginBottom(next);
-    else setPrintMarginLeft(next);
-  }, [pxPerMm, setPrintMarginTop, setPrintMarginRight, setPrintMarginBottom, setPrintMarginLeft]);
-
-  const onMarginDragEnd = useCallback(() => {
-    marginDragRef.current = null;
-    setDraggingEdge(null);
-    window.removeEventListener("pointermove", onMarginDragMove);
-  }, [onMarginDragMove]);
-
-  const onMarginDragStart = useCallback((edge: "top" | "right" | "bottom" | "left", e: React.PointerEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const startMargin = edge === "top" ? margins.top : edge === "right" ? margins.right : edge === "bottom" ? margins.bottom : margins.left;
-    marginDragRef.current = { edge, startClient: edge === "top" || edge === "bottom" ? e.clientY : e.clientX, startMargin };
-    setDraggingEdge(edge);
-    window.addEventListener("pointermove", onMarginDragMove);
-    window.addEventListener("pointerup", onMarginDragEnd, { once: true });
-  }, [margins, onMarginDragMove, onMarginDragEnd]);
-
-  const totalPages = Math.max(1, pages.length);
-  const currentPageIndex = Math.max(0, Math.min(pageIndex, totalPages - 1));
-  const goToPage = useCallback((requestedIndex: number) => {
-    const nextIndex = Math.max(0, Math.min(totalPages - 1, requestedIndex));
-    setPageIndex(nextIndex);
-    setPageJumpInput(String(nextIndex + 1));
-  }, [totalPages]);
-
-  // Clean up active pointer listeners if the preview closes during a margin drag.
-  useEffect(() => () => {
-    window.removeEventListener("pointermove", onMarginDragMove);
-    window.removeEventListener("pointerup", onMarginDragEnd);
-    marginDragRef.current = null;
-  }, [onMarginDragMove, onMarginDragEnd]);
-
-  const dims = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
-  const pageWmm = orientation === "landscape" ? dims.h : dims.w;
-  const pageHmm = orientation === "landscape" ? dims.w : dims.h;
-  const pageWpx = pageWmm * PRINT_PX_PER_MM * (zoom / 100);
-  const pageHpx = pageHmm * PRINT_PX_PER_MM * (zoom / 100);
-
-  const resolveHeaderFooter = (template: string, pageNum: number) =>
-    template.replace(/&P/g, String(pageNum)).replace(/&N/g, String(totalPages));
-
-  const renderPage = (page: PrintPageDef) => {
-    const titleRowNums = printTitleRows.match(/(\d+):(\d+)/);
-    const titleColLetters = printTitleCols.match(/([A-Z]+):([A-Z]+)/i);
-
-    const rows: number[] = [];
-    if (titleRowNums) {
-      const tr1 = parseInt(titleRowNums[1], 10) - 1;
-      const tr2 = parseInt(titleRowNums[2], 10) - 1;
-      for (let r = tr1; r <= tr2; r++) if (r < page.r1) rows.push(r); // শুধু আগে থেকেই পেজে না থাকলে
-    }
-    for (let r = page.r1; r <= page.r2; r++) rows.push(r);
-
-    const cols: number[] = [];
-    if (titleColLetters) {
-      const tc1 = letterToCol(titleColLetters[1].toUpperCase());
-      const tc2 = letterToCol(titleColLetters[2].toUpperCase());
-      for (let c = tc1; c <= tc2; c++) if (c < page.c1) cols.push(c); // শুধু আগে থেকেই পেজে না থাকলে
-    }
-    for (let c = page.c1; c <= page.c2; c++) cols.push(c);
-
-    return (
-
-      <div
-        key={page.pageNumber}
-        className="relative mx-auto mb-6 overflow-hidden bg-white shadow-2xl"
-        style={{
-          width: pageWpx,
-          height: pageHpx,
-          padding: `${margins.top * PRINT_PX_PER_MM * (zoom / 100)}px ${margins.right * PRINT_PX_PER_MM * (zoom / 100)}px ${margins.bottom * PRINT_PX_PER_MM * (zoom / 100)}px ${margins.left * PRINT_PX_PER_MM * (zoom / 100)}px`,
-          boxSizing: "border-box",
-        }}
-      >
-        {showMargins && (
-          <>
-            <div
-              className="pointer-events-none absolute border border-dashed border-[#9BC2E6]"
-              style={{
-                top: margins.top * PRINT_PX_PER_MM * (zoom / 100),
-                left: margins.left * PRINT_PX_PER_MM * (zoom / 100),
-                right: margins.right * PRINT_PX_PER_MM * (zoom / 100),
-                bottom: margins.bottom * PRINT_PX_PER_MM * (zoom / 100),
-              }}
-            />
-            {/* Excel-style draggable margin handles */}
-            <div
-              onPointerDown={(e) => onMarginDragStart("top", e)}
-              title={`Top margin: ${margins.top}mm — drag to adjust`}
-              className="absolute left-1/2 z-20 flex h-3 w-8 -translate-x-1/2 cursor-ns-resize items-center justify-center rounded-b-md bg-[#106EBE]/80 opacity-0 shadow transition-opacity hover:opacity-100"
-              style={{ top: margins.top * PRINT_PX_PER_MM * (zoom / 100) - 2 }}
-            >
-              <span className="h-0.5 w-4 rounded bg-white" />
-            </div>
-            <div
-              onPointerDown={(e) => onMarginDragStart("bottom", e)}
-              title={`Bottom margin: ${margins.bottom}mm — drag to adjust`}
-              className="absolute left-1/2 z-20 flex h-3 w-8 -translate-x-1/2 cursor-ns-resize items-center justify-center rounded-t-md bg-[#106EBE]/80 opacity-0 shadow transition-opacity hover:opacity-100"
-              style={{ bottom: margins.bottom * PRINT_PX_PER_MM * (zoom / 100) - 2 }}
-            >
-              <span className="h-0.5 w-4 rounded bg-white" />
-            </div>
-            <div
-              onPointerDown={(e) => onMarginDragStart("left", e)}
-              title={`Left margin: ${margins.left}mm — drag to adjust`}
-              className="absolute top-1/2 z-20 flex h-8 w-3 -translate-y-1/2 cursor-ew-resize items-center justify-center rounded-r-md bg-[#106EBE]/80 opacity-0 shadow transition-opacity hover:opacity-100"
-              style={{ left: margins.left * PRINT_PX_PER_MM * (zoom / 100) - 2 }}
-            >
-              <span className="h-4 w-0.5 rounded bg-white" />
-            </div>
-            <div
-              onPointerDown={(e) => onMarginDragStart("right", e)}
-              title={`Right margin: ${margins.right}mm — drag to adjust`}
-              className="absolute top-1/2 z-20 flex h-8 w-3 -translate-y-1/2 cursor-ew-resize items-center justify-center rounded-l-md bg-[#106EBE]/80 opacity-0 shadow transition-opacity hover:opacity-100"
-              style={{ right: margins.right * PRINT_PX_PER_MM * (zoom / 100) - 2 }}
-            >
-              <span className="h-4 w-0.5 rounded bg-white" />
-            </div>
-            {draggingEdge && (
-              <div className="pointer-events-none absolute left-1/2 top-1/2 z-30 -translate-x-1/2 -translate-y-1/2 rounded-md bg-[#201F1E] px-2 py-1 text-[10px] font-bold text-white shadow-lg">
-                {draggingEdge === "top" ? margins.top : draggingEdge === "bottom" ? margins.bottom : draggingEdge === "left" ? margins.left : margins.right}mm
-              </div>
-            )}
-          </>
-        )}
-
-        {printHeader && (
-          <div className="absolute left-0 right-0 top-1 text-center font-bold text-[#605E5C]" style={{ fontSize: 10 * (zoom / 100) }}>
-            {resolveHeaderFooter(printHeader, page.pageNumber)}
-          </div>
-        )}
-
-        <table className="w-full border-collapse" style={{ fontSize: 10 * (zoom / 100) }}>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r} style={{ height: (sheet.rowHeights[r] || DEFAULT_ROW_HEIGHT) * (zoom / 100) * (printScale / 100) }}>
-                {cols.map((c) => {
-                  const key = cellKey(r, c);
-                  const style = sheet.cells[key]?.style;
-
-                  // Excel-এর মতো: "Print Gridlines" চালু থাকলে হালকা ধূসর গ্রিড দেখাবে (সব সেলে),
-                  // বন্ধ থাকলে শুধু ইউজার নিজে যে সেলে বর্ডার এঁকেছেন সেটাই দেখাবে —
-                  // বাকি খালি রো/কলামে কোনো লাইন প্রিন্টে আসবে না।
-                  const b = style?.borders;
-                  const borderBoxStyle: React.CSSProperties = showGridLines
-                    ? { borderWidth: 1, borderStyle: "solid", borderColor: "#E1DFDD" }
-                    : {
-                      borderTopWidth: b?.top ? (style?.borderWidth ?? 1) : 0,
-                      borderRightWidth: b?.right ? (style?.borderWidth ?? 1) : 0,
-                      borderBottomWidth: b?.bottom ? (style?.borderWidth ?? 1) : 0,
-                      borderLeftWidth: b?.left ? (style?.borderWidth ?? 1) : 0,
-                      borderStyle: style?.borderStyle || "solid",
-                      borderColor: style?.borderColor || "#000000",
-                    };
-
-                  return (
-                    <td
-                      key={c}
-                      className="overflow-hidden px-1"
-                      style={{
-                        width: (sheet.colWidths[c] || DEFAULT_COL_WIDTH) * (zoom / 100) * (printScale / 100),
-                        fontWeight: style?.bold ? 700 : 400,
-                        fontStyle: style?.italic ? "italic" : "normal",
-                        textAlign: style?.align || "left",
-                        backgroundColor: style?.bg || "transparent",
-                        color: style?.color || "#000000",
-                        ...borderBoxStyle,
-                      }}
-                    >
-                      {getDisplayValue(key)}
-                    </td>
-                  );
-                })}
-
-              </tr>
-
-            ))}
-          </tbody>
-        </table>
-
-        {printFooter && (
-          <div className="absolute bottom-1 left-0 right-0 text-center font-bold text-[#605E5C]" style={{ fontSize: 10 * (zoom / 100) }}>
-            {resolveHeaderFooter(printFooter, page.pageNumber)}
-          </div>
-        )}
-
-        <div className="absolute bottom-1 right-2 text-[9px] text-[#B3B0AD]">
-          Page {page.pageNumber} / {totalPages}
-        </div>
-      </div>
-    );
-  };
-
-  return (
-    <div className="fixed inset-0 z-99999 flex flex-col bg-[#525659]">
-      {/* Top Toolbar */}
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-black/30 bg-[#3B3A39] px-3 py-2 text-white shadow-lg">
-        <button type="button" onClick={onClose} className="flex items-center gap-1 rounded-md border border-white/20 px-3 py-1.5 text-xs font-bold hover:bg-white/10">
-          <Icons.X size={14} /> Close Preview
-        </button>
-
-        <div className="mx-1 h-6 w-px bg-white/20" />
-
-        <button type="button" onClick={() => goToPage(0)} disabled={currentPageIndex === 0} title="First Page" className="rounded-md p-1.5 hover:bg-white/10 disabled:opacity-30">
-          <Icons.ChevronsLeft size={16} />
-        </button>
-        <button type="button" onClick={() => goToPage(currentPageIndex - 1)} disabled={currentPageIndex === 0} title="Previous Page" className="rounded-md p-1.5 hover:bg-white/10 disabled:opacity-30">
-          <Icons.ChevronLeft size={16} />
-        </button>
-
-        <div className="flex items-center gap-1 text-xs">
-          <input
-            value={pageJumpInput}
-            onChange={(e) => setPageJumpInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                const n = parseInt(pageJumpInput, 10);
-                if (Number.isFinite(n)) goToPage(n - 1);
-              }
-            }}
-            onBlur={() => {
-              const n = parseInt(pageJumpInput, 10);
-              if (Number.isFinite(n)) goToPage(n - 1);
-              else setPageJumpInput(String(currentPageIndex + 1));
-            }}
-            className="w-10 rounded-md border border-white/20 bg-white/10 px-1 py-1 text-center text-xs text-white outline-none focus:border-white"
-          />
-          <span className="text-white/70">/ {totalPages}</span>
-        </div>
-
-        <button type="button" onClick={() => goToPage(currentPageIndex + 1)} disabled={currentPageIndex === totalPages - 1} title="Next Page" className="rounded-md p-1.5 hover:bg-white/10 disabled:opacity-30">
-          <Icons.ChevronRight size={16} />
-        </button>
-        <button type="button" onClick={() => goToPage(totalPages - 1)} disabled={currentPageIndex === totalPages - 1} title="Last Page" className="rounded-md p-1.5 hover:bg-white/10 disabled:opacity-30">
-          <Icons.ChevronsRight size={16} />
-        </button>
-
-        <div className="mx-1 h-6 w-px bg-white/20" />
-
-        <div className="flex items-center gap-1 rounded-md bg-white/10 p-0.5">
-          <button type="button" onClick={() => setViewMode("single")} className={`rounded px-2 py-1 text-xs font-bold ${viewMode === "single" ? "bg-white text-[#3B3A39]" : "text-white/80 hover:bg-white/10"}`}>
-            Single Page
-          </button>
-          <button type="button" onClick={() => setViewMode("continuous")} className={`rounded px-2 py-1 text-xs font-bold ${viewMode === "continuous" ? "bg-white text-[#3B3A39]" : "text-white/80 hover:bg-white/10"}`}>
-            Continuous
-          </button>
-        </div>
-
-        <div className="mx-1 h-6 w-px bg-white/20" />
-
-        <button type="button" onClick={() => setZoom((z) => Math.max(30, z - 10))} className="rounded-md p-1.5 hover:bg-white/10" title="Zoom Out">
-          <Icons.ZoomOut size={16} />
-        </button>
-        <input type="range" min={30} max={300} step={5} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} className="w-24 accent-[#106EBE]" />
-        <button type="button" onClick={() => setZoom((z) => Math.min(300, z + 10))} className="rounded-md p-1.5 hover:bg-white/10" title="Zoom In">
-          <Icons.ZoomIn size={16} />
-        </button>
-        <select value={zoom} onChange={(e) => setZoom(Number(e.target.value))} className="rounded-md border border-white/20 bg-white/10 px-1 py-1 text-xs text-white outline-none">
-          {PRINT_ZOOM_PRESETS.map((p) => (
-            <option key={p.value} value={p.value} className="text-black">{p.label}</option>
-          ))}
-        </select>
-
-        <div className="mx-1 h-6 w-px bg-white/20" />
-
-        <label className="flex items-center gap-1 text-xs">
-          <input type="checkbox" checked={showMargins} onChange={(e) => setShowMargins(e.target.checked)} />
-          Show Margins
-        </label>
-
-        <div className="mx-1 h-6 w-px bg-white/20" />
-
-        <select value={pageSize} onChange={(e) => setPageSize(e.target.value as "A4" | "Letter" | "Legal")} className="rounded-md border border-white/20 bg-white/10 px-2 py-1 text-xs text-white outline-none">
-          <option value="A4" className="text-black">A4</option>
-          <option value="Letter" className="text-black">Letter</option>
-          <option value="Legal" className="text-black">Legal</option>
-        </select>
-        <select value={orientation} onChange={(e) => setOrientation(e.target.value as "portrait" | "landscape")} className="rounded-md border border-white/20 bg-white/10 px-2 py-1 text-xs text-white outline-none">
-          <option value="portrait" className="text-black">Portrait</option>
-          <option value="landscape" className="text-black">Landscape</option>
-        </select>
-        <div className="flex items-center gap-1 text-xs">
-          <span className="text-white/70">Scale</span>
-          <input
-            type="number"
-            min={10}
-            max={400}
-            value={printScale}
-            onChange={(e) => setPrintScale(Math.max(10, Math.min(400, Number(e.target.value) || 100)))}
-            className="w-14 rounded-md border border-white/20 bg-white/10 px-1 py-1 text-xs text-white outline-none"
-          />
-          <span className="text-white/70">%</span>
-        </div>
-
-        <button type="button" onClick={onOpenPageSetup} className="flex items-center gap-1 rounded-md border border-white/20 px-3 py-1.5 text-xs font-bold hover:bg-white/10">
-          <Icons.Settings2 size={14} /> Format Page
-        </button>
-
-        <div className="ml-auto flex items-center gap-2">
-          <span className="hidden text-xs text-white/60 md:inline">{workbookName}</span>
-          <button type="button" onClick={onPrint} className="flex items-center gap-1 rounded-md bg-[#106EBE] px-4 py-1.5 text-xs font-bold text-white hover:bg-[#005A9E]">
-            <Icons.Printer size={14} /> Print
-          </button>
-        </div>
-      </div>
-
-      {/* Page Canvas */}
-      <div className="flex-1 overflow-auto px-8 py-8 awm-premium-scrollbar">
-        {viewMode === "single" ? (
-          <div className="flex justify-center">{renderPage(pages[currentPageIndex])}</div>
-        ) : (
-          <div>{pages.map((p) => renderPage(p))}</div>
-        )}
-      </div>
-
-      {/* Bottom Status Bar */}
-      <div className="flex shrink-0 items-center justify-between border-t border-black/30 bg-[#3B3A39] px-4 py-1.5 text-[11px] text-white/70">
-        <span>{totalPages} page{totalPages > 1 ? "s" : ""} total — LibreOffice-style advanced print preview</span>
-        <span>Zoom: {zoom}%</span>
-      </div>
-    </div>
-  );
-}
-
-function PageSetupDialog({
-  pageSize, setPageSize,
-  orientation, setOrientation,
-  printScale, setPrintScale,
-  printMarginTop, setPrintMarginTop,
-  printMarginBottom, setPrintMarginBottom,
-  printMarginLeft, setPrintMarginLeft,
-  printMarginRight, setPrintMarginRight,
-  printHeader, setPrintHeader,
-  printFooter, setPrintFooter,
-  printArea, setPrintArea,
-  printTitleRows, setPrintTitleRows,
-  printTitleCols, setPrintTitleCols,
-  showGridLines, setShowGridLines,
-  onClose,
-  onApply,
-}: {
-  pageSize: "A4" | "Letter" | "Legal"; setPageSize: (v: "A4" | "Letter" | "Legal") => void;
-  orientation: "portrait" | "landscape"; setOrientation: (v: "portrait" | "landscape") => void;
-  printScale: number; setPrintScale: (v: number) => void;
-  printMarginTop: number; setPrintMarginTop: (v: number) => void;
-  printMarginBottom: number; setPrintMarginBottom: (v: number) => void;
-  printMarginLeft: number; setPrintMarginLeft: (v: number) => void;
-  printMarginRight: number; setPrintMarginRight: (v: number) => void;
-  printHeader: string; setPrintHeader: (v: string) => void;
-  printFooter: string; setPrintFooter: (v: string) => void;
-  printArea: string; setPrintArea: (v: string) => void;
-  printTitleRows: string; setPrintTitleRows: (v: string) => void;
-  printTitleCols: string; setPrintTitleCols: (v: string) => void;
-  showGridLines: boolean; setShowGridLines: (v: boolean) => void;
-  onClose: () => void;
-  onApply: () => void;
-}) {
-  const [tab, setTab] = useState<"page" | "margins" | "headerFooter" | "sheet">("page");
-
-  const dims = PAGE_SIZES[pageSize] || PAGE_SIZES.A4;
-  const pageWmm = orientation === "landscape" ? dims.h : dims.w;
-  const pageHmm = orientation === "landscape" ? dims.w : dims.h;
-  const thumbScale = 130 / Math.max(pageWmm, pageHmm);
-
-  const TABS: { key: typeof tab; label: string }[] = [
-    { key: "page", label: "Page" },
-    { key: "margins", label: "Margins" },
-    { key: "headerFooter", label: "Header/Footer" },
-    { key: "sheet", label: "Sheet" },
-  ];
-
-  return (
-    <div className="fixed inset-0 z-99999 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
-      <div className="flex w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-[#D2D0CE] bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-[#D2D0CE] bg-linear-to-b from-[#F9FAFB] to-[#ECEFF3] px-6 py-3">
-          <h3 className="text-lg font-black text-[#106EBE]">Page Setup</h3>
-          <button onClick={onClose} className="rounded-md p-1 text-[#605E5C] hover:bg-[#E1DFDD]" aria-label="Close">
-            <Icons.X size={18} />
-          </button>
-        </div>
-
-        <div className="flex border-b border-[#D2D0CE] bg-[#F3F2F1] px-2">
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => setTab(t.key)}
-              className={`relative -mb-px px-4 py-2 text-sm font-bold transition-colors ${tab === t.key ? "border border-b-0 border-[#D2D0CE] bg-white text-[#106EBE] rounded-t-md" : "text-[#605E5C] hover:text-[#106EBE]"}`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-1 gap-6 p-6 md:grid-cols-[1fr_180px]">
-          <div className="space-y-4">
-            {tab === "page" && (
-              <>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="mb-1 block text-xs font-bold uppercase text-[#605E5C]">Orientation</label>
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => setOrientation("portrait")} className={`flex-1 rounded-md border px-3 py-2 text-xs font-bold ${orientation === "portrait" ? "border-[#106EBE] bg-[#E5F1FB] text-[#106EBE]" : "border-[#D2D0CE] hover:border-[#106EBE]"}`}>
-                        Portrait
-                      </button>
-                      <button type="button" onClick={() => setOrientation("landscape")} className={`flex-1 rounded-md border px-3 py-2 text-xs font-bold ${orientation === "landscape" ? "border-[#106EBE] bg-[#E5F1FB] text-[#106EBE]" : "border-[#D2D0CE] hover:border-[#106EBE]"}`}>
-                        Landscape
-                      </button>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-bold uppercase text-[#605E5C]">Paper Size</label>
-                    <select value={pageSize} onChange={(e) => setPageSize(e.target.value as "A4" | "Letter" | "Legal")} className="w-full rounded-md border border-[#D2D0CE] px-3 py-2 text-sm outline-none focus:border-[#106EBE]">
-                      <option value="A4">A4</option>
-                      <option value="Letter">Letter</option>
-                      <option value="Legal">Legal</option>
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-bold uppercase text-[#605E5C]">Scaling</label>
-                  <div className="flex items-center gap-2">
-                    <input type="number" min={10} max={400} value={printScale} onChange={(e) => setPrintScale(Number(e.target.value) || 100)} className="w-24 rounded-md border border-[#D2D0CE] px-3 py-2 text-sm outline-none focus:border-[#106EBE]" />
-                    <span className="text-sm text-[#605E5C]">% Normal Size</span>
-                  </div>
-                </div>
-              </>
-            )}
-
-            {tab === "margins" && (
-              <>
-                <div className="grid grid-cols-2 gap-3">
-                  <LabeledInput label="Top (mm)" value={String(printMarginTop)} onChange={(v) => setPrintMarginTop(Number(v) || 0)} />
-                  <LabeledInput label="Bottom (mm)" value={String(printMarginBottom)} onChange={(v) => setPrintMarginBottom(Number(v) || 0)} />
-                  <LabeledInput label="Left (mm)" value={String(printMarginLeft)} onChange={(v) => setPrintMarginLeft(Number(v) || 0)} />
-                  <LabeledInput label="Right (mm)" value={String(printMarginRight)} onChange={(v) => setPrintMarginRight(Number(v) || 0)} />
-                </div>
-                <p className="text-xs text-[#8A8886]">টিপ: Print Preview খুলে &quot;Show Margins&quot; চালু রেখে সরাসরি মাউস দিয়ে টেনে মার্জিন বদলানো যায়।</p>
-              </>
-            )}
-
-            {tab === "headerFooter" && (
-              <>
-                <LabeledInput label="Header text" value={printHeader} onChange={setPrintHeader} placeholder="e.g. AWM ERP Timesheet" />
-                <LabeledInput label="Footer text" value={printFooter} onChange={setPrintFooter} placeholder="&P = page no, &N = total pages" />
-              </>
-            )}
-
-            {tab === "sheet" && (
-              <>
-                <LabeledInput label="Print area (optional, e.g. A1:F30)" value={printArea} onChange={setPrintArea} placeholder="Leave blank to print all" />
-                <LabeledInput label="Repeat rows (e.g. 1:1)" value={printTitleRows} onChange={setPrintTitleRows} placeholder="1:1" />
-                <LabeledInput label="Repeat columns (e.g. A:A)" value={printTitleCols} onChange={setPrintTitleCols} placeholder="A:A" />
-                <label className="flex items-center gap-2 text-sm font-bold text-[#323130]">
-                  <input type="checkbox" checked={showGridLines} onChange={(e) => setShowGridLines(e.target.checked)} />
-                  Print gridlines
-                </label>
-              </>
-            )}
-          </div>
-
-          <div className="flex flex-col items-center gap-2">
-            <p className="text-[10px] font-black uppercase text-[#8A8886]">Preview</p>
-            <div
-              className="relative border border-[#C8C6C4] bg-white shadow-md"
-              style={{ width: pageWmm * thumbScale, height: pageHmm * thumbScale }}
-            >
-              <div
-                className="absolute border border-dashed border-[#9BC2E6]"
-                style={{
-                  top: printMarginTop * thumbScale,
-                  left: printMarginLeft * thumbScale,
-                  right: printMarginRight * thumbScale,
-                  bottom: printMarginBottom * thumbScale,
-                }}
-              />
-            </div>
-            <p className="text-[10px] text-[#8A8886]">{pageSize} · {orientation}</p>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-end gap-2 border-t border-[#D2D0CE] px-6 py-4">
-          <button onClick={onClose} className="rounded-md border border-[#D2D0CE] px-4 py-2 text-xs font-bold hover:bg-[#F3F2F1]">Cancel</button>
-          <button onClick={onApply} className="rounded-md bg-[#106EBE] px-4 py-2 text-xs font-bold text-white hover:bg-[#005A9E]">OK</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PrintDialogModal({
-  onClose,
-  onConfirmPrint,
-  workbookName,
-  sheet,
-  sheets,
-  getDisplayValue,
-  pageSize,
-  setPageSize,
-  orientation,
-  setOrientation,
-}: {
-  onClose: () => void;
-  onConfirmPrint: () => void;
-  workbookName: string;
-  sheet: WorkbookSheet;
-  sheets: WorkbookSheet[];
-  getDisplayValue: (key: string) => string;
-  pageSize: "A4" | "Letter" | "Legal";
-  setPageSize: (v: "A4" | "Letter" | "Legal") => void;
-  orientation: "portrait" | "landscape";
-  setOrientation: (v: "portrait" | "landscape") => void;
-}) {
-  const [activeTab, setActiveTab] = useState<"general" | "advanced">("general");
-  const [printerName, setPrinterName] = useState("Print to File (PDF)");
-  const [pageSelection, setPageSelection] = useState<"all" | "pages" | "selection">("all");
-  const [pagesInput, setPagesInput] = useState("1-1");
-  const [copies, setCopies] = useState(1);
-  const [collate, setCollate] = useState(true);
-  const [duplex, setDuplex] = useState<"one" | "both-long" | "both-short">("one");
-  const [dialogOrientation, setDialogOrientation] = useState<"automatic" | "portrait" | "landscape">(orientation);
-  const [pagesPerSheet, setPagesPerSheet] = useState<"1" | "2" | "4" | "6" | "9" | "16" | "custom">("1");
-  const [pageOrder, setPageOrder] = useState("Left to right, then down");
-  const [drawBorder, setDrawBorder] = useState(false);
-  const [suppressEmptyPages, setSuppressEmptyPages] = useState(true);
-  const [printOnlySelectedSheets, setPrintOnlySelectedSheets] = useState(false);
-  const [previewEnabled, setPreviewEnabled] = useState(true);
-  const [zoom, setZoom] = useState(80);
-  const [pageIndex, setPageIndex] = useState(1);
-
-  const dims = PRINT_PAPER_SIZES[pageSize] || PRINT_PAPER_SIZES.A4;
-  const effectiveOrientation = dialogOrientation === "automatic" ? orientation : dialogOrientation;
-  const pageW = effectiveOrientation === "landscape" ? dims.h : dims.w;
-  const pageH = effectiveOrientation === "landscape" ? dims.w : dims.h;
-
-  const previewRows = Math.min(sheet.gridRows, 18);
-  const previewCols = Math.min(sheet.gridCols, 9);
-
-  const handlePrinterOrientationChange = (v: "automatic" | "portrait" | "landscape") => {
-    setDialogOrientation(v);
-    if (v !== "automatic") setOrientation(v);
-  };
-
-  return (
-    <div className="fixed inset-0 z-99999 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-      <div className="flex h-[85vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-[#D2D0CE] bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-[#D2D0CE] bg-linear-to-b from-[#F9FAFB] to-[#ECEFF3] px-6 py-3">
-          <h3 className="text-lg font-black text-[#106EBE]">Print</h3>
-          <span className="text-xs text-[#605E5C]">{workbookName}</span>
-        </div>
-
-        <div className="flex min-h-0 flex-1">
-          {/* Left: Live Preview */}
-          <div className="flex min-h-0 w-[55%] flex-col border-r border-[#D2D0CE] bg-[#3B3A39]">
-            <div className="flex items-center justify-between gap-2 border-b border-black/30 bg-[#2B2A29] px-3 py-2">
-              <label className="flex items-center gap-2 text-xs font-bold text-white">
-                <input type="checkbox" checked={previewEnabled} onChange={(e) => setPreviewEnabled(e.target.checked)} />
-                Preview
-              </label>
-              <div className="flex items-center gap-1">
-                <button type="button" onClick={() => setPageIndex((p) => Math.max(1, p - 1))} className="rounded border border-white/20 px-2 py-1 text-xs text-white hover:bg-white/10" disabled={pageIndex <= 1}>‹</button>
-                <span className="text-xs text-white">Page {pageIndex} of 1</span>
-                <button type="button" onClick={() => setPageIndex((p) => Math.min(1, p + 1))} className="rounded border border-white/20 px-2 py-1 text-xs text-white hover:bg-white/10" disabled>›</button>
-              </div>
-              <div className="flex items-center gap-1">
-                <button type="button" onClick={() => setZoom((z) => Math.max(30, z - 10))} className="rounded border border-white/20 px-2 py-1 text-xs text-white hover:bg-white/10">-</button>
-                <span className="w-10 text-center text-xs text-white">{zoom}%</span>
-                <button type="button" onClick={() => setZoom((z) => Math.min(200, z + 10))} className="rounded border border-white/20 px-2 py-1 text-xs text-white hover:bg-white/10">+</button>
-              </div>
-            </div>
-
-            <div className="flex flex-1 items-center justify-center overflow-auto p-6">
-              {!previewEnabled ? (
-                <p className="text-sm text-white/60">Preview disabled.</p>
-              ) : (
-                <div
-                  className="overflow-hidden bg-white shadow-2xl"
-                  style={{
-                    width: pageW * (zoom / 100) * 3.78,
-                    height: pageH * (zoom / 100) * 3.78,
-                    padding: 12 * (zoom / 100),
-                    border: drawBorder ? "1px solid #999" : "none",
-                  }}
-                >
-                  <table className="w-full border-collapse text-[10px]" style={{ transform: `scale(${zoom / 100})`, transformOrigin: "top left" }}>
-                    <tbody>
-                      {Array.from({ length: previewRows }, (_, r) => (
-                        <tr key={r}>
-                          {Array.from({ length: previewCols }, (_, c) => (
-                            <td key={c} className="border border-[#D2D0CE] px-1 py-0.5 text-[#000000]">
-                              {getDisplayValue(cellKey(r, c))}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Right: Settings Panel */}
-          <div className="flex min-h-0 w-[45%] flex-col">
-            <div className="flex border-b border-[#D2D0CE]">
-              <button
-                type="button"
-                onClick={() => setActiveTab("general")}
-                className={`flex-1 px-4 py-2 text-sm font-bold ${activeTab === "general" ? "border-b-2 border-[#106EBE] text-[#106EBE]" : "text-[#605E5C] hover:bg-[#F3F2F1]"}`}
-              >
-                General
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab("advanced")}
-                className={`flex-1 px-4 py-2 text-sm font-bold ${activeTab === "advanced" ? "border-b-2 border-[#106EBE] text-[#106EBE]" : "text-[#605E5C] hover:bg-[#F3F2F1]"}`}
-              >
-                awmerp / Advanced
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-auto p-4 space-y-4 text-sm awm-premium-scrollbar">
-              {activeTab === "general" && (
-                <>
-                  <div className="rounded-lg border border-[#D2D0CE] p-3">
-                    <p className="mb-2 text-xs font-black uppercase text-[#605E5C]">Printer</p>
-                    <select value={printerName} onChange={(e) => setPrinterName(e.target.value)} className="w-full rounded-md border border-[#D2D0CE] px-2 py-1.5 text-sm outline-none focus:border-[#106EBE]">
-                      <option>Print to File (PDF)</option>
-                      <option>Default Printer</option>
-                      <option>HP Smart Tank 580-590 series</option>
-                      <option>Microsoft Print to PDF</option>
-                    </select>
-                    <div className="mt-2 flex items-center justify-between">
-                      <span className="text-xs text-[#605E5C]">Status: Default printer</span>
-                      <button type="button" className="rounded-md border border-[#D2D0CE] px-3 py-1 text-xs font-bold hover:bg-[#F3F2F1]">Properties</button>
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg border border-[#D2D0CE] p-3">
-                    <p className="mb-2 text-xs font-black uppercase text-[#605E5C]">Range and Copies</p>
-                    <div className="space-y-1">
-                      <label className="flex items-center gap-2 text-sm">
-                        <input type="radio" name="pageSelection" checked={pageSelection === "all"} onChange={() => setPageSelection("all")} />
-                        All Pages
-                      </label>
-                      <label className="flex items-center gap-2 text-sm">
-                        <input type="radio" name="pageSelection" checked={pageSelection === "pages"} onChange={() => setPageSelection("pages")} />
-                        Pages
-                        <input
-                          type="text"
-                          value={pagesInput}
-                          onChange={(e) => setPagesInput(e.target.value)}
-                          disabled={pageSelection !== "pages"}
-                          placeholder="1-28"
-                          className="ml-1 w-24 rounded-md border border-[#D2D0CE] px-2 py-1 text-xs outline-none focus:border-[#106EBE] disabled:opacity-40"
-                        />
-                      </label>
-                      <label className="flex items-center gap-2 text-sm">
-                        <input type="radio" name="pageSelection" checked={pageSelection === "selection"} onChange={() => setPageSelection("selection")} />
-                        Selection / Active Sheet
-                      </label>
-                    </div>
-                    <div className="mt-3 flex items-center gap-2">
-                      <label className="text-xs font-bold text-[#605E5C]">Number of copies</label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={99}
-                        value={copies}
-                        onChange={(e) => setCopies(Math.max(1, parseInt(e.target.value || "1", 10)))}
-                        className="w-16 rounded-md border border-[#D2D0CE] px-2 py-1 text-xs outline-none focus:border-[#106EBE]"
-                      />
-                    </div>
-                    <label className="mt-2 flex items-center gap-2 text-sm">
-                      <input type="checkbox" checked={collate} onChange={(e) => setCollate(e.target.checked)} disabled={copies <= 1} />
-                      Collate
-                    </label>
-                    <div className="mt-2">
-                      <label className="mb-1 block text-xs font-bold text-[#605E5C]">Paper Sides</label>
-                      <select value={duplex} onChange={(e) => setDuplex(e.target.value as typeof duplex)} className="w-full rounded-md border border-[#D2D0CE] px-2 py-1.5 text-sm outline-none focus:border-[#106EBE]">
-                        <option value="one">Print One Side</option>
-                        <option value="both-long">Print on Both Sides (Long Edge)</option>
-                        <option value="both-short">Print on Both Sides (Short Edge)</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg border border-[#D2D0CE] p-3">
-                    <p className="mb-2 text-xs font-black uppercase text-[#605E5C]">Page Layout</p>
-                    <div className="space-y-2">
-                      <div>
-                        <label className="mb-1 block text-xs font-bold text-[#605E5C]">Paper size</label>
-                        <select value={pageSize} onChange={(e) => setPageSize(e.target.value as "A4" | "Letter" | "Legal")} className="w-full rounded-md border border-[#D2D0CE] px-2 py-1.5 text-sm outline-none focus:border-[#106EBE]">
-                          {Object.entries(PRINT_PAPER_SIZES).map(([key, v]) => (
-                            <option key={key} value={key}>{v.label}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-xs font-bold text-[#605E5C]">Orientation</label>
-                        <select value={dialogOrientation} onChange={(e) => handlePrinterOrientationChange(e.target.value as typeof dialogOrientation)} className="w-full rounded-md border border-[#D2D0CE] px-2 py-1.5 text-sm outline-none focus:border-[#106EBE]">
-                          <option value="automatic">Automatic</option>
-                          <option value="portrait">Portrait</option>
-                          <option value="landscape">Landscape</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-xs font-bold text-[#605E5C]">Pages per sheet</label>
-                        <select value={pagesPerSheet} onChange={(e) => setPagesPerSheet(e.target.value as typeof pagesPerSheet)} className="w-full rounded-md border border-[#D2D0CE] px-2 py-1.5 text-sm outline-none focus:border-[#106EBE]">
-                          <option value="1">1</option>
-                          <option value="2">2</option>
-                          <option value="4">4</option>
-                          <option value="6">6</option>
-                          <option value="9">9</option>
-                          <option value="16">16</option>
-                          <option value="custom">Custom</option>
-                        </select>
-                      </div>
-                      {pagesPerSheet !== "1" && (
-                        <div>
-                          <label className="mb-1 block text-xs font-bold text-[#605E5C]">Order</label>
-                          <select value={pageOrder} onChange={(e) => setPageOrder(e.target.value)} className="w-full rounded-md border border-[#D2D0CE] px-2 py-1.5 text-sm outline-none focus:border-[#106EBE]">
-                            <option>Left to right, then down</option>
-                            <option>Top to bottom, then right</option>
-                            <option>Top to bottom, then left</option>
-                            <option>Right to left, then down</option>
-                          </select>
-                        </div>
-                      )}
-                      <label className="flex items-center gap-2 text-sm">
-                        <input type="checkbox" checked={drawBorder} onChange={(e) => setDrawBorder(e.target.checked)} />
-                        Draw a border around each page
-                      </label>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {activeTab === "advanced" && (
-                <div className="rounded-lg border border-[#D2D0CE] p-3 space-y-2">
-                  <p className="mb-1 text-xs font-black uppercase text-[#605E5C]">awmerp Options</p>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={suppressEmptyPages} onChange={(e) => setSuppressEmptyPages(e.target.checked)} />
-                    Suppress output of empty pages
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={printOnlySelectedSheets} onChange={(e) => setPrintOnlySelectedSheets(e.target.checked)} />
-                    Print Only Selected Sheets ({sheets.length} sheet{sheets.length > 1 ? "s" : ""} in workbook)
-                  </label>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between border-t border-[#D2D0CE] bg-[#F9FAFB] px-6 py-4">
-          <button type="button" className="rounded-md border border-[#D2D0CE] px-4 py-2 text-xs font-bold hover:bg-[#F3F2F1]">Help</button>
-          <div className="flex items-center gap-2">
-            <button type="button" onClick={onClose} className="rounded-md border border-[#D2D0CE] px-4 py-2 text-xs font-bold hover:bg-[#F3F2F1]">Cancel</button>
-            <button type="button" onClick={onConfirmPrint} className="rounded-md bg-[#106EBE] px-6 py-2 text-xs font-bold text-white hover:bg-[#005A9E]">Print</button>
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }
 
