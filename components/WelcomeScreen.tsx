@@ -1,6 +1,8 @@
 "use client";
 
+
 import Image from "next/image";
+
 
 import {
   useEffect,
@@ -9,6 +11,7 @@ import {
   useState,
   type CSSProperties,
 } from "react";
+
 
 import {
   ArrowRight,
@@ -26,9 +29,8 @@ import {
   MapPin,
   ShieldCheck,
   Sparkles,
-  Wifi,
-  WifiOff,
 } from "lucide-react";
+
 
 import {
   APP_BRAND,
@@ -36,6 +38,7 @@ import {
   type WelcomeLanguage,
 } from "../lib/app-brand";
 import { useAppSettings } from "./SettingsProvider";
+
 
 interface WelcomeScreenProps {
   /**
@@ -48,16 +51,19 @@ interface WelcomeScreenProps {
    */
   onContinue: () => void | Promise<void>;
 
+
   /**
    * Optional busy state controlled by the parent.
    */
   busy?: boolean;
+
 
   /**
    * Non-fatal storage information supplied by the gate.
    */
   storageWarning?: string;
 }
+
 
 interface WelcomeThemeStyle extends CSSProperties {
   "--welcome-bg": string;
@@ -69,18 +75,22 @@ interface WelcomeThemeStyle extends CSSProperties {
   "--welcome-gold": string;
 }
 
+
 const FEATURE_ICONS = [FileSpreadsheet, FolderOpen, ImageIcon] as const;
+
 
 const FOCUS_CLASS =
   "focus-visible:outline-2 " +
   "focus-visible:outline-offset-4 " +
   "focus-visible:outline-(--ax-accent)";
 
+
 function ProductLogo() {
   const [failed, setFailed] = useState(false);
 
+
   return (
-    <span className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-[#D4AF37]/50 bg-[#061744] shadow-lg sm:h-20 sm:w-20">
+    <span className="welcome-logo flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-[#D4AF37]/50 bg-[#061744] shadow-lg sm:h-20 sm:w-20">
       {failed ? (
         <span
           aria-label={APP_BRAND.product.name}
@@ -103,12 +113,14 @@ function ProductLogo() {
   );
 }
 
+
 export default function WelcomeScreen({
   onContinue,
   busy = false,
   storageWarning,
 }: WelcomeScreenProps) {
   const { resolvedTheme, effectiveReducedMotion } = useAppSettings();
+
 
   // Reading language is deliberately not persisted: each new mount starts in English.
   const [language, setLanguage] = useState<WelcomeLanguage>("en");
@@ -119,16 +131,19 @@ export default function WelcomeScreen({
   const descriptionId = useId();
   const noticeId = useId();
 
+
   const headingRef = useRef<HTMLHeadingElement>(null);
   const mountedRef = useRef(false);
   const continuingRef = useRef(false);
 
+
   const [continuing, setContinuing] = useState(false);
   const [error, setError] = useState("");
-  const [online, setOnline] = useState<boolean | null>(null);
+
 
   const dark = resolvedTheme === "dark";
   const working = busy || continuing;
+
 
   const themeStyle: WelcomeThemeStyle = {
     "--welcome-bg": dark ? "#071321" : "#F4F8F5",
@@ -141,44 +156,38 @@ export default function WelcomeScreen({
     colorScheme: dark ? "dark" : "light",
   };
 
+
   useEffect(() => {
     mountedRef.current = true;
 
-    const updateConnectivity = (): void => {
-      setOnline(navigator.onLine);
-    };
-
-    updateConnectivity();
-
-    window.addEventListener("online", updateConnectivity);
-
-    window.addEventListener("offline", updateConnectivity);
 
     headingRef.current?.focus({
       preventScroll: true,
     });
 
+
     return () => {
       mountedRef.current = false;
-
-      window.removeEventListener("online", updateConnectivity);
-
-      window.removeEventListener("offline", updateConnectivity);
     };
   }, []);
+
 
   async function handleContinue(): Promise<void> {
     if (busy || continuingRef.current) return;
 
+
     continuingRef.current = true;
+
 
     setContinuing(true);
     setError("");
+
 
     try {
       await onContinue();
     } catch (caught) {
       if (!mountedRef.current) return;
+
 
       setError(
         caught instanceof Error
@@ -188,11 +197,13 @@ export default function WelcomeScreen({
     } finally {
       continuingRef.current = false;
 
+
       if (mountedRef.current) {
         setContinuing(false);
       }
     }
   }
+
 
   return (
     <section
@@ -219,24 +230,233 @@ export default function WelcomeScreen({
         .welcome-premium[dir="rtl"] .welcome-forward { transform: rotate(180deg); }
         .welcome-premium .welcome-heading:focus:not(:focus-visible) { outline: none; }
         .welcome-premium .welcome-heading:focus-visible { outline: 2px solid #a58a32; outline-offset: 6px; }
+
+        .welcome-premium .welcome-shell {
+          box-sizing: border-box;
+          width: 100%;
+          min-height: 100%;
+          min-height: 100dvh;
+          padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+        }
+        .welcome-premium .welcome-grid,
+        .welcome-premium .welcome-product-panel,
+        .welcome-premium .welcome-aside,
+        .welcome-premium .welcome-feature {
+          min-width: 0;
+        }
+        .welcome-premium .welcome-contact a {
+          overflow-wrap: anywhere;
+        }
+
+        @media (min-width: 1024px) {
+          .welcome-premium .welcome-shell {
+            max-width: 1536px;
+            padding-top: 12px;
+            padding-inline: 24px;
+          }
+          .welcome-premium .welcome-main {
+            padding-block: 12px;
+          }
+          .welcome-premium .welcome-grid {
+            gap: 16px;
+          }
+          .welcome-premium .welcome-product-panel {
+            padding: 24px;
+          }
+          .welcome-premium .welcome-aside {
+            gap: 12px;
+          }
+          .welcome-premium .welcome-company {
+            padding: 20px;
+          }
+          .welcome-premium .welcome-contact,
+          .welcome-premium .welcome-privacy {
+            padding: 16px;
+          }
+          .welcome-premium .welcome-tagline {
+            margin-top: 18px;
+          }
+          .welcome-premium .welcome-heading {
+            margin-top: 14px;
+          }
+          .welcome-premium .welcome-actions,
+          .welcome-premium .welcome-features {
+            margin-top: 18px;
+          }
+          .welcome-premium .welcome-notices {
+            margin-top: 18px;
+            padding-top: 14px;
+          }
+          .welcome-premium .welcome-footer {
+            padding-top: 8px;
+          }
+        }
+
+        @media (min-width: 1024px) and (max-height: 850px) {
+          .welcome-premium .welcome-shell {
+            padding-top: 8px;
+            padding-inline: 20px;
+          }
+          .welcome-premium .welcome-main {
+            padding-block: 8px;
+          }
+          .welcome-premium .welcome-grid,
+          .welcome-premium .welcome-aside {
+            gap: 10px;
+          }
+          .welcome-premium .welcome-product-panel {
+            padding: 18px;
+          }
+          .welcome-premium .welcome-logo {
+            width: 56px;
+            height: 56px;
+          }
+          .welcome-premium .welcome-tagline {
+            margin-top: 12px;
+            padding-block: 6px;
+          }
+          .welcome-premium .welcome-heading {
+            margin-top: 10px;
+            font-size: clamp(2rem, 3vw, 3rem);
+          }
+          .welcome-premium .welcome-subtitle,
+          .welcome-premium .welcome-description {
+            margin-top: 10px;
+          }
+          .welcome-premium .welcome-description {
+            line-height: 1.6;
+          }
+          .welcome-premium .welcome-actions,
+          .welcome-premium .welcome-features {
+            margin-top: 12px;
+          }
+          .welcome-premium .welcome-actions {
+            gap: 4px;
+          }
+          .welcome-premium .welcome-primary {
+            min-height: 48px;
+            padding-block: 10px;
+          }
+          .welcome-premium .welcome-feature {
+            padding: 10px;
+          }
+          .welcome-premium .welcome-feature h2 {
+            margin-top: 6px;
+          }
+          .welcome-premium .welcome-feature p {
+            margin-top: 4px;
+          }
+          .welcome-premium .welcome-notices {
+            margin-top: 12px;
+            padding-top: 10px;
+          }
+          .welcome-premium .welcome-notices > :not(:last-child) {
+            margin-bottom: 6px;
+          }
+          .welcome-premium .welcome-actions p,
+          .welcome-premium .welcome-feature p,
+          .welcome-premium .welcome-notices p {
+            line-height: 1.5;
+          }
+          .welcome-premium .welcome-company {
+            padding: 16px;
+          }
+          .welcome-premium .welcome-company-icon {
+            width: 36px;
+            height: 36px;
+          }
+          .welcome-premium .welcome-built {
+            margin-top: 8px;
+          }
+          .welcome-premium .welcome-company-title {
+            margin-top: 6px;
+            line-height: 1.35;
+          }
+          .welcome-premium .welcome-company-description {
+            margin-top: 8px;
+            line-height: 1.5;
+          }
+          .welcome-premium .welcome-services {
+            margin-top: 8px;
+            gap: 3px;
+          }
+          .welcome-premium .welcome-services li {
+            line-height: 1.5;
+          }
+          .welcome-premium .welcome-website {
+            margin-top: 10px;
+            padding-block: 10px;
+          }
+          .welcome-premium .welcome-contact,
+          .welcome-premium .welcome-privacy {
+            padding: 12px 16px;
+          }
+          .welcome-premium .welcome-contact-name,
+          .welcome-premium .welcome-contact-row {
+            margin-top: 8px;
+          }
+          .welcome-premium .welcome-contact p,
+          .welcome-premium .welcome-contact a,
+          .welcome-premium .welcome-privacy p,
+          .welcome-premium .welcome-external-notice {
+            line-height: 1.5;
+          }
+          .welcome-premium .welcome-external-notice,
+          .welcome-premium .welcome-email-notice {
+            margin-top: 8px;
+          }
+        }
+
+        @media (min-width: 1024px) and (max-height: 700px) {
+          .welcome-premium .welcome-product-panel {
+            padding: 14px;
+          }
+          .welcome-premium .welcome-logo {
+            width: 48px;
+            height: 48px;
+          }
+          .welcome-premium .welcome-heading {
+            font-size: 2rem;
+          }
+          .welcome-premium .welcome-tagline,
+          .welcome-premium .welcome-actions,
+          .welcome-premium .welcome-features,
+          .welcome-premium .welcome-notices {
+            margin-top: 8px;
+          }
+          .welcome-premium .welcome-company-icon {
+            width: 30px;
+            height: 30px;
+          }
+        }
+
+        @media (max-width: 639px) {
+          .welcome-premium .welcome-shell {
+            padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px));
+          }
+        }
       `}</style>
 
-      <div className="mx-auto flex min-h-full max-w-7xl flex-col px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+
+      <div className="welcome-shell mx-auto flex min-h-full max-w-7xl flex-col px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
         <header className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span
               aria-hidden="true"
               className="h-2 w-2 rounded-full bg-(--ax-accent)"
             />
 
+
             <span className="text-xs font-bold uppercase tracking-[0.18em]">
               {APP_BRAND.product.name}
             </span>
+
 
             <span className="text-xs text-(--welcome-muted)">
               {copy.ui.edition}
             </span>
           </div>
+
 
           <div className="flex flex-wrap items-center gap-3">
             <label
@@ -246,7 +466,9 @@ export default function WelcomeScreen({
             >
               <Languages size={15} aria-hidden="true" />
 
+
               <span>{copy.ui.language}</span>
+
 
               <select
                 id={languageId}
@@ -254,6 +476,7 @@ export default function WelcomeScreen({
                 aria-label="Reading language / পড়ার ভাষা / لغة القراءة"
                 onChange={(event) => {
                   const next = event.target.value;
+
 
                   if (next === "en" || next === "bn" || next === "ar") {
                     setLanguage(next);
@@ -272,35 +495,18 @@ export default function WelcomeScreen({
                 </option>
               </select>
             </label>
-
-            <p className="inline-flex items-center gap-2 rounded-full border border-(--welcome-border) bg-(--welcome-panel) px-3 py-2 text-[11px] text-(--welcome-muted)">
-              {online === null ? (
-                <>
-                  <Info size={14} aria-hidden="true" />
-                  {copy.ui.local}
-                </>
-              ) : online ? (
-                <>
-                  <Wifi size={14} aria-hidden="true" />
-                  {copy.ui.online}
-                </>
-              ) : (
-                <>
-                  <WifiOff size={14} aria-hidden="true" />
-                  {copy.ui.offline}
-                </>
-              )}
-            </p>
           </div>
         </header>
 
-        <div className="flex flex-1 items-center py-5 sm:py-7">
-          <div className="grid w-full gap-5 lg:grid-cols-[minmax(0,1.65fr)_minmax(290px,0.85fr)]">
-            <div className="relative overflow-hidden rounded-3xl border border-(--welcome-border) bg-(--welcome-panel) p-5 shadow-[0_18px_60px_rgba(12,50,30,0.06)] sm:p-7 lg:p-8">
+
+        <div className="welcome-main flex flex-1 items-center py-5 sm:py-7">
+          <div className="welcome-grid grid w-full gap-5 lg:grid-cols-[minmax(0,1.65fr)_minmax(290px,0.85fr)]">
+            <div className="welcome-product-panel relative overflow-hidden rounded-3xl border border-(--welcome-border) bg-(--welcome-panel) p-5 shadow-[0_18px_60px_rgba(12,50,30,0.06)] sm:p-7 lg:p-8">
               <div
                 aria-hidden="true"
                 className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full border-42 border-[#D4AF37]/10"
               />
+
 
               <div
                 aria-hidden="true"
@@ -310,14 +516,17 @@ export default function WelcomeScreen({
                 }}
               />
 
+
               <div className="relative">
                 <div className="flex items-center gap-4">
                   <ProductLogo />
+
 
                   <div className="min-w-0">
                     <p className="text-xl font-black tracking-[0.08em] sm:text-2xl">
                       {APP_BRAND.product.name}
                     </p>
+
 
                     <p className="mt-1 text-xs leading-5 text-(--welcome-muted)">
                       {copy.ui.version} {APP_BRAND.product.version}
@@ -325,10 +534,12 @@ export default function WelcomeScreen({
                   </div>
                 </div>
 
-                <p className="mt-7 inline-flex items-center gap-2 rounded-full bg-(--welcome-soft) px-3 py-2 text-xs font-semibold text-(--welcome-gold)">
+
+                <p className="welcome-tagline mt-7 inline-flex items-center gap-2 rounded-full bg-(--welcome-soft) px-3 py-2 text-xs font-semibold text-(--welcome-gold)">
                   <Sparkles size={15} aria-hidden="true" />
                   {copy.ui.tagline}
                 </p>
+
 
                 <h1
                   ref={headingRef}
@@ -339,18 +550,21 @@ export default function WelcomeScreen({
                   {copy.welcome.title}
                 </h1>
 
-                <p className="mt-4 max-w-xl text-lg font-medium leading-7 text-(--welcome-muted)">
+
+                <p className="welcome-subtitle mt-4 max-w-xl text-lg font-medium leading-7 text-(--welcome-muted)">
                   {copy.welcome.subtitle}
                 </p>
 
+
                 <p
                   id={descriptionId}
-                  className="mt-4 max-w-xl text-sm leading-7 text-(--welcome-muted)"
+                  className="welcome-description mt-4 max-w-xl text-sm leading-7 text-(--welcome-muted)"
                 >
                   {copy.welcome.description}
                 </p>
 
-                <div className="mt-6 flex flex-col items-start gap-2">
+
+                <div className="welcome-actions mt-6 flex flex-col items-start gap-2">
                   <button
                     type="button"
                     disabled={working}
@@ -384,9 +598,11 @@ export default function WelcomeScreen({
                     )}
                   </button>
 
+
                   <p className="text-xs leading-6 text-(--welcome-muted)">
                     {copy.ui.hint}
                   </p>
+
 
                   <p className="inline-flex items-center gap-2 text-xs leading-6 text-(--welcome-muted)">
                     <Check
@@ -398,14 +614,16 @@ export default function WelcomeScreen({
                   </p>
                 </div>
 
-                <div className="mt-6 grid gap-3 sm:grid-cols-3">
+
+                <div className="welcome-features mt-6 grid gap-3 sm:grid-cols-3">
                   {copy.features.map((feature, index) => {
                     const Icon = FEATURE_ICONS[index];
+
 
                     return (
                       <article
                         key={feature.title}
-                        className="rounded-2xl border border-(--welcome-border) bg-(--welcome-soft) p-3.5"
+                        className="welcome-feature rounded-2xl border border-(--welcome-border) bg-(--welcome-soft) p-3.5"
                       >
                         <Icon
                           size={23}
@@ -414,9 +632,11 @@ export default function WelcomeScreen({
                           aria-hidden="true"
                         />
 
+
                         <h2 className="mt-3 text-sm font-bold">
                           {feature.title}
                         </h2>
+
 
                         <p className="mt-2 text-xs leading-6 text-(--welcome-muted)">
                           {feature.description}
@@ -425,6 +645,7 @@ export default function WelcomeScreen({
                     );
                   })}
                 </div>
+
 
                 {storageWarning && (
                   <div
@@ -438,6 +659,7 @@ export default function WelcomeScreen({
                   </div>
                 )}
 
+
                 {error && (
                   <div
                     role="alert"
@@ -449,9 +671,10 @@ export default function WelcomeScreen({
                   </div>
                 )}
 
+
                 <div
                   id={noticeId}
-                  className="mt-6 space-y-3 border-t border-(--welcome-border) pt-5"
+                  className="welcome-notices mt-6 space-y-3 border-t border-(--welcome-border) pt-5"
                 >
                   <div className="flex items-start gap-3">
                     <HardDrive
@@ -460,10 +683,12 @@ export default function WelcomeScreen({
                       aria-hidden="true"
                     />
 
+
                     <p className="text-xs leading-6 text-(--welcome-muted)">
                       {copy.welcome.localDataNotice}
                     </p>
                   </div>
+
 
                   <div className="flex items-start gap-3">
                     <Info
@@ -471,6 +696,7 @@ export default function WelcomeScreen({
                       className="mt-1 shrink-0 text-(--welcome-gold)"
                       aria-hidden="true"
                     />
+
 
                     <p className="text-xs leading-6 text-(--welcome-muted)">
                       {copy.welcome.offlineNotice}
@@ -480,15 +706,17 @@ export default function WelcomeScreen({
               </div>
             </div>
 
-            <aside className="flex flex-col gap-5">
-              <section className="relative overflow-hidden rounded-3xl border border-[#D4AF37]/40 bg-linear-to-br from-[#092755] via-[#0C1C43] to-[#07142E] p-5 text-white shadow-sm sm:p-6">
+
+            <aside className="welcome-aside flex flex-col gap-5">
+              <section className="welcome-company relative overflow-hidden rounded-3xl border border-[#D4AF37]/40 bg-linear-to-br from-[#092755] via-[#0C1C43] to-[#07142E] p-5 text-white shadow-sm sm:p-6">
                 <div
                   aria-hidden="true"
                   className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full border-28 border-[#D4AF37]/10"
                 />
 
+
                 <div className="relative">
-                  <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-[#D4AF37]/40 bg-white/5 text-[#F5D572]">
+                  <span className="welcome-company-icon inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-[#D4AF37]/40 bg-white/5 text-[#F5D572]">
                     <Building2
                       size={24}
                       strokeWidth={1.6}
@@ -496,19 +724,23 @@ export default function WelcomeScreen({
                     />
                   </span>
 
-                  <p className="mt-5 text-[10px] font-bold uppercase tracking-[0.2em] text-[#F0D485]">
+
+                  <p className="welcome-built mt-5 text-[10px] font-bold uppercase tracking-[0.2em] text-[#F0D485]">
                     {copy.ui.built}
                   </p>
 
-                  <h2 className="mt-3 text-xl font-bold leading-8">
+
+                  <h2 className="welcome-company-title mt-3 text-xl font-bold leading-8">
                     {APP_BRAND.company.name}
                   </h2>
 
-                  <p className="mt-4 text-sm leading-7 text-slate-300">
+
+                  <p className="welcome-company-description mt-4 text-sm leading-7 text-slate-300">
                     {copy.companyDescription}
                   </p>
 
-                  <ul className="mt-4 grid gap-2">
+
+                  <ul className="welcome-services mt-4 grid gap-2">
                     {APP_BRAND.company.services.map((service, index) => (
                       <li
                         key={service.id}
@@ -520,54 +752,64 @@ export default function WelcomeScreen({
                           aria-hidden="true"
                         />
 
+
                         <span>{copy.services[index] ?? service.title}</span>
                       </li>
                     ))}
                   </ul>
+
 
                   <a
                     href={APP_BRAND.links.companyWebsite}
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-label={`${copy.welcome.websiteButton} — ${copy.ui.newTab}`}
-                    className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#F5D572]/50 bg-white/5 px-4 py-3 text-sm font-semibold text-[#F5D572] transition hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#F5D572]"
+                    className="welcome-website mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#F5D572]/50 bg-white/5 px-4 py-3 text-sm font-semibold text-[#F5D572] transition hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#F5D572]"
                   >
                     {copy.welcome.websiteButton}
+
 
                     <ExternalLink size={16} aria-hidden="true" />
                   </a>
 
-                  <p className="mt-3 text-[11px] leading-6 text-slate-300">
+
+                  <p className="welcome-external-notice mt-3 text-[11px] leading-6 text-slate-300">
                     {copy.welcome.externalLinkNotice}
                   </p>
                 </div>
               </section>
 
-              <section className="rounded-3xl border border-(--welcome-border) bg-(--welcome-panel) p-5">
+
+              <section className="welcome-contact rounded-3xl border border-(--welcome-border) bg-(--welcome-panel) p-5">
                 <h2 className="text-sm font-bold">{copy.ui.contact}</h2>
 
-                <p className="mt-3 text-sm font-semibold">
+
+                <p className="welcome-contact-name mt-3 text-sm font-semibold">
                   {APP_BRAND.company.contactName}
                 </p>
 
-                <div className="mt-4 flex items-start gap-3">
+
+                <div className="welcome-contact-row mt-4 flex items-start gap-3">
                   <MapPin
                     size={17}
                     className="mt-1 shrink-0 text-(--ax-accent)"
                     aria-hidden="true"
                   />
 
+
                   <p className="text-xs leading-6 text-(--welcome-muted)">
                     {APP_BRAND.company.address}
                   </p>
                 </div>
 
-                <div className="mt-4 flex items-start gap-3">
+
+                <div className="welcome-contact-row mt-4 flex items-start gap-3">
                   <Mail
                     size={17}
                     className="mt-1 shrink-0 text-(--ax-accent)"
                     aria-hidden="true"
                   />
+
 
                   <a
                     href={APP_BRAND.links.companyEmail}
@@ -578,12 +820,14 @@ export default function WelcomeScreen({
                   </a>
                 </div>
 
-                <p className="mt-3 text-[11px] leading-6 text-(--welcome-muted)">
+
+                <p className="welcome-email-notice mt-3 text-[11px] leading-6 text-(--welcome-muted)">
                   {copy.welcome.emailNotice}
                 </p>
               </section>
 
-              <section className="rounded-2xl border border-(--welcome-border) bg-(--welcome-soft) p-5">
+
+              <section className="welcome-privacy rounded-2xl border border-(--welcome-border) bg-(--welcome-soft) p-5">
                 <div className="flex items-start gap-3">
                   <ShieldCheck
                     size={20}
@@ -591,10 +835,12 @@ export default function WelcomeScreen({
                     aria-hidden="true"
                   />
 
+
                   <div>
                     <h2 className="text-xs font-bold">
                       {copy.ui.privacyTitle}
                     </h2>
+
 
                     <p className="mt-2 text-xs leading-6 text-(--welcome-muted)">
                       {copy.ui.privacy}
@@ -606,8 +852,10 @@ export default function WelcomeScreen({
           </div>
         </div>
 
-        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-(--welcome-border) pt-4 text-[11px] leading-6 text-(--welcome-muted)">
+
+        <footer className="welcome-footer flex flex-wrap items-center justify-between gap-3 border-t border-(--welcome-border) pt-4 text-[11px] leading-6 text-(--welcome-muted)">
           <span>{copy.ui.attribution}</span>
+
 
           <span>
             {copy.ui.edition} · {APP_BRAND.product.version}
