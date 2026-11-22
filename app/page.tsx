@@ -337,15 +337,15 @@ const RECENT_FILES_KEY = "awm_excel_recent_files";
 const TEMPLATES_KEY = "awm_excel_templates";
 const MACROS_KEY = "awm_excel_macros";
 
-// একটি macro action-এর টাইপ: cell selection, value change, বা style/formatting change
+// Macro action types: cell selection, value changes, or style/formatting changes
 type MacroActionType = "SELECT" | "SET_VALUE" | "SET_STYLE";
 
 interface MacroAction {
   type: MacroActionType;
-  keys: string[];           // এই action যেসব cell-এ প্রযোজ্য (explicit, live-selection নির্ভর নয় — playback-এ reliable)
-  value?: string;           // SET_VALUE-এর জন্য
-  style?: Partial<CellStyle>; // SET_STYLE-এর জন্য
-  activeCell?: string;      // SELECT-এর জন্য
+  keys: string[];           // Cells affected by this action (explicit; independent of live selection for reliable playback)
+  value?: string;           // For SET_VALUE
+  style?: Partial<CellStyle>; // For SET_STYLE
+  activeCell?: string;      // For SELECT
 }
 
 interface SavedMacro {
@@ -1230,7 +1230,7 @@ const FUNCTION_LIST: { name: string; usage: string; desc: string }[] = [
     usage: 'CONVERT(100,"USD","BDT")',
     desc: "Converts an amount from one currency to another using the Exchange Rates sheet or built-in rates.",
   },
-  // [Batch 1] ৫০টি নতুন ফাংশন — হিসাব: lib/batch1-functions.mjs
+  // [Batch 1] 50 new functions — calculations: lib/batch1-functions.mjs
   { name: "SUMSQ", usage: "SUMSQ(A1:A10)", desc: "Returns the sum of the squares of the numbers." },
   { name: "EVEN", usage: "EVEN(3.2)", desc: "Rounds a number up (away from zero) to the nearest even integer." },
   { name: "ODD", usage: "ODD(2.2)", desc: "Rounds a number up (away from zero) to the nearest odd integer." },
@@ -1412,10 +1412,10 @@ const GALLERY_STAMPS = ["✔", "✖", "★", "⚠", "📌", "🏢", "💰", "�
 const SPECIAL_CHARACTERS = ["Ω", "≈", "≠", "≤", "≥", "÷", "×", "±", "©", "®", "™", "€", "£", "¥", "₹", "✓", "★", "→", "←", "↑", "↓"];
 
 // ============================================================
-// LibreOffice Calc-স্টাইল "Insert Special Characters" ফিচারের জন্য ডেটা
+// Data for the LibreOffice Calc-style "Insert Special Characters" feature
 // ============================================================
 
-// প্রতিটি Unicode ব্লকের কোড-রেঞ্জ — এখান থেকেই গ্রিডের ক্যারেক্টার জেনারেট হবে
+// Code ranges for each Unicode block; grid characters are generated from these ranges
 interface CharBlockDef { name: string; start: number; end: number; }
 
 const CHARACTER_BLOCKS: CharBlockDef[] = [
@@ -1435,8 +1435,8 @@ const CHARACTER_BLOCKS: CharBlockDef[] = [
   { name: "Dingbats", start: 0x2700, end: 0x27BF },
 ];
 
-// পরিচিত ক্যারেক্টারগুলোর "মানুষের পড়ার মতো" নাম (LibreOffice-এ যেমন PILCROW SIGN দেখায়)
-// এখানে না থাকা ক্যারেক্টারের জন্য নিচে fallback জেনেরিক নাম বসবে
+// Human-readable names for familiar characters (such as PILCROW SIGN in LibreOffice)
+// Characters not listed here receive a generic fallback name below
 const CHARACTER_NAME_MAP: Record<number, string> = {
   0x0021: "EXCLAMATION MARK", 0x0022: "QUOTATION MARK", 0x0023: "NUMBER SIGN",
   0x0024: "DOLLAR SIGN", 0x0025: "PERCENT SIGN", 0x0026: "AMPERSAND",
@@ -1466,7 +1466,7 @@ const CHARACTER_NAME_MAP: Record<number, string> = {
   0x2718: "HEAVY BALLOT X", 0x2764: "HEAVY BLACK HEART", 0x2605: "BLACK STAR",
 };
 
-// কোড-পয়েন্ট থেকে নাম বের করে; না পেলে জেনেরিক "UNICODE CHARACTER U+XXXX" দেখাবে
+// Look up the code point's name; otherwise display "UNICODE CHARACTER U+XXXX"
 function getCharacterName(codePoint: number): string {
   const found = CHARACTER_NAME_MAP[codePoint];
   if (found) return found;
@@ -1480,11 +1480,11 @@ function saveCharListToStorage(key: string, items: string[]) {
   try {
     window.localStorage.setItem(key, JSON.stringify(items.slice(0, 30)));
   } catch {
-    /* localStorage না থাকলে শুধু persist হবে না, অ্যাপ ক্র্যাশ করবে না */
+    /* Without localStorage, persistence is unavailable, but the app does not crash */
   }
 }
 
-// এখন ৮টা প্রফেশনাল বর্ডার লাইন-স্টাইল সাপোর্ট করবে
+// Support eight professional border line styles
 const BORDER_STYLE_OPTIONS: CellStyle["borderStyle"][] = ["solid", "dashed", "dotted", "double", "ridge", "groove", "inset", "outset"];
 
 
@@ -1502,8 +1502,8 @@ interface WorldCurrency {
 }
 
 /* ============================================================================
- * AWM ERP Sidebar Modules — Insert Hyperlink পিকারে ব্যবহারের জন্য
- * সাইডবারের SIDEBAR_SECTIONS থেকে সংগ্রহ করা সব মডিউলের নাম ও পাথ
+ * AWM ERP Sidebar Modules — for the Insert Hyperlink picker
+ * Names and paths of all modules collected from the sidebar's SIDEBAR_SECTIONS
  * ========================================================================== */
 interface AwmModuleLink {
   label: string;
@@ -1815,7 +1815,7 @@ function getExchangeRate(from: string, to: string): number {
 
 function formatCurrencyValue(rawNumeric: number, currencyCode: string, decimals: number): string {
   const currency = findCurrency(currencyCode);
-  // [হিসাব-সংশোধন] -0.001 আগে "-$0.00" দেখাত; আগে রাউন্ড করলে "-0" থাকে না
+  // [Calculation fix] -0.001 previously displayed as "-$0.00"; rounding first avoids negative zero
   const numeric = roundHalfAway(rawNumeric, Math.max(0, Math.min(Math.trunc(decimals) || 0, 20)));
   try {
     const displayLocale = DISPLAY_SETTINGS.grouping === "bd" ? "en-IN" : currency.locale;
@@ -1898,7 +1898,7 @@ function parseKey(key: string): { row: number; col: number } | null {
   return { row: parseInt(m[2], 10) - 1, col: letterToCol(m[1].toUpperCase()) };
 }
 
-// ডেটা আছে এমন সর্বশেষ রো (০-ভিত্তিক); কিছু না থাকলে -1
+// Last row containing data (zero-based); -1 if no data exists
 function getLastUsedRow(cells: CellMap): number {
   let last = -1;
   for (const [key, data] of Object.entries(cells)) {
@@ -1961,7 +1961,7 @@ function rangeTouchesMergedCells(
 
 
 function normalizeRange(range: string): { r1: number; c1: number; r2: number; c2: number } | null {
-  // [স্টেপ ১] পুরো কলাম সমর্থিত: A:A, A1:A ইত্যাদি
+  // [Step 1] Full-column references supported: A:A, A1:A, etc.
   const parts = range.split(":").map((x) => x.trim().toUpperCase());
   const a = parts[0] ?? "";
   const b = parts[1] ?? a;
@@ -1982,10 +1982,10 @@ function normalizeRange(range: string): { r1: number; c1: number; r2: number; c2
 
 
 /* ============================================================================
- * [হিসাব-সংশোধন] সংখ্যা পরিচ্ছন্নতা + ফর্মুলা রেফারেন্স রিরাইটার
- * - cleanNumber: 0.1+0.2 = 0.30000000000000004 জাতীয় ভাসমান-বিন্দুর ভুল ১৫ অঙ্কে ঠিক করে
- * - rewriteFormulaReferences: ফর্মুলার সেল রেফারেন্স ($ সহ, শিট-প্রিফিক্স সহ) নিরাপদে বদলায়
- *   (কপি/পেস্ট, ফিল, সর্ট, সারি/কলাম ঢোকানো-মোছা, শিট রিনেম — সবখানে একই ইঞ্জিন)
+ * [Calculation fix] Number normalization and formula reference rewriting
+ * - cleanNumber: normalizes floating-point artifacts such as 0.1+0.2 = 0.30000000000000004 to 15 significant digits
+ * - rewriteFormulaReferences: safely rewrites formula cell references, including $ markers and sheet prefixes
+ *     (one engine for copy/paste, fill, sort, row/column insertion/deletion, and sheet renaming)
  * ========================================================================== */
 function cleanNumber(n: number): number {
   if (!Number.isFinite(n)) return n;
@@ -1993,7 +1993,7 @@ function cleanNumber(n: number): number {
   return Number(n.toPrecision(15));
 }
 
-// ঠিক ১০ এর ঘাত ব্যবহার করে অর্ধেক-থেকে-দূরে (Excel-এর মতো) রাউন্ডিং: 1.005 → 1.01, 2.5 → 3, -2.5 → -3
+// Half-away-from-zero rounding using exact powers of ten (Excel-style): 1.005 → 1.01, 2.5 → 3, -2.5 → -3
 function roundHalfAway(value: number, digits: number): number {
   if (!Number.isFinite(value)) return value;
   const sign = value < 0 ? -1 : 1;
@@ -2006,7 +2006,7 @@ function roundHalfAway(value: number, digits: number): number {
   return Object.is(result, -0) ? 0 : result;
 }
 
-// [স্টেপ ২] বাংলাদেশি লাখ-কোটি গ্রুপিং ও বাংলা/আরবি অঙ্ক প্রদর্শন
+// [Step 2] Bangladeshi lakh/crore grouping and Bengali/Arabic digit display
 type DisplayGrouping = "western" | "bd";
 type DisplayDigits = "latin" | "bengali" | "arabic";
 
@@ -2083,7 +2083,7 @@ function formatFormulaRef(ref: FormulaRefInfo): string {
   return `${prefix}${a}:${b}`;
 }
 
-// rewrite() null ফেরত দিলে সেই রেফারেন্স #REF! হয়ে যায়
+// If rewrite() returns null, that reference becomes #REF!
 function rewriteFormulaReferences(
   formula: string,
   rewrite: (ref: FormulaRefInfo) => FormulaRefInfo | null
@@ -2091,7 +2091,7 @@ function rewriteFormulaReferences(
   const parts = formula.split(/("[^"]*")/);
   return parts
     .map((part, index) => {
-      if (index % 2 === 1) return part; // স্ট্রিং লিটারেল অপরিবর্তিত
+      if (index % 2 === 1) return part; // Leave string literals unchanged
       return part.replace(
         FORMULA_REF_PATTERN,
         (
@@ -2178,7 +2178,7 @@ function sameSheetName(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
-// ওয়ার্কবুকের সব শিটের সব ফর্মুলায় rewriteFor(মালিক-শিট) দিয়ে রেফারেন্স বদলায়
+// Rewrite references in every formula on every workbook sheet using rewriteFor(ownerSheet)
 function rewriteWorkbookFormulas(
   allSheets: WorkbookSheet[],
   rewriteFor: (owner: WorkbookSheet) => (ref: FormulaRefInfo) => FormulaRefInfo | null
@@ -2199,7 +2199,7 @@ function rewriteWorkbookFormulas(
   });
 }
 
-// সারি/কলাম ঢোকানো বা মোছার পর সব ফর্মুলা, চার্ট, কন্ডিশনাল রুল, নামকরা রেঞ্জ ও স্পার্কলাইন ঠিক রাখে
+// Maintain formulas, charts, conditional rules, named ranges, and sparklines after row/column insertion or deletion
 function applyStructuralChangeToWorkbook(
   allSheets: WorkbookSheet[],
   targetSheetId: string,
@@ -2219,7 +2219,7 @@ function applyStructuralChangeToWorkbook(
     let touched = false;
     const next = rewriteFormulaReferences(text, (ref) => {
       const adjusted = adjustRefForStructuralChange(ref, change);
-      if (!adjusted) return ref; // পুরো রেঞ্জ মুছে গেলে আগেরটাই থাক, যাতে চার্ট/রুল ভেঙে না যায়
+      if (!adjusted) return ref; // Keep the original reference if the entire range is deleted, so charts/rules do not break
       touched = true;
       return adjusted;
     });
@@ -2316,7 +2316,7 @@ interface Token {
   value: string;
 }
 
-// $A$1 / A$1 / $A1 — absolute চিহ্ন হিসাবের সময় অপ্রয়োজনীয়; স্ট্রিং ও 'শিট নাম'-এর বাইরের $ সরানো হয়
+// $A$1 / A$1 / $A1 — absolute markers are unnecessary during evaluation; remove $ outside strings and quoted sheet names
 function stripAbsoluteMarkers(src: string): string {
   let out = "";
   let quote: string | null = null;
@@ -2336,7 +2336,7 @@ function stripAbsoluteMarkers(src: string): string {
   return out;
 }
 
-// [স্টেপ ১] ফর্মুলার "টেক্সট" ও 'শিট নাম'-এর বাইরের বাংলা/আরবি/ফার্সি অঙ্ক ইংরেজি অঙ্কে বদলায়
+// [Step 1] Convert Bengali/Arabic/Persian digits outside formula strings and quoted sheet names to English digits
 function normalizeDigitsOutsideQuotes(src: string): string {
   return src
     .split(/("(?:[^"]|"")*"|'[^']*')/)
@@ -2344,7 +2344,7 @@ function normalizeDigitsOutsideQuotes(src: string): string {
       index % 2 === 1
         ? part
         : normalizeLocalizedDigits(part)
-          // [স্টেপ ১] আরবি কীবোর্ডের চিহ্ন: ، (কমা) ؛ (সেমিকোলন) ٫ (দশমিক) ٪ (শতাংশ); ; আর , একই আর্গুমেন্ট-বিভাজক
+          // [Step 1] Arabic keyboard symbols: ، (comma), ؛ (semicolon), ٫ (decimal), ٪ (percent); ; and , are equivalent argument separators
           .replace(/[\u060C\u061B;]/g, ",")
           .replace(/\u066B/g, ".")
           .replace(/\u066A/g, "%")
@@ -2362,7 +2362,7 @@ function tokenize(rawSrc: string): Token[] {
       i++;
       continue;
     }
-    // #REF!, #DIV/0! ইত্যাদি এরর লিটারেল (রেফারেন্স মুছে গেলে এটাই থাকে)
+    // Error literals such as #REF! and #DIV/0! (retained when a reference is deleted)
     if (ch === "#") {
       const errorMatch = /^#(?:REF!|DIV\/0!|NAME\?|VALUE!|N\/A|NUM!|ERROR!|CIRCULAR!|SPILL!|CALC!|NULL!)/i.exec(src.slice(i));
       if (errorMatch) {
@@ -2377,7 +2377,7 @@ function tokenize(rawSrc: string): Token[] {
       let closed = false;
       while (j < src.length) {
         if (src[j] === '"') {
-          // Excel-এর মতো "" মানে লিটারেল "
+          // As in Excel, "" represents a literal double quote
           if (src[j + 1] === '"') {
             out += '"';
             j += 2;
@@ -2397,13 +2397,13 @@ function tokenize(rawSrc: string): Token[] {
       let j = i;
       let out = "";
       while (j < src.length && /[0-9.]/.test(src[j])) out += src[j++];
-      // বৈজ্ঞানিক সংখ্যা: 1E5, 2.5e-3
+      // Scientific notation: 1E5, 2.5e-3
       const exponent = /^[eE][+-]?\d+/.exec(src.slice(j));
       if (exponent) {
         out += exponent[0];
         j += exponent[0].length;
       }
-      // [হিসাব-সংশোধন] "1.2.3" বা "." আগে চুপচাপ 1.2 / NaN হতো — এখন এরর
+      // [Calculation fix] "1.2.3" or "." previously became 1.2 / NaN silently; now report an error
       if (!/^(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(out)) throw new Error("Invalid number");
       tokens.push({ type: "num", value: out });
       i = j;
@@ -2436,7 +2436,7 @@ function tokenize(rawSrc: string): Token[] {
       let j = i;
       let out = "";
       while (j < src.length && /[A-Za-z0-9_]/.test(src[j])) out += src[j++];
-      // [ধাপ ২] ডট-যুক্ত ফাংশনের নাম: PERCENTILE.INC( , RANK.EQ( , MODE.SNGL(
+      // [Step 2] Dotted function names: PERCENTILE.INC(, RANK.EQ(, MODE.SNGL(
       while (src[j] === "." && /^\.[A-Za-z][A-Za-z0-9_]*\(/.test(src.slice(j))) {
         out += src[j++];
         while (j < src.length && /[A-Za-z0-9_]/.test(src[j])) out += src[j++];
@@ -2476,7 +2476,7 @@ function tokenize(rawSrc: string): Token[] {
           continue;
         }
       }
-      // [স্টেপ ১] "LOG10(" জাতীয় নাম রেফারেন্স (A1) নয়, ফাংশন — পরে ( থাকলে ident
+      // [Step 1] Names such as "LOG10(" are functions, not A1 references; treat as ident when followed by (
       tokens.push(/^[A-Za-z]+\d+$/.test(out) && src[j] !== "(" ? { type: "ref", value: out.toUpperCase() } : { type: "ident", value: out.toUpperCase() });
       i = j;
       continue;
@@ -2496,7 +2496,7 @@ function tokenize(rawSrc: string): Token[] {
       }
       tokens.push({ type: "op", value: op });
     } else {
-      // [হিসাব-সংশোধন] অচেনা চিহ্ন আগে চুপচাপ বাদ পড়ত (ভুল হিসাব আসত) — এখন এরর
+      // [Calculation fix] Unknown symbols were silently skipped, producing incorrect results; now report an error
       throw new Error("Unexpected character");
     }
     i++;
@@ -2527,10 +2527,10 @@ class FormulaParser {
     return this.tokens[this.pos++];
   }
   parse(): Node {
-    // খালি ফর্মুলা ("=") আগের মতোই ০
+    // An empty formula ("=") still evaluates to zero
     if (this.peek().type === "end") return { kind: "num", value: 0 };
     const node = this.parseCompare();
-    // [হিসাব-সংশোধন] "=1 2" বা "=SUM(A1) )" আগে অবশিষ্ট অংশ ফেলে দিয়ে ভুল ফল দিত — এখন এরর
+    // [Calculation fix] "=1 2" or "=SUM(A1) )" previously discarded trailing input and returned incorrect results; now report an error
     if (this.peek().type !== "end") throw new Error("Unexpected token");
     return node;
   }
@@ -2579,13 +2579,13 @@ class FormulaParser {
       this.next();
       return { kind: "neg", node: this.parseUnary() };
     }
-    // [স্টেপ ১] =+5 (Excel-এর মতো ইউনারি প্লাস) আগে #ERROR! দিত
+    // [Step 1] =+5 (Excel-style unary plus) previously returned #ERROR!
     if (this.peek().type === "op" && this.peek().value === "+") {
       this.next();
       return this.parseUnary();
     }
     let node = this.parsePrimary();
-    // পোস্টফিক্স শতাংশ: 50% = 0.5, A1% = A1/100
+    // Postfix percent: 50% = 0.5, A1% = A1/100
     while (this.peek().type === "op" && this.peek().value === "%") {
       this.next();
       node = { kind: "bin", op: "/", left: node, right: { kind: "num", value: 100 } };
@@ -2623,7 +2623,7 @@ class FormulaParser {
             args.push(this.parseCompare());
           }
         }
-        // [হিসাব-সংশোধন] বন্ধনী না বন্ধ হলে এরর (আগে চুপচাপ ধরে নিত)
+        // [Calculation fix] Report an error for an unclosed parenthesis (previously accepted silently)
         if (this.peek().type !== "rparen") throw new Error("Missing )");
         this.next();
       }
@@ -2640,7 +2640,7 @@ class FormulaParser {
   }
 }
 
-// UI-র হিসাবে (পিভট, কনসোলিডেট, গোল-সিক) ব্যবহৃত: শুধু পুরো-সংখ্যা টেক্সট সংখ্যা হয়, "2nd floor" ০ হয়
+// Used for UI calculations (pivot, consolidate, goal seek): only wholly numeric text becomes a number; "2nd floor" becomes zero
 function toNumber(v: EvalResult): number {
   if (typeof v === "number") return Number.isFinite(v) ? v : 0;
   if (typeof v === "boolean") return v ? 1 : 0;
@@ -2648,12 +2648,12 @@ function toNumber(v: EvalResult): number {
   return parsed === null ? 0 : parsed;
 }
 
-// পুরো টেক্সটটাই সংখ্যা হলে সংখ্যা, নাহলে null ("12abc" আর আংশিকভাবে ১২ হয় না)
+// Return a number only when the entire text is numeric; otherwise null ("12abc" no longer partially parses as 12)
 function strictNumber(v: EvalResult): number | null {
   if (typeof v === "number") return Number.isFinite(v) ? v : null;
   if (typeof v === "boolean") return v ? 1 : 0;
-  // [স্টেপ ১] বাংলা/আরবি/ফার্সি অঙ্কও সংখ্যা হিসেবে চেনা হয় ("১২৫" = 125)
-  // [স্টেপ ১] আরবি দশমিক (٫) ও হাজার-বিভাজক (٬ ،) এবং বাংলাদেশি গ্রুপিং (১২,৫০,০০০) সমর্থিত
+  // [Step 1] Recognize Bengali/Arabic/Persian digits as numbers as well (Bengali notation for 125 = 125)
+  // [Step 1] Support Arabic decimal (٫) and thousands separators (٬ ،), plus Bangladeshi grouping (12,50,000)
   const text = normalizeLocalizedDigits(String(v).trim()).replace(/\u066B/g, ".").replace(/[\u066C\u060C]/g, ",");
   if (text === "") return null;
   const percentMatch = /^([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:,\d{3})*(?:,\d{2,3})*)\s*%$/.exec(text);
@@ -2678,7 +2678,7 @@ function strictNumber(v: EvalResult): number | null {
   return null;
 }
 
-// ফর্মুলার গাণিতিক অপারেটরের জন্য: ফাঁকা = ০, সংখ্যা-টেক্সট = সংখ্যা, অন্য টেক্সট = #VALUE! (Excel-এর মতো)
+// For formula arithmetic operators: blank = 0, numeric text = number, other text = #VALUE! (Excel-style)
 function operandNumber(v: EvalResult): number | "#VALUE!" {
   if (typeof v === "number") return Number.isFinite(v) ? v : "#VALUE!";
   if (typeof v === "boolean") return v ? 1 : 0;
@@ -2688,12 +2688,12 @@ function operandNumber(v: EvalResult): number | "#VALUE!" {
 }
 
 const NUMERIC_RE = /^-?(?:(?:0|[1-9]\d*|[1-9]\d{0,2}(?:,\d{3})+)(?:\.\d+)?|\.\d+)$/;
-// ভারতীয়/বাংলাদেশি গ্রুপিং: 1,25,000 / 12,50,000.50 / 1,00,00,000
+// Indian/Bangladeshi grouping: 1,25,000 / 12,50,000.50 / 1,00,00,000
 const INDIAN_GROUPED_RE = /^-?[1-9]\d{0,1}(?:,\d{2})+,\d{3}(?:\.\d+)?$/;
 
 const FORMULA_ERRORS = new Set<string>(["#DIV/0!", "#NAME?", "#ERROR!", "#CIRCULAR!", "#VALUE!", "#REF!", "#N/A", "#NUM!", "#SPILL!", "#CALC!", "#NULL!"]);
 
-// শুধু http(s)/mailto/tel এবং সাইটের নিজস্ব পাথ (/...) অনুমোদিত; javascript:, data: ইত্যাদি বাতিল
+// Allow only http(s), mailto, tel, and site-relative paths (/...); reject javascript:, data:, etc.
 function sanitizeUrl(input: unknown): string | null {
   if (typeof input !== "string") return null;
   const u = input.trim();
@@ -2703,17 +2703,17 @@ function sanitizeUrl(input: unknown): string | null {
   return null;
 }
 
-// শুধু আসল সংখ্যা হলে number ফেরত দেয়; "2nd floor", "2024-01-01", "01712345678" টেক্সটই থাকে
+// Return a number only for actual numeric input; "2nd floor", "2024-01-01", and "01712345678" remain text
 function parseNumericCell(raw: string): number | string {
-  // [স্টেপ ১] "১২৫", "১,২৫,০০০"-এর মতো বাংলা অঙ্কের সেলও সংখ্যা; টেক্সট হলে মূল লেখাই থাকে
+  // [Step 1] Cells containing Bengali digits, such as 125 or 1,25,000 in Bengali notation, are numeric; preserve original text otherwise
   const s = normalizeLocalizedDigits(raw.trim()).replace(/\u066B/g, ".").replace(/[\u066C\u060C]/g, ",");
   if (NUMERIC_RE.test(s)) return Number(s.replace(/,/g, ""));
-  // ভারতীয়/বাংলাদেশি গ্রুপিং: 1,25,000
+  // Indian/Bangladeshi grouping: 1,25,000
   if (INDIAN_GROUPED_RE.test(s)) return Number(s.replace(/,/g, ""));
   return raw;
 }
 
-// COUNTIF/SUMIF-এর মানদণ্ড: "text", 5, ">3", "<=10", "<>x", "=x", "<>"
+// COUNTIF/SUMIF criteria: "text", 5, ">3", "<=10", "<>x", "=x", "<>"
 function matchesCriterion(value: EvalResult, criterion: EvalResult): boolean {
   const text = normalizeLocalizedDigits(String(criterion).trim());
   const valueText = normalizeLocalizedDigits(String(value).trim());
@@ -2732,7 +2732,7 @@ function matchesCriterion(value: EvalResult, criterion: EvalResult): boolean {
       if (typeof value === "number") return value === operandNumber;
       return valueText !== "" && Number(valueText) === operandNumber;
     }
-    // [স্টেপ ১] Excel-এর মতো * ও ? ওয়াইল্ডকার্ড ("আলী*", "A?C"); ~ দিয়ে আক্ষরিক * ?
+    // [Step 1] Excel-style * and ? wildcards (a name followed by *, or "A?C"); ~ escapes literal * and ?
     if (/[*?]/.test(operand.replace(/~[*?~]/g, ""))) {
       let pattern = "";
       for (let k = 0; k < operand.length; k++) {
@@ -2751,7 +2751,7 @@ function matchesCriterion(value: EvalResult, criterion: EvalResult): boolean {
   if (operator === "" || operator === "=") return equalsOperand();
   if (operator === "<>") return !equalsOperand();
 
-  // বড়/ছোট তুলনা শুধু সংখ্যার ঘরের জন্য (ফাঁকা ও টেক্সট বাদ)
+  // Greater/less comparisons apply only to numeric cells (exclude blanks and text)
   if (!isNumber || typeof value !== "number") return false;
 
   switch (operator) {
@@ -2763,11 +2763,11 @@ function matchesCriterion(value: EvalResult, criterion: EvalResult): boolean {
   }
 }
 
-// [নতুন ফাংশন] ROW()/COLUMN() আর্গুমেন্ট ছাড়া ডাকলে বর্তমান সেল জানতে হয়
+// [New functions] ROW()/COLUMN() without arguments need the current cell
 let currentEvalCellKey: string | null = null;
 
-// [নতুন ফাংশন] SUBSTITUTE, FIND, SEARCH, PROPER, CONCATENATE, VALUE, AVERAGEIF(S), SUMPRODUCT, LARGE, SMALL,
-// RANK, CEILING, FLOOR, ISBLANK, ISNUMBER, ROW, COLUMN, RAND, PMT — চেনা না গেলে undefined (তখন #NAME? আসে)
+// [New functions] SUBSTITUTE, FIND, SEARCH, PROPER, CONCATENATE, VALUE, AVERAGEIF(S), SUMPRODUCT, LARGE, SMALL,
+// RANK, CEILING, FLOOR, ISBLANK, ISNUMBER, ROW, COLUMN, RAND, PMT — return undefined if unrecognized (then #NAME?)
 // Keep arrays intact inside array-aware consumers; scalar formulas keep their existing semantics.
 function evalArrayNode(
   node: Node,
@@ -3030,7 +3030,7 @@ function evalExtraFunction(
       else return "#VALUE!";
       const pos = key ? parseKey(key) : null;
       if (!pos) {
-        // পুরো কলাম রেঞ্জ (যেমন B:B) এর জন্য COLUMN
+        // COLUMN for full-column ranges such as B:B
         if (node.name === "COLUMN" && key && /^[A-Za-z]{1,3}$/.test(key)) return letterToCol(key.toUpperCase()) + 1;
         return "#VALUE!";
       }
@@ -3059,7 +3059,7 @@ function evalExtraFunction(
       return Number.isFinite(payment) ? cleanNumber(payment) : "#NUM!";
     }
     default:
-      // [ধাপ ২] নতুন ফাংশন (INDEX, MATCH, DATE, SUBTOTAL ...) — একই লজিক lib/formula-core.mjs-এ
+      // [Step 2] New functions (INDEX, MATCH, DATE, SUBTOTAL, ...) — same logic in lib/formula-core.mjs
       return libEvalMoreFunction(node, getCell, expandRange, evalNode, currentEvalContext);
   }
 }
@@ -3116,7 +3116,7 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
         let left: EvalResult = l;
         let right: EvalResult = r;
 
-        // খালি মানকে অপর পাশের ধরনের উপযোগী করে তুলনা করি।
+        // Coerce blank values to match the other operand's type for comparison
         if (left === "" && typeof right === "number") {
           left = 0;
         } else if (left === "" && typeof right === "boolean") {
@@ -3154,8 +3154,8 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
         ) {
           comparison = Number(left) - Number(right);
         } else {
-          // ভিন্ন ধরনের মানকে জোর করে একই সংখ্যা বানাব না।
-          // এই অ্যাপের তুলনার ক্রম: number < string < boolean।
+          // Do not force values of different types into the same number
+          // Comparison order in this app: number < string < boolean
           const typeRank = (value: EvalResult): number => {
             if (typeof value === "number") return 0;
             if (typeof value === "string") return 1;
@@ -3198,8 +3198,8 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
         arithmetic = Math.pow(ln, rn);
       } else return 0;
       if (!Number.isFinite(arithmetic)) return "#NUM!";
-      // [স্টেপ ১] আগে প্রতিটি ধাপে ১৫ অঙ্কে কাটা হতো: 1/3*3 = 0.999999999999999 আসত।
-      // এখন শুধু যোগ-বিয়োগে পরিষ্কার করা হয়; গুণ/ভাগ/ঘাতের চূড়ান্ত ফল evaluateFormula-তে পরিষ্কার হয়।
+      // [Step 1] Previously truncated to 15 significant digits at every step: 1/3*3 yielded 0.999999999999999
+      // Now normalize only addition/subtraction here; final multiplication/division/power results are normalized in evaluateFormula
       return node.op === "+" || node.op === "-" ? cleanNumber(arithmetic) : arithmetic;
     }
     case "call": {
@@ -3267,7 +3267,7 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
           return cleanNumber(amount * rate);
         }
         case "SUM": {
-          // Excel-এর নিয়ম: রেঞ্জ/সেল-রেফারেন্সের টেক্সট ও TRUE/FALSE বাদ; সরাসরি আর্গুমেন্টের সংখ্যা-টেক্সট গোনা হয়
+          // Excel rules: ignore text and TRUE/FALSE in ranges/cell references; count numeric text supplied directly as arguments
           let total = 0;
 
           for (const arg of node.args) {
@@ -3466,7 +3466,7 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
               return 0;
             }
 
-            // [স্টেপ ১] "১২.৫৫", "1,25,000" ইত্যাদি টেক্সটও সংখ্যা (আগে #VALUE! আসত)
+            // [Step 1] Numeric text such as 12.55 in Bengali notation or "1,25,000" is accepted (previously #VALUE!)
             return strictNumber(input);
           };
 
@@ -3483,7 +3483,7 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
             return "#VALUE!";
           }
 
-          // 1.005 → 1.01 (আগে Math.round(100.49999…) এর কারণে 1 আসত)
+          // 1.005 → 1.01 (previously returned 1 because of Math.round(100.49999…))
           const result = roundHalfAway(cleanNumber(numeric), digits);
 
           if (!Number.isFinite(result)) {
@@ -4133,10 +4133,10 @@ function evaluateFormula(formula: string, getCell: (key: string) => EvalResult, 
 }
 
 /* ============================================================================
- * Multi-Sheet Formula Evaluator — Find & Replace ফিচারের জন্য
- * বর্তমান getCellValue শুধু active sheet-এ কাজ করে, কিন্তু "All Sheets" স্কোপে
- * সার্চ করতে হলে যেকোনো sheet object দিয়ে formula evaluate করা দরকার —
- * তাই এই standalone (component-independent) ভার্সনটি তৈরি করা হলো।
+ * Multi-Sheet Formula Evaluator — for Find & Replace
+ * The current getCellValue works only on the active sheet, but the "All Sheets" scope
+ * requires formula evaluation against any sheet object;
+ * this standalone, component-independent version provides that capability
  * ========================================================================== */
 const splitSheetReference = (
   reference: string
@@ -4181,7 +4181,7 @@ function getCellValueInSheet(
     }
     return parseNumericCell(raw);
   }
-  // সার্কুলার রেফারেন্স প্রতিরোধ — একই cell বারবার resolve হতে থাকলে থামিয়ে দেয়
+  // Prevent circular references: stop repeated resolution of the same cell
   const visitKey = `${targetSheet.id}!${key}`;
   if (visiting.has(visitKey)) return "#CIRCULAR!";
   const nextVisiting = new Set(visiting);
@@ -4190,7 +4190,7 @@ function getCellValueInSheet(
   const findSheet = (name: string): WorkbookSheet | undefined =>
     allSheets.find((item) => sameSheetName(item.name, name));
 
-  // [হিসাব-সংশোধন] আগে 'Sheet2!A1' মূল শিটের সেল ধরে "" ফেরত দিত — এখন সঠিক শিটে খোঁজে (এক্সপোর্টে ভুল মান আসত)
+  // [Calculation fix] Previously 'Sheet2!A1' was treated as a cell on the original sheet and returned ""; now search the correct sheet (exports had incorrect values)
   const getCell = (ref: string): EvalResult => {
     const { sheetName, reference } = splitSheetReference(ref);
     if (!sheetName) return getCellValueInSheet(targetSheet, reference, nextVisiting, allSheets);
@@ -4274,8 +4274,8 @@ function safeRefreshWorkbookState(snapshot: {
  * Main component
  * ========================================================================== */
 
-// কপি/ফিল/সর্টে সেল সরলে আপেক্ষিক (relative) রেফারেন্স সরে; $ দেওয়া অংশ স্থির থাকে।
-// সীমার বাইরে গেলে Excel-এর মতো #REF! হয়।
+// When cells move during copy/fill/sort, relative references shift; parts marked with $ remain fixed
+// References outside the bounds become #REF!, as in Excel
 function shiftFormulaRefs(formula: string, dr: number, dc: number): string {
   return rewriteFormulaReferences(formula, (ref) => {
     const r1 = ref.absR1 ? ref.r1 : ref.r1 + dr;
@@ -4307,8 +4307,8 @@ function detectDigitScript(value: string): DigitScript {
 }
 
 function normalizeLocalizedDigits(value: string): string {
-  // [হিসাব-সংশোধন] আগে পুরো সংখ্যার টুকরোকে একটি অঙ্ক ধরে খোঁজা হতো ("১২" → "1", "৩৪৫" → "3")।
-  // এখন প্রতিটি অঙ্ক আলাদাভাবে রূপান্তরিত হয় (বাংলা, আরবি, ফার্সি)।
+  // [Calculation fix] Previously an entire numeric substring was matched as one digit (12 → 1, 345 → 3 in Bengali notation)
+  // Now convert each digit individually (Bengali, Arabic, Persian)
   return value.replace(/[\u09E6-\u09EF\u0660-\u0669\u06F0-\u06F9]/g, (ch) => {
     const code = ch.charCodeAt(0);
     if (code >= 0x09e6 && code <= 0x09ef) return String(code - 0x09e6);
@@ -4376,7 +4376,7 @@ function formatSeriesNumber(value: number, sample: string): string {
 function extractTrailingNumber(
   value: string
 ): { prefix: string; num: number; digits: number; script: DigitScript } | null {
-  // [হিসাব-সংশোধন] হাইফেন সংখ্যার অংশ ছিল বলে "INV-001" → -1 হয়ে "INV0000" আসত; এখন শুধু অঙ্ক ধরা হয়।
+  // [Calculation fix] A hyphen was treated as part of the number, turning "INV-001" into -1 and producing "INV0000"; now match digits only
   const match = value.match(/^([\s\S]*?)([0-9\u09E6-\u09EF\u0660-\u0669\u06F0-\u06F9]+)$/);
   if (!match) return null;
 
@@ -4421,7 +4421,7 @@ function applyCustomNumberFormat(numeric: number, pattern: string): string {
 }
 
 function evaluateConditionalRule(rule: ConditionalRule, rawValue: EvalResult): boolean {
-  // [হিসাব-সংশোধন] parseFloat("12abc") = 12 ধরার ভুল বাদ — শুধু পুরো-সংখ্যা মান তুলনা হয়
+  // [Calculation fix] Avoid partial parsing such as parseFloat("12abc") = 12; compare only wholly numeric values
   const numeric = strictNumber(typeof rawValue === "boolean" ? String(rawValue) : rawValue) ?? NaN;
   const target = strictNumber(rule.value) ?? NaN;
   switch (rule.condition) {
@@ -4535,7 +4535,7 @@ function parseAutoFilterState(raw?: string): AutoFilterState {
 
   /*
    * Backward compatibility:
-   * পুরোনো prompt-based filter text থাকলে সেটিকে Standard Filter -> contains হিসেবে ধরা হবে।
+   * Treat legacy prompt-based filter text as Standard Filter -> contains
    */
   return {
     ...empty,
@@ -4734,7 +4734,7 @@ function calculatePredictiveAnalytics(
 
   const residuals = values.map((y, i) => y - predictedExisting[i]);
   const residualMean = residuals.reduce((a, b) => a + b, 0) / count;
-  // রিগ্রেশনের স্ট্যান্ডার্ড এরর: স্বাধীনতার মাত্রা n-2 (দুটি প্যারামিটার slope ও intercept অনুমান করা হয়েছে)
+  // Regression standard error: n-2 degrees of freedom (two estimated parameters: slope and intercept)
   const residualStd =
     count > 2
       ? Math.sqrt(
@@ -4822,7 +4822,7 @@ function calculatePredictiveAnalytics(
   };
 }
 
-// offsets[i] <= pos হয় এমন সর্ববৃহৎ i (বাইনারি সার্চ)
+// Largest i such that offsets[i] <= pos (binary search)
 function findIndexByOffset(offsets: number[], pos: number): number {
   let lo = 0;
   let hi = offsets.length - 2;
@@ -5016,7 +5016,7 @@ export default function ExcelStudioPage() {
   const [printArea] = useState<string>("");
   type SplitAxis = "vertical" | "horizontal" | null;
   const [splitAxis, setSplitAxis] = useState<SplitAxis>(null);
-  const [splitRatio, setSplitRatio] = useState(0.5); // 0.1–0.9 এর মধ্যে clamp হবে
+  const [splitRatio, setSplitRatio] = useState(0.5); // Clamp to the range 0.1–0.9
   const [activePane, setActivePane] = useState<"a" | "b">("a");
   const [showDrawFunctions, setShowDrawFunctions] = useState(false);
   const [activeDrawTool, setActiveDrawTool] = useState<DrawToolId>("select");
@@ -5047,13 +5047,13 @@ export default function ExcelStudioPage() {
   const [fillPreview, setFillPreview] = useState<SelectionRange | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; row: number; col: number } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
-  // ===== কলাম হেডার রাইট-ক্লিক কনটেক্সট মেনুর জন্য নতুন state =====
+  // ===== New state for the column-header right-click context menu =====
   const [columnContextMenu, setColumnContextMenu] = useState<{ x: number; y: number; col: number } | null>(null);
   const columnContextMenuRef = useRef<HTMLDivElement>(null);
   const [showColumnWidthDialog, setShowColumnWidthDialog] = useState(false);
   const [columnWidthDialogCol, setColumnWidthDialogCol] = useState<number | null>(null);
   const [columnWidthInput, setColumnWidthInput] = useState("120");
-  // ===== রো হেডার রাইট-ক্লিক কনটেক্সট মেনুর জন্য নতুন state =====
+  // ===== New state for the row-header right-click context menu =====
   const [rowContextMenu, setRowContextMenu] = useState<{ x: number; y: number; row: number } | null>(null);
   const rowContextMenuRef = useRef<HTMLDivElement>(null);
   const [showRowHeightDialog, setShowRowHeightDialog] = useState(false);
@@ -5063,9 +5063,9 @@ export default function ExcelStudioPage() {
 
   const cellRefs = useRef<Map<string, HTMLTableCellElement>>(new Map());
   const [showFormatCells, setShowFormatCells] = useState(false);
-  // ===== Special Characters ফিচারের state =====
-  const [showSpecialCharsMenu, setShowSpecialCharsMenu] = useState(false); // টুলবারের ছোট quick dropdown
-  const [showSpecialCharsDialog, setShowSpecialCharsDialog] = useState(false); // "More Characters..." মূল মোডাল
+  // ===== State for the Special Characters feature =====
+  const [showSpecialCharsMenu, setShowSpecialCharsMenu] = useState(false); // Small toolbar quick dropdown
+  const [showSpecialCharsDialog, setShowSpecialCharsDialog] = useState(false); // Main "More Characters..." modal
   const specialCharsMenuRef = useRef<HTMLDivElement>(null);
   const [scFavorites, setScFavorites] = useState<string[]>([]);
   const [scRecent, setScRecent] = useState<string[]>([]);
@@ -5142,9 +5142,9 @@ export default function ExcelStudioPage() {
   }, []);
 
   // ==================== Macro Engine: Recording State ====================
-  // isRecording শুধু UI-তে দেখানোর জন্য state; isRecordingRef হলো আসল
-  // source-of-truth যা setCellValue/applyStyleToSelection-এর ভেতর থেকে
-  // stale-closure ছাড়াই তাৎক্ষণিকভাবে চেক করা যায়
+  // isRecording is UI display state only; isRecordingRef is the actual
+  // source of truth, checked immediately inside setCellValue/applyStyleToSelection
+  // without stale-closure issues
   const [isRecording, setIsRecording] = useState(false);
   const isRecordingRef = useRef(false);
   const recordedActionsRef = useRef<MacroAction[]>([]);
@@ -5155,9 +5155,9 @@ export default function ExcelStudioPage() {
 
   const [savedMacros, setSavedMacros] = useState<SavedMacro[]>([]);
 
-  // এই ফাংশনটাই setCellValue/applyStyleToSelection/handleMouseDown থেকে
-  // কল হবে। Recording চালু না থাকলে, অথবা এটি Macro Playback-এর internal
-  // call হলে — কিছুই record হবে না (recursion/duplicate-recording প্রতিরোধ)
+  // Called from setCellValue/applyStyleToSelection/handleMouseDown
+  // Nothing is recorded when recording is off or when this is an internal Macro Playback
+  // call (prevents recursion and duplicate recording)
   const recordAction = useCallback((action: MacroAction) => {
     if (!isRecordingRef.current || isPlayingMacroRef.current) return;
     recordedActionsRef.current.push(action);
@@ -5168,7 +5168,7 @@ export default function ExcelStudioPage() {
       showToast("Macro playback চলাকালীন recording শুরু করা যাবে না।");
       return;
     }
-    // নতুন রেকর্ডিং শুরুর আগে আগের অসম্পূর্ণ action buffer রিসেট করা হচ্ছে
+    // Reset the previous unfinished action buffer before starting a new recording
     recordedActionsRef.current = [];
     isRecordingRef.current = true;
     setIsRecording(true);
@@ -5283,7 +5283,7 @@ export default function ExcelStudioPage() {
   const cancelMacroPlayback = useCallback(() => {
     macroCancelRef.current = true;
   }, []);
-  // ==================== Macro Engine: Recording State (শেষ) ====================
+  // ==================== Macro Engine: Recording State (end) ====================
 
   const closeMenu = () => {
     setActiveMenuIndex(null);
@@ -5291,7 +5291,7 @@ export default function ExcelStudioPage() {
   };
 
   // ---- Enterprise Undo / Redo History ----
-  // 🔄 P0-FIX-1: latest sheets-এর live mirror — undo/redo-তে safe read-এর জন্য
+  // 🔄 P0-FIX-1: live mirror of the latest sheets for safe reads during undo/redo
   const sheetsRef = useRef(sheets);
 
 
@@ -5305,7 +5305,7 @@ export default function ExcelStudioPage() {
   const HISTORY_LIMIT = 100;
   const [historyVersion, setHistoryVersion] = useState(0);
 
-  // 🔄 P0-FIX-1: history push এখন updater-এর বাইরে — StrictMode-safe
+  // 🔄 P0-FIX-1: push history outside the updater — StrictMode-safe
   const setSheets = useCallback((updater: React.SetStateAction<WorkbookSheet[]>) => {
     const prev = sheetsRef.current;
     const next = typeof updater === "function"
@@ -5315,7 +5315,7 @@ export default function ExcelStudioPage() {
       undoStackRef.current.push(prev);
       if (undoStackRef.current.length > HISTORY_LIMIT) undoStackRef.current.shift();
       redoStackRef.current = [];
-      sheetsRef.current = next; // ref সাথে সাথে update — পরের call-এ সঠিক prev পাবে
+      sheetsRef.current = next; // Update the ref immediately so the next call receives the correct previous state
       libSyncExchangeRates(next);
       setSheetsRaw(next);
       setHistoryVersion(v => v + 1);
@@ -5345,7 +5345,7 @@ export default function ExcelStudioPage() {
     []
   );
 
-  // 🔄 P0-FIX-1: side-effect updater-এর বাইরে — StrictMode-safe undo
+  // 🔄 P0-FIX-1: side effects outside the updater — StrictMode-safe undo
   const undo = useCallback(() => {
     if (undoStackRef.current.length === 0) {
       showToast("Nothing to undo.");
@@ -5361,7 +5361,7 @@ export default function ExcelStudioPage() {
     showToast("Undo");
   }, [showToast]);
 
-  // 🔄 P0-FIX-1: side-effect updater-এর বাইরে — StrictMode-safe redo
+  // 🔄 P0-FIX-1: side effects outside the updater — StrictMode-safe redo
   const redo = useCallback(() => {
     if (redoStackRef.current.length === 0) {
       showToast("Nothing to redo.");
@@ -5386,7 +5386,7 @@ export default function ExcelStudioPage() {
       })
     );
   }, [activeSheetIndex, setSheets]);
-  // সারি/কলাম ঢোকানো-মোছার সময়
+  // During row/column insertion or deletion
   // ==================== Dynamic Array Spill Integration ====================
   const [spillSettings] = useState<SpillSettings>(loadSpillSettings);
   useEffect(() => {
@@ -5755,7 +5755,7 @@ export default function ExcelStudioPage() {
 
   const activePos = useMemo(() => parseKey(activeCell) || { row: 0, col: 0 }, [activeCell]);
 
-  // 🛡️ P0-FIX-2: selection cell cap — বড় selection-এ crash আটকাতে
+  // 🛡️ P0-FIX-2: selection cell cap to prevent crashes on large selections
   const MAX_SELECTION_CELLS = 50000;
 
   const selectionCells = useMemo(() => {
@@ -5797,7 +5797,7 @@ export default function ExcelStudioPage() {
   }, [selection, ctrlSelectedRows, ctrlSelectedCols, ctrlSelectedCells, sheet.gridRows, sheet.gridCols]);
 
   const hiddenRows = useMemo(() => new Set(sheet.hiddenRows), [sheet.hiddenRows]);
-  // কোন কোন কলাম হাইড করা আছে — দ্রুত লুকআপের জন্য Set-এ রাখা হলো
+  // Keep hidden columns in a Set for fast lookup
   const hiddenCols = useMemo(() => {
     const set = new Set(sheet.hiddenCols || []);
     (sheet.colGroups || []).forEach((group) => {
@@ -5812,16 +5812,16 @@ export default function ExcelStudioPage() {
   const rowsArr = useMemo(() => Array.from({ length: sheet.gridRows }, (_, i) => i), [sheet.gridRows]);
 
 
-  // ২০০ কলামের মধ্যে শুধু স্ক্রিনে দেখা যাচ্ছে এমন কলামগুলোই DOM-এ রেন্ডার হবে —
-  // এটাই flicker/lag-এর মূল কারণ ঠিক করে (প্রতি রো-তে ২০০ সেলের বদলে ~৩০-৪০টা)
+  // Of the 200 columns, render only those visible on screen in the DOM;
+  // this addresses the main flicker/lag cause (about 30–40 cells per row instead of 200)
   const hasColumnMerges = useMemo(
     () => Object.values(sheet.cells).some(cell => (cell.colSpan || 1) > 1),
     [sheet.cells]
   );
   const virtualizeCols = !hasColumnMerges && sheet.gridCols > 40;
 
-  // প্রতিটা কলামের বাম-প্রান্তের cumulative (ক্রমযোজিত) পজিশন — colWidths/gridCols
-  // বদলালে তবেই আবার হিসাব হবে, প্রতি স্ক্রলে না, তাই সস্তা
+  // Cumulative left-edge positions for each column; recalculate only when colWidths/gridCols
+  // change, not on every scroll, keeping this inexpensive
   const colOffsets = useMemo(() => {
     const offsets: number[] = new Array(sheet.gridCols + 1);
     offsets[0] = 0;
@@ -5831,14 +5831,14 @@ export default function ExcelStudioPage() {
     return offsets;
   }, [sheet.gridCols, sheet.colWidths, hiddenCols]);
 
-  // scrollLeft অনুযায়ী কোন কলাম থেকে কোন কলাম পর্যন্ত ভিজিবল সেটা
-  // বাইনারি সার্চ দিয়ে বের করা হচ্ছে (O(log n) — দ্রুত, স্ক্রলে lag করে না)
+  // Determine the visible column range from scrollLeft
+  // using binary search (O(log n), fast and without scroll lag)
 
 
 
   const visibleColRange = useMemo(() => {
     if (!virtualizeCols) return { start: 0, end: sheet.gridCols - 1 };
-    const BUFFER = Math.max(12, Math.min(24, Math.ceil(viewport.clientWidth / DEFAULT_COL_WIDTH))); // স্ক্রলের সময় হালকা বাফার রাখা হলো যাতে ফাঁকা না দেখায়
+    const BUFFER = Math.max(12, Math.min(24, Math.ceil(viewport.clientWidth / DEFAULT_COL_WIDTH))); // Keep a small scroll buffer to avoid visible gaps
 
     let lo = sheet.frozenCols, hi = sheet.gridCols - 1, startCol = sheet.frozenCols;
     while (lo <= hi) {
@@ -5862,8 +5862,8 @@ export default function ExcelStudioPage() {
     };
   }, [virtualizeCols, viewport.scrollLeft, viewport.clientWidth, colOffsets, sheet.gridCols, sheet.frozenCols]);
 
-  // স্ক্রিনে যে কলামগুলো দেখা যাবে তার তালিকা। virtualization চালু থাকলে:
-  // [frozen কলাম..., -1 (বাম spacer), দৃশ্যমান কলাম..., -2 (ডান spacer)]
+  // List of columns to display when virtualization is enabled:
+  // [frozen columns..., -1 (left spacer), visible columns..., -2 (right spacer)]
   const columns = useMemo(() => {
     if (!virtualizeCols) return Array.from({ length: sheet.gridCols }, (_, i) => i);
     const out: number[] = [];
@@ -5876,7 +5876,7 @@ export default function ExcelStudioPage() {
     return out;
   }, [sheet.gridCols, sheet.frozenCols, virtualizeCols, visibleColRange.start, visibleColRange.end]);
 
-  // বাদ পড়া কলামগুলোর মোট প্রস্থ (hidden কলাম বাদ দিয়ে)। spacer এই প্রস্থ নেবে
+  // Total width of omitted columns, excluding hidden columns; the spacer uses this width
   const colSpacerWidths = useMemo(() => {
     if (!virtualizeCols) return { left: 0, right: 0 };
     return {
@@ -5994,8 +5994,8 @@ export default function ExcelStudioPage() {
     if (numberFormat === "text") return String(rawValue);
 
     if (numberFormat === "date") {
-      // [হিসাব-সংশোধন] সংখ্যা (যেমন 5) আর তারিখ ধরা হয় না; YYYY-MM-DD স্থানীয় তারিখ হিসেবে পড়া হয়
-      // (আগে UTC ধরায় UTC-র পিছনের টাইমজোনে একদিন আগের তারিখ দেখাত)
+      // [Calculation fix] Numbers such as 5 are no longer interpreted as dates; parse YYYY-MM-DD as a local date
+      // (previously parsed as UTC, showing the previous day in time zones behind UTC)
       if (typeof rawValue !== "string") return String(rawValue);
       const text = rawValue.trim();
       const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
@@ -6038,8 +6038,8 @@ export default function ExcelStudioPage() {
         return applyCustomNumberFormat(numeric, style.customFormat);
       }
       if (Number.isInteger(numeric)) return formatDisplayNumber(numeric, null);
-      // [হিসাব-সংশোধন] General ফরম্যাটে দশমিক সংখ্যা আর জোর করে ২ ঘরে কাটা হয় না (1/3 → 0.333333333333, 0.001 → 0.001)।
-      // স্পষ্টভাবে দশমিক-সংখ্যা ঠিক করা থাকলে সেটিই মানা হয়।
+      // [Calculation fix] General format no longer forces decimals to two places (1/3 → 0.333333333333, 0.001 → 0.001)
+      // Honor the explicitly configured decimal places when provided
       if (typeof style?.decimals === "number") {
         return formatDisplayNumber(roundHalfAway(numeric, Math.max(0, Math.min(decimals, 10))), Math.max(0, Math.min(decimals, 10)));
       }
@@ -6210,7 +6210,7 @@ export default function ExcelStudioPage() {
       updateSheet((s) => ({
         cells: { ...s.cells, [key]: { ...(s.cells[key] || { value: "" }), value } },
       }));
-      // Macro recording চালু থাকলে এই cell-value change action হিসেবে record হচ্ছে
+      // Record this cell-value change as an action when Macro recording is enabled
       recordAction({ type: "SET_VALUE", keys: [key], value });
     },
     [updateSheet, recordAction]
@@ -6233,7 +6233,7 @@ export default function ExcelStudioPage() {
     return () => window.removeEventListener("mousedown", handler);
   }, [contextMenu]);
 
-  // কলাম হেডার কনটেক্সট মেনুর বাইরে ক্লিক করলে মেনু বন্ধ হয়ে যাবে
+  // Close the column-header context menu when clicking outside it
   useEffect(() => {
     if (!columnContextMenu) return;
     const handler = (e: MouseEvent) => {
@@ -6248,7 +6248,7 @@ export default function ExcelStudioPage() {
     return () => window.removeEventListener("mousedown", handler);
   }, [columnContextMenu]);
 
-  // রো হেডার কনটেক্সট মেনুর বাইরে ক্লিক করলে মেনু বন্ধ হয়ে যাবে
+  // Close the row-header context menu when clicking outside it
   useEffect(() => {
     if (!rowContextMenu) return;
     const handler = (e: MouseEvent) => {
@@ -6304,13 +6304,13 @@ export default function ExcelStudioPage() {
   }, [shareMenu]);
 
   const handleMouseDown = (row: number, col: number, e?: React.MouseEvent) => {
-    // রাইট-ক্লিক (e.button === 2) হলে সিলেকশন পরিবর্তন করা যাবে না।
-    // কারণ ব্রাউজারে রাইট-ক্লিকের সময় mousedown আগে ফায়ার হয়, তারপর
-    // contextmenu ইভেন্ট। আগে থেকে একাধিক সেল সিলেক্ট করা থাকলে এই
-    // চেক না থাকলে mousedown সেই সিলেকশনকে একটা মাত্র সেলে সংকুচিত করে
-    // ফেলতো, ফলে রাইট-ক্লিক মেনুর "Copy" শুধু একটা সেল কপি করতো।
-    // ইতিমধ্যে সিলেক্ট করা এলাকার বাইরে রাইট-ক্লিক করলে অবশ্য
-    // onContextMenu হ্যান্ডলার ঠিকই নতুন সিলেকশন বসাবে।
+    // Do not change the selection on right-click (e.button === 2)
+    // Browsers fire mousedown before
+    // the contextmenu event on right-click. With multiple cells already selected,
+    // without this check mousedown would shrink the selection to one cell,
+    // so "Copy" in the right-click menu would copy only that cell
+    // When right-clicking outside the existing selected area,
+    // the onContextMenu handler still sets the new selection
     if (e?.button === 2) return;
     const key = cellKey(row, col);
     if (e && (e.ctrlKey || e.metaKey)) {
@@ -6331,7 +6331,7 @@ export default function ExcelStudioPage() {
     dragging.current = true;
     setActiveCell(key);
     setSelection({ r1: row, c1: col, r2: row, c2: col });
-    // Macro recording চালু থাকলে cell-selection action হিসেবে record হচ্ছে
+    // Record this as a cell-selection action when Macro recording is enabled
     recordAction({ type: "SELECT", keys: [key], activeCell: key });
     if (formatPainter) {
 
@@ -6463,7 +6463,7 @@ export default function ExcelStudioPage() {
     });
   }, [commitFill]);
 
-  // [মাউস ফিক্স] দ্রুত ড্র্যাগে সেল স্কিপ না হয় — pointer position থেকে সেল/হেডার নির্ধারণ
+  // [Mouse fix] Resolve cells/headers from pointer position to avoid skipped cells during fast dragging
   useEffect(() => {
     let pointer: { x: number; y: number } | null = null;
     let frame: number | null = null;
@@ -6575,8 +6575,8 @@ export default function ExcelStudioPage() {
     (moveDir: "down" | "right" | "up" | "left" | "none" = "down") => {
       if (editingKey) setCellValue(editingKey, editValue);
       setEditingKey(null);
-      // এডিট শেষ করে (commit করে) নির্দিষ্ট দিকের পাশের সেলে চলে যাওয়া হচ্ছে —
-      // Excel-এর মতো: লেখা শেষ করে Arrow key চাপলেই পাশের সেলে চলে যাবে
+      // Commit the edit and move to the adjacent cell in the specified direction;
+      // as in Excel, pressing an arrow key after editing moves to the adjacent cell
       if (moveDir === "down") {
         const pos = parseKey(activeCell)!;
         const nr = Math.min(pos.row + 1, sheet.gridRows - 1);
@@ -6620,8 +6620,8 @@ export default function ExcelStudioPage() {
       } else if (e.key === "Escape") {
         setEditingKey(null);
       } else if (e.key.startsWith("Arrow")) {
-        // এডিট করার সময় Arrow key চাপলে লেখাটা সেভ (commit) হয়ে যাবে,
-        // তারপর সেই দিকের পাশের সেলে চলে যাবে — ঠিক Excel-এর মতো আচরণ
+        // Pressing an arrow key while editing commits the text,
+        // then moves to the adjacent cell in that direction, matching Excel behavior
         e.preventDefault();
         if (e.key === "ArrowRight") commitEdit("right");
         else if (e.key === "ArrowLeft") commitEdit("left");
@@ -6713,8 +6713,8 @@ export default function ExcelStudioPage() {
 
 
   const applyStyleToSelection = useCallback((patch: Partial<CellStyle>, targetKeys?: string[]) => {
-    // targetKeys দেওয়া থাকলে (Macro Playback থেকে আসা explicit cell list)
-    // সেটাই ব্যবহার হবে; না দিলে স্বাভাবিক UI ব্যবহারে বর্তমান selectionCells ব্যবহার হবে
+    // Use targetKeys when provided (the explicit cell list from Macro Playback);
+    // otherwise use selectionCells for normal UI interaction
     const keys = targetKeys && targetKeys.length ? targetKeys : selectionCells;
     updateSheet((s) => {
       const next = { ...s.cells };
@@ -6726,7 +6726,7 @@ export default function ExcelStudioPage() {
       });
       return { cells: next };
     });
-    // Macro recording চালু থাকলে এই formatting-change action হিসেবে record হচ্ছে
+    // Record this as a formatting-change action when Macro recording is enabled
     recordAction({ type: "SET_STYLE", keys, style: patch });
   }, [selectionCells, updateSheet, recordAction]);
 
@@ -6813,7 +6813,7 @@ export default function ExcelStudioPage() {
 
   const macroSleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
-  // এখানে recorded action sequence অনুযায়ী macro playback করা হচ্ছে
+  // Play back the macro according to the recorded action sequence
   const runMacro = useCallback(async (macro: SavedMacro) => {
     if (isPlayingMacroRef.current) {
       showToast("ইতিমধ্যে একটি macro চলছে।");
@@ -6828,7 +6828,7 @@ export default function ExcelStudioPage() {
       return;
     }
 
-    // Playback চলাকালীন পুনরায় recording শুরু হওয়া আটকানো হচ্ছে (recursion prevention)
+    // Prevent recording from starting again during playback (recursion prevention)
     isPlayingMacroRef.current = true;
     macroCancelRef.current = false;
     setIsPlayingMacro(true);
@@ -6856,7 +6856,7 @@ export default function ExcelStudioPage() {
             applyStyleToSelection(action.style, action.keys);
           }
         } catch {
-          // একটি step fail করলেও পুরো playback থামবে না
+          // A failed step does not stop the entire playback
           showToast("একটি macro step execute করা যায়নি, পরবর্তী step-এ এগিয়ে যাওয়া হচ্ছে।");
         }
 
@@ -7166,13 +7166,13 @@ export default function ExcelStudioPage() {
     }
   };
 
-  // ব্রাউজারের OS ক্লিপবোর্ড থেকে টেক্সট পড়ে তা সেলে বসানো হচ্ছে।
-  // Excel/Google Sheets থেকে কপি করা ডেটা সাধারণত Tab দিয়ে কলাম আর
-  // নতুন লাইন দিয়ে সারি আলাদা করা থাকে (TSV ফরম্যাট) — এখানে সেটাই পার্স করা হলো
+  // Read text from the browser's OS clipboard and place it into cells
+  // Data copied from Excel/Google Sheets usually separates columns with tabs and
+  // rows with newlines (TSV format); parse that format here
   const pasteExternalText = (text: string) => {
     const cleaned = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
     const lines = cleaned.split("\n");
-    // শেষে একটা খালি লাইন থাকলে (কপি করার সময় প্রায়ই থাকে) সেটা বাদ দেওয়া হলো
+    // Remove a trailing blank line, which is common in copied data
     const rows = lines[lines.length - 1] === "" ? lines.slice(0, -1) : lines;
     if (rows.length === 0) return;
 
@@ -7224,10 +7224,10 @@ export default function ExcelStudioPage() {
 
   const doPaste = async () => {
     if (!clipboard) {
-      // অ্যাপের ভেতরে (Ctrl+C/Copy বাটন দিয়ে) কিছু কপি করা নেই — তাই এবার
-      // সরাসরি ব্রাউজারের সিস্টেম ক্লিপবোর্ড থেকে পড়ার চেষ্টা করা হচ্ছে।
-      // এভাবে বাইরে থেকে (Excel, ওয়েবসাইট, নোটপ্যাড) কপি করা ডেটাও
-      // রাইট-ক্লিক মেনুর "Paste" দিয়ে বসানো যাবে
+      // Nothing was copied inside the app using Ctrl+C or the Copy button;
+      // try reading directly from the browser's system clipboard instead
+      // This allows externally copied data (Excel, websites, Notepad)
+      // to be inserted using "Paste" in the right-click menu
       try {
         const text = await navigator.clipboard.readText();
         if (text && text.trim() !== "") {
@@ -7419,7 +7419,7 @@ export default function ExcelStudioPage() {
       };
     }
 
-    // একই শিট হলে source সরানোর পরের cells থেকেই শুরু করি।
+    // For the same sheet, start from the cells after removing the source
     const targetSheet = nextSheets[destinationIndex];
     const targetCells = { ...targetSheet.cells };
 
@@ -7444,13 +7444,13 @@ export default function ExcelStudioPage() {
 
       if (typeof data.value === "string" && data.value.startsWith("=")) {
         if (copied.mode !== "cut") {
-          // Copy: সূত্রের আপেক্ষিক রেফারেন্স নতুন জায়গা অনুযায়ী সরে (=A1+B1 নিচের ঘরে হয় =A2+B2)
+          // Copy: shift relative formula references to the new location (=A1+B1 becomes =A2+B2 one row down)
           pasted = {
             ...data,
             value: "=" + shiftFormulaRefs(data.value.slice(1), pasteRowShift, pasteColShift),
           };
         } else if (cutAcrossSheets) {
-          // Cut অন্য শিটে: সূত্র একই ঘরগুলোকেই দেখবে, তাই মূল শিটের নাম বসাই
+          // Cut to another sheet: preserve references to the original cells by adding the source sheet name
           pasted = {
             ...data,
             value:
@@ -7478,7 +7478,7 @@ export default function ExcelStudioPage() {
     let finalSheets = nextSheets;
 
     if (copied.mode === "cut" && sourceIndex >= 0) {
-      // Cut: অন্য যেসব সূত্র কাটা ঘরগুলোকে দেখছিল, সেগুলো নতুন জায়গাকে দেখবে (Excel-এর মতো)
+      // Cut: update other formulas referring to the cut cells to point to the new location (Excel-style)
       const sourceName = nextSheets[sourceIndex].name;
       const destinationName = nextSheets[destinationIndex].name;
       const cutR1 = copied.origin.row;
@@ -7501,7 +7501,7 @@ export default function ExcelStudioPage() {
       });
     }
 
-    // দুই শিটের পরিবর্তন একই Undo step-এ রাখি।
+    // Keep changes to both sheets in the same Undo step
     setSheets(finalSheets);
 
 
@@ -7519,20 +7519,20 @@ export default function ExcelStudioPage() {
       showToast("একসাথে সর্বোচ্চ ২০০টি রো মুছা যাবে এবং অন্তত একটি রো থাকতে হবে।");
       return;
     }
-    // নিচ থেকে উপরে মুছছি, যাতে ইনডেক্স এলোমেলো না হয়
+    // Delete from bottom to top to avoid shifting indices
     for (let r = r2; r >= r1; r--) deleteRowAtIndex(r);
   };
 
   /* ============================================================================
-   * কলাম হেডার কনটেক্সট মেনুর জন্য অ্যাডভান্সড লজিক
+   * Advanced logic for the column-header context menu
    * ========================================================================== */
 
-  // নির্দিষ্ট ইনডেক্সে (atCol) একটি নতুন খালি কলাম ঢুকিয়ে দেওয়া হচ্ছে —
-  // atCol এবং তার ডানে থাকা সব কলামের ডাটা একঘর ডানে শিফট হয়ে যাবে
+  // Insert a new blank column at the specified index (atCol);
+  // shift data in atCol and all columns to its right one column right
   const insertColumnAtIndex = useCallback((atCol: number) => {
     updateSheetStructural((s) => {
       const nextCells: CellMap = {};
-      // প্রতিটি সেল স্ক্যান করে, atCol বা তার ডানে থাকা সেলগুলো এক ঘর ডানে সরানো হচ্ছে
+      // Scan each cell and shift cells at or to the right of atCol one column right
       Object.entries(s.cells).forEach(([key, data]) => {
         const pos = parseKey(key);
         if (!pos) return;
@@ -7543,21 +7543,21 @@ export default function ExcelStudioPage() {
         }
       });
 
-      // কলামের প্রস্থ (width) তথ্যও ডানে শিফট করা হচ্ছে, যাতে সঠিক কলামে সঠিক প্রস্থ থাকে
+      // Shift column width metadata right so widths stay with the correct columns
       const nextColWidths: Record<number, number> = {};
       Object.entries(s.colWidths).forEach(([colStr, w]) => {
         const col = parseInt(colStr, 10);
         nextColWidths[col >= atCol ? col + 1 : col] = w;
       });
 
-      // AutoFilter-এর তথ্যও শিফট করা হচ্ছে
+      // Shift AutoFilter metadata as well
       const nextFilters: Record<number, string> = {};
       Object.entries(s.filters || {}).forEach(([colStr, f]) => {
         const col = parseInt(colStr, 10);
         nextFilters[col >= atCol ? col + 1 : col] = f;
       });
 
-      // হাইড করা কলাম তালিকাও শিফট করা হচ্ছে
+      // Shift the hidden-column list as well
       const nextHiddenCols = (s.hiddenCols || []).map((c) => (c >= atCol ? c + 1 : c));
 
       return {
@@ -7571,18 +7571,18 @@ export default function ExcelStudioPage() {
     showToast("নতুন কলাম যুক্ত করা হয়েছে।");
   }, [updateSheetStructural, showToast]);
 
-  // নির্বাচিত (রাইট-ক্লিক করা) কলামের বামে নতুন কলাম বসানো
+  // Insert a new column to the left of the selected (right-clicked) column
   const insertColumnsBeforeTarget = useCallback((col: number) => {
     insertColumnAtIndex(col);
   }, [insertColumnAtIndex]);
 
-  // নির্বাচিত (রাইট-ক্লিক করা) কলামের ডানে নতুন কলাম বসানো
+  // Insert a new column to the right of the selected (right-clicked) column
   const insertColumnsAfterTarget = useCallback((col: number) => {
     insertColumnAtIndex(col + 1);
   }, [insertColumnAtIndex]);
 
-  // নির্দিষ্ট কলামটি সম্পূর্ণভাবে মুছে ফেলা হচ্ছে —
-  // মুছে ফেলা কলামের ডানের সব কলাম একঘর বামে সরে আসবে
+  // Delete the specified column entirely;
+  // shift all columns to its right one column left
   const deleteColumnAtIndex = useCallback((atCol: number) => {
     if (sheet.gridCols <= 1) {
       showToast("অন্তত একটি কলাম থাকা আবশ্যক।");
@@ -7593,7 +7593,7 @@ export default function ExcelStudioPage() {
       Object.entries(s.cells).forEach(([key, data]) => {
         const pos = parseKey(key);
         if (!pos) return;
-        if (pos.col === atCol) return; // ⬅️ এই কলামের ডাটা বাদ দেওয়া হলো (ডিলিট)
+        if (pos.col === atCol) return; // ⬅️ Omit this column's data (deleted)
         if (pos.col > atCol) {
           nextCells[cellKey(pos.row, pos.col - 1)] = data;
         } else {
@@ -7630,7 +7630,7 @@ export default function ExcelStudioPage() {
     showToast("কলাম মুছে ফেলা হয়েছে।");
   }, [sheet.gridCols, updateSheetStructural, showToast]);
 
-  // কলামটি নিজে থাকবে, শুধু ভেতরের সব ডাটা (Contents) খালি হয়ে যাবে
+  // Keep the column itself; clear only its contents
   const clearColumnContentsAtIndex = useCallback((atCol: number) => {
     updateSheet((s) => {
       const nextCells = { ...s.cells };
@@ -7643,26 +7643,26 @@ export default function ExcelStudioPage() {
     showToast("কলামের কনটেন্ট মুছে ফেলা হয়েছে।");
   }, [updateSheet, showToast]);
 
-  // নির্দিষ্ট কলামের প্রস্থ (width) কাস্টম পিক্সেল মান দিয়ে সেট করা
+  // Set the specified column's width to a custom pixel value
   const applyColumnWidthAtIndex = useCallback((atCol: number, width: number) => {
     const safeWidth = Math.max(20, Math.min(800, width));
     updateSheet((s) => ({ colWidths: { ...s.colWidths, [atCol]: safeWidth } }));
     showToast(`কলামের প্রস্থ ${safeWidth}px করা হয়েছে।`);
   }, [updateSheet, showToast]);
 
-  // কলামের ভেতরের কনটেন্টের দৈর্ঘ্য দেখে সবচেয়ে উপযুক্ত (Optimal) প্রস্থ হিসাব করে বসানো হচ্ছে
+  // Calculate and apply the optimal column width from its content length
   const applyOptimalWidthAtIndex = useCallback((atCol: number) => {
-    let maxLen = 2; // কলাম হেডারের অক্ষরের জন্য ন্যূনতম জায়গা রাখা হলো
+    let maxLen = 2; // Reserve minimum space for the column-header letters
     for (let r = 0; r < sheet.gridRows; r++) {
       const text = getDisplayValue(cellKey(r, atCol));
       if (text.length > maxLen) maxLen = text.length;
     }
-    // প্রতি ক্যারেক্টারে আনুমানিক ৭.৫px + কিছুটা বাড়তি প্যাডিং যোগ করা হচ্ছে
+    // Estimate 7.5px per character plus extra padding
     const optimalWidth = Math.min(600, Math.max(60, Math.round(maxLen * 7.5) + 24));
     applyColumnWidthAtIndex(atCol, optimalWidth);
   }, [sheet.gridRows, getDisplayValue, applyColumnWidthAtIndex]);
 
-  // বর্তমানে সিলেক্ট করা কলাম রেঞ্জ হাইড করে দেওয়া হচ্ছে
+  // Hide the currently selected column range
   const hideSelectedColumns = useCallback(() => {
     const c1 = Math.min(selection.c1, selection.c2);
     const c2 = Math.max(selection.c1, selection.c2);
@@ -7674,21 +7674,21 @@ export default function ExcelStudioPage() {
     showToast("কলাম লুকানো (Hide) হয়েছে।");
   }, [selection, updateSheet, showToast]);
 
-  // সব হাইড করা কলাম আবার দৃশ্যমান করে দেওয়া হচ্ছে
+  // Show all hidden columns again
   const showAllHiddenColumns = useCallback(() => {
     updateSheet({ hiddenCols: [] });
     showToast("সব লুকানো কলাম আবার দেখানো হয়েছে।");
   }, [updateSheet, showToast]);
   /* ============================================================================
-     * রো হেডার কনটেক্সট মেনুর জন্য অ্যাডভান্সড লজিক
+     * Advanced logic for the row-header context menu
      * ========================================================================== */
 
-  // নির্দিষ্ট ইনডেক্সে (atRow) একটি নতুন খালি রো ঢুকিয়ে দেওয়া হচ্ছে —
-  // atRow এবং তার নিচে থাকা সব রো-এর ডাটা একঘর নিচে শিফট হয়ে যাবে
+  // Insert a new blank row at the specified index (atRow);
+  // shift data in atRow and all rows below it one row down
   const insertRowAtIndex = useCallback((atRow: number) => {
     updateSheetStructural((s) => {
       const nextCells: CellMap = {};
-      // প্রতিটি সেল স্ক্যান করে, atRow বা তার নিচে থাকা সেলগুলো এক ঘর নিচে সরানো হচ্ছে
+      // Scan each cell and shift cells at or below atRow one row down
       Object.entries(s.cells).forEach(([key, data]) => {
         const pos = parseKey(key);
         if (!pos) return;
@@ -7699,17 +7699,17 @@ export default function ExcelStudioPage() {
         }
       });
 
-      // রো-এর উচ্চতা (height) তথ্যও নিচে শিফট করা হচ্ছে, যাতে সঠিক রো-তে সঠিক উচ্চতা থাকে
+      // Shift row height metadata down so heights stay with the correct rows
       const nextRowHeights: Record<number, number> = {};
       Object.entries(s.rowHeights).forEach(([rowStr, h]) => {
         const row = parseInt(rowStr, 10);
         nextRowHeights[row >= atRow ? row + 1 : row] = h;
       });
 
-      // হাইড করা রো তালিকাও শিফট করা হচ্ছে
+      // Shift the hidden-row list as well
       const nextHiddenRows = (s.hiddenRows || []).map((r) => (r >= atRow ? r + 1 : r));
 
-      // গ্রুপ (Row Grouping) রেঞ্জও শিফট করা হচ্ছে, যাতে গ্রুপিং ভেঙে না যায়
+      // Shift Row Grouping ranges as well to preserve grouping
       const nextGroups = (s.groups || []).map((g) => ({
         ...g,
         start: g.start >= atRow ? g.start + 1 : g.start,
@@ -7727,18 +7727,18 @@ export default function ExcelStudioPage() {
     showToast("নতুন রো যুক্ত করা হয়েছে।");
   }, [updateSheetStructural, showToast]);
 
-  // নির্বাচিত (রাইট-ক্লিক করা) রো-এর উপরে নতুন রো বসানো
+  // Insert a new row above the selected (right-clicked) row
   const insertRowsAboveTarget = useCallback((row: number) => {
     insertRowAtIndex(row);
   }, [insertRowAtIndex]);
 
-  // নির্বাচিত (রাইট-ক্লিক করা) রো-এর নিচে নতুন রো বসানো
+  // Insert a new row below the selected (right-clicked) row
   const insertRowsBelowTarget = useCallback((row: number) => {
     insertRowAtIndex(row + 1);
   }, [insertRowAtIndex]);
 
-  // নির্দিষ্ট রোটি সম্পূর্ণভাবে মুছে ফেলা হচ্ছে —
-  // মুছে ফেলা রো-এর নিচের সব রো একঘর উপরে সরে আসবে
+  // Delete the specified row entirely;
+  // shift all rows below it one row up
   const deleteRowAtIndex = useCallback((atRow: number) => {
     if (sheet.gridRows <= 1) {
       showToast("অন্তত একটি রো থাকা আবশ্যক।");
@@ -7749,7 +7749,7 @@ export default function ExcelStudioPage() {
       Object.entries(s.cells).forEach(([key, data]) => {
         const pos = parseKey(key);
         if (!pos) return;
-        if (pos.row === atRow) return; // ⬅️ এই রো-এর ডাটা বাদ দেওয়া হলো (ডিলিট)
+        if (pos.row === atRow) return; // ⬅️ Omit this row's data (deleted)
         if (pos.row > atRow) {
           nextCells[cellKey(pos.row - 1, pos.col)] = data;
         } else {
@@ -7787,7 +7787,7 @@ export default function ExcelStudioPage() {
     showToast("রো মুছে ফেলা হয়েছে।");
   }, [sheet.gridRows, updateSheetStructural, showToast]);
 
-  // রোটি নিজে থাকবে, শুধু ভেতরের সব ডাটা (Contents) খালি হয়ে যাবে
+  // Keep the row itself; clear only its contents
   const clearRowContentsAtIndex = useCallback((atRow: number) => {
     updateSheet((s) => {
       const nextCells = { ...s.cells };
@@ -7800,14 +7800,14 @@ export default function ExcelStudioPage() {
     showToast("রো-এর কনটেন্ট মুছে ফেলা হয়েছে।");
   }, [updateSheet, showToast]);
 
-  // নির্দিষ্ট রো-এর উচ্চতা (height) কাস্টম পিক্সেল মান দিয়ে সেট করা
+  // Set the specified row's height to a custom pixel value
   const applyRowHeightAtIndex = useCallback((atRow: number, height: number) => {
     const safeHeight = Math.max(16, Math.min(400, height));
     updateSheet((s) => ({ rowHeights: { ...s.rowHeights, [atRow]: safeHeight } }));
     showToast(`রো-এর উচ্চতা ${safeHeight}px করা হয়েছে।`);
   }, [updateSheet, showToast]);
 
-  // রো-এর ভেতরের কনটেন্টের লাইন-সংখ্যা দেখে সবচেয়ে উপযুক্ত (Optimal) উচ্চতা হিসাব করে বসানো হচ্ছে
+  // Calculate and apply the optimal row height from the number of content lines
   const applyOptimalHeightAtIndex = useCallback((atRow: number) => {
     let maxLines = 1;
     for (let c = 0; c < sheet.gridCols; c++) {
@@ -7815,13 +7815,13 @@ export default function ExcelStudioPage() {
       const lineCount = text.split("\n").length;
       if (lineCount > maxLines) maxLines = lineCount;
     }
-    // প্রতি লাইনে আনুমানিক ২০px + কিছুটা বাড়তি প্যাডিং যোগ করা হচ্ছে
+    // Estimate 20px per line plus extra padding
     const optimalHeight = Math.min(300, Math.max(24, maxLines * 20 + 16));
     applyRowHeightAtIndex(atRow, optimalHeight);
   }, [sheet.gridCols, getDisplayValue, applyRowHeightAtIndex]);
 
-  // বর্তমানে সিলেক্ট করা রো রেঞ্জ হাইড করে দেওয়া হচ্ছে
-  // (hiddenRows ফিল্ড আগে থেকেই আছে, তাই নতুন কিছু বানাতে হচ্ছে না)
+  // Hide the currently selected row range
+  // (hiddenRows already exists, so no new field is needed)
   const hideSelectedRows = useCallback(() => {
     const r1 = Math.min(selection.r1, selection.r2);
     const r2 = Math.max(selection.r1, selection.r2);
@@ -7833,7 +7833,7 @@ export default function ExcelStudioPage() {
     showToast("রো লুকানো (Hide) হয়েছে।");
   }, [selection, updateSheet, showToast]);
 
-  // সব হাইড করা রো আবার দৃশ্যমান করে দেওয়া হচ্ছে
+  // Show all hidden rows again
   const showAllHiddenRows = useCallback(() => {
     updateSheet({ hiddenRows: [] });
     showToast("সব লুকানো রো আবার দেখানো হয়েছে।");
@@ -7904,7 +7904,7 @@ export default function ExcelStudioPage() {
     setShowHyperlinkDialog(true);
   };
 
-  // মডিউল লিস্ট থেকে ক্লিক করলে এই ফাংশনটি লিংক বসিয়ে দেবে
+  // Insert the link when a module is clicked in the module list
   const applyModuleHyperlink = (link: AwmModuleLink) => {
     setCellData(activeCell, {
       hyperlink: link.href,
@@ -8065,7 +8065,7 @@ export default function ExcelStudioPage() {
               const sourceIsText =
                 source?.data.style?.numberFormat === "text";
 
-              // Paste Special (Formulas): আপেক্ষিক রেফারেন্স নতুন ঘর অনুযায়ী সরে
+              // Paste Special (Formulas): shift relative references to the new cells
               const sourceValue = source?.data.value ?? "";
               const shiftedValue =
                 sourceValue.startsWith("=") && !sourceIsText
@@ -8258,7 +8258,7 @@ export default function ExcelStudioPage() {
     showToast(darkMode ? "Light mode enabled." : "Dark mode enabled.");
   }, [darkMode, showToast]);
 
-  // LibreOffice-স্টাইল: সাইডবারের বাম কিনারা টেনে প্রস্থ বদলানো
+  // LibreOffice-style: drag the sidebar's left edge to resize it
   const startSidebarResize = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
     sidebarResizeRef.current = { startX: e.clientX, startWidth: sidebarWidth };
@@ -8284,12 +8284,12 @@ export default function ExcelStudioPage() {
   const selectionStats = useMemo(() => {
     // Formula evaluation helper is render-safe; its internal cache ref is read-only during evaluation.
     const nums = selectionCells.map((k) => getCellValue(k)).filter((v): v is number => typeof v === "number" && Number.isFinite(v));
-    // cleanNumber: 0.1 + 0.2 স্ট্যাটাস বারে 0.30000000000000004 দেখানোর ভুল বাদ
+    // cleanNumber: prevent 0.1 + 0.2 from displaying as 0.30000000000000004 in the status bar
     const sum = cleanNumber(nums.reduce((a, b) => a + b, 0));
     const avg = nums.length ? cleanNumber(sum / nums.length) : 0;
     const min = nums.length ? nums.reduce((lowest: number, v: number) => Math.min(lowest, v), Infinity) : 0;
     const max = nums.length ? nums.reduce((highest: number, v: number) => Math.max(highest, v), -Infinity) : 0;
-    // বিশাল সিলেকশনে শুধু প্রথম MAX_SELECTION_CELLS ঘর গোনা হয় — তখন ব্যবহারকারীকে জানানো হয়
+    // For huge selections, count only the first MAX_SELECTION_CELLS cells and notify the user
     const totalSelected =
       (Math.abs(selection.r2 - selection.r1) + 1) * (Math.abs(selection.c2 - selection.c1) + 1);
     return {
@@ -8308,7 +8308,7 @@ export default function ExcelStudioPage() {
   const virtualizeRows = !hasRowMerges && sheet.gridRows > 150;
   const ROW_BUFFER = Math.max(20, Math.min(64, Math.ceil(viewport.clientHeight / DEFAULT_ROW_HEIGHT)));
 
-  // প্রতিটি রোর বাম-প্রান্তের ক্রমযোজিত অফসেট (hidden রো = ০ উচ্চতা)
+  // Cumulative top offsets for rows (hidden rows have zero height)
   const rowOffsets = useMemo(() => {
     const o = new Array<number>(sheet.gridRows + 1);
     o[0] = 0;
@@ -8335,7 +8335,7 @@ export default function ExcelStudioPage() {
     ? Math.max(0, rowOffsets[sheet.gridRows] - rowOffsets[visibleRowRange.end + 1])
     : 0;
 
-  // শুধু যে রোগুলো আসলে রেন্ডার হবে
+  // Only the rows that will actually be rendered
   const renderRows = useMemo(() => {
     if (!virtualizeRows) return rowsArr;
     const out: number[] = [];
@@ -8344,7 +8344,7 @@ export default function ExcelStudioPage() {
     return out;
   }, [virtualizeRows, rowsArr, sheet.frozenRows, visibleRowRange.start, visibleRowRange.end]);
 
-  // টেবিলের মোট প্রস্থ (hidden কলাম বাদে) — টেবিল-প্রস্থ স্থির রাখতে
+  // Total table width, excluding hidden columns, to keep the table width stable
   const tableWidth = useMemo(() => {
     let w = ROW_HEADER_WIDTH;
     for (let i = 0; i < sheet.gridCols; i++) {
@@ -8353,7 +8353,7 @@ export default function ExcelStudioPage() {
     return w;
   }, [sheet.gridCols, sheet.colWidths, hiddenCols]);
 
-  // কন্ডিশনাল ফরম্যাটিং রুলের রেঞ্জ একবারই পার্স হবে
+  // Parse each conditional formatting rule's range only once
   const cfRulesParsed = useMemo(
     () => (sheet.conditionalRules || []).map((rule) => ({ rule, nr: normalizeRange(rule.range) })),
     [sheet.conditionalRules]
@@ -8466,7 +8466,7 @@ export default function ExcelStudioPage() {
   }, [sheet, getDisplayValue, showToast]);
 
 
-  // সিলেক্ট করা ক্যারেক্টারটি active cell-এ বসানো হবে, এবং Recent তালিকায় যোগ হবে
+  // Insert the selected character into the active cell and add it to the Recent list
   const insertCharacterToCell = useCallback((ch: string) => {
     const raw = getRawValue(activeCell);
     setCellValue(activeCell, `${raw}${ch}`);
@@ -8480,7 +8480,7 @@ export default function ExcelStudioPage() {
     showToast(`"${ch}" inserted.`);
   }, [activeCell, getRawValue, setCellValue, showToast]);
 
-  // Favorites তালিকায় নতুন ক্যারেক্টার যোগ/বাদ (টগল)
+  // Toggle a character in the Favorites list
   const toggleFavoriteCharacter = useCallback((ch: string) => {
     setScFavorites((prev) => {
       const exists = prev.includes(ch);
@@ -9277,8 +9277,8 @@ export default function ExcelStudioPage() {
       return;
     }
 
-    // [হিসাব-সংশোধন] আগের ভার্সন: ফিক্সড ±১কোটি সীমা, সমাধান আছে কিনা না দেখেই ফলাফল বসাত, ২ দশমিকে রাউন্ড করত।
-    // এখন: সমাধান-সীমা (bracket) খোঁজে, bisection-এ প্রায় নিখুঁত মান বের করে, না পেলে কিছু বদলায় না।
+    // [Calculation fix] Previously used a fixed ±10 million bound, applied results without checking for a solution, and rounded to two decimals
+    // Now find a solution bracket, refine with bisection, and leave values unchanged if no solution is found
     const estimate = (x: number): number => {
       const tempCells = { ...sheet.cells, [changeKey]: { ...(sheet.cells[changeKey] || { value: "" }), value: String(x) } };
       const tempSheet: WorkbookSheet = { ...sheet, cells: tempCells };
@@ -9370,7 +9370,7 @@ export default function ExcelStudioPage() {
       for (let r = nr.r1; r <= nr.r2; r++) {
         for (let c = nr.c1; c <= nr.c2; c++) {
           const value = getCellValue(cellKey(r, c));
-          // শুধু আসল সংখ্যা যোগ হয়; টেক্সট/ফাঁকা বাদ, এররে থামে (আগে "2nd" → ২ ও এরর → ০ ধরা হতো)
+          // Sum only actual numbers; ignore text/blanks and stop on errors (previously "2nd" became 2 and errors became zero)
           if (typeof value === "number" && Number.isFinite(value)) total += value;
           else if (typeof value === "string" && FORMULA_ERRORS.has(value)) errorValue = errorValue || value;
         }
@@ -9468,7 +9468,7 @@ export default function ExcelStudioPage() {
     (name: string, id?: string) => {
       const savedId = id?.trim();
 
-      // অ্যাপে সেভ করা workbook-এর ID ছাড়া Recent তৈরি করব না।
+      // Do not create a Recent entry without the ID of a workbook saved in the app
       if (!savedId) {
         return;
       }
@@ -9491,7 +9491,7 @@ export default function ExcelStudioPage() {
     []
   );
 
-  // Recent তালিকা সরাসরি ডিভাইসে সেভ করা ওয়ার্কবুক থেকে বানানো হচ্ছে
+  // Build the Recent list directly from workbooks saved on the device
   const refreshRecentFromDevice = useCallback(async () => {
     try {
       const list = await listLocalWorkbooks();
@@ -9807,7 +9807,7 @@ export default function ExcelStudioPage() {
       setActiveSheetIndex(snapshot.activeSheetIndex);
       setWorkbookName(snapshot.name.trim());
 
-      // ব্যাকআপের পুরোনো ID দিয়ে সেভ করা workbook overwrite করব না।
+      // Do not overwrite a saved workbook using an old ID from a backup
       setWorkbookId(null);
 
       setPageSize(snapshot.pageSize);
@@ -10633,8 +10633,8 @@ export default function ExcelStudioPage() {
       return;
     }
 
-    // [হিসাব-সংশোধন] আগে ফাঁকা/টেক্সট ঘরও ০ হয়ে AVERAGE, MIN, COUNT বিগড়ে দিত।
-    // এখন: SUM/AVERAGE/MIN/MAX শুধু আসল সংখ্যা নেয়; COUNT অ-ফাঁকা ঘর গোনে; এরর থাকলে ফলাফলও এরর।
+    // [Calculation fix] Previously blank/text cells became zero, corrupting AVERAGE, MIN, and COUNT
+    // Now SUM/AVERAGE/MIN/MAX accept only actual numbers; COUNT counts nonblank cells; errors propagate to the result
     interface PivotBucket {
       numbers: number[];
       nonBlank: number;
@@ -10685,7 +10685,7 @@ export default function ExcelStudioPage() {
       return String(cleanNumber(nums.reduce((a, b) => a + b, 0)));
     };
 
-    // Grand Total কলাম (একাধিক কলাম থাকলেই অর্থবহ) ও Grand Total সারি যোগ হলো — আগে ছিল না
+    // Add a Grand Total column (meaningful with multiple columns) and a Grand Total row; these were previously absent
     const showTotalColumn = colIndex >= 0;
     const result = [[pivotRowField, ...cols, ...(showTotalColumn ? ["Grand Total"] : [])]];
     rowKeysSorted.forEach((rk) => {
@@ -10776,7 +10776,7 @@ export default function ExcelStudioPage() {
 
     const oldName = sheet.name;
 
-    // শিটের নাম বদলালে অন্য শিটের 'পুরনো নাম'!A1 সূত্রগুলোও নতুন নামে আপডেট হয় (আগে #REF! হয়ে যেত)
+    // When renaming a sheet, update other sheets' formulas referring to the old sheet name (previously became #REF!)
     setSheets((prev) => {
       const renamed = prev.map((item, index) => (index === activeSheetIndex ? { ...item, name } : item));
       return rewriteWorkbookFormulas(renamed, () => (ref) =>
@@ -10855,7 +10855,7 @@ export default function ExcelStudioPage() {
     showToast("Selection cleared.");
   };
 
-  // 🛡️ P0-FIX-2: Select All-এ cap — বড় grid-এ crash আটকাতে
+  // 🛡️ P0-FIX-2: cap Select All to prevent crashes on large grids
   const selectAllCells = () => {
     const totalCells = sheet.gridRows * sheet.gridCols;
     if (totalCells > MAX_SELECTION_CELLS) {
@@ -10899,18 +10899,18 @@ export default function ExcelStudioPage() {
   }, [showToast]);
 
   const toggleSplitWindow = useCallback(() => {
-    // টুলবার বাটনের single-click default behavior: split না থাকলে vertical split করবে, থাকলে unsplit করবে
+    // Toolbar button single-click default: create a vertical split if unsplit; otherwise remove the split
     if (splitAxis) unsplitWindow();
     else splitVertical();
   }, [splitAxis, splitVertical, unsplitWindow]);
 
   const insertRowsAtSelection = () => {
-    // সিলেকশনের সবচেয়ে উপরের রো-এর ঠিক উপরে নতুন রো বসবে
+    // Insert a new row immediately above the topmost selected row
     insertRowAtIndex(Math.min(selection.r1, selection.r2));
   };
 
   const insertColumnsAtSelection = () => {
-    // সিলেকশনের সবচেয়ে বামের কলামের ঠিক বামে নতুন কলাম বসবে
+    // Insert a new column immediately left of the leftmost selected column
     insertColumnAtIndex(Math.min(selection.c1, selection.c2));
   };
 
@@ -11529,11 +11529,11 @@ export default function ExcelStudioPage() {
 
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
-      // Home screen খোলা থাকলে editor-এর global shortcuts চালাবেন না।
+      // Do not run the editor's global shortcuts while the Home screen is open
       if (showHomeScreen) return;
 
-      // Input, textarea, select বা editable field-এ টাইপ করার সময়
-      // editor-এর global shortcuts চালাবেন না।
+      // While typing in an input, textarea, select, or editable field,
+      // do not run the editor's global shortcuts
       const targetEl = e.target as HTMLElement | null;
 
       const isTypingInField =
@@ -12333,7 +12333,7 @@ export default function ExcelStudioPage() {
       {/* END: ALIMXL HOME SCREEN */}
 
 
-      {/* এখান থেকে আপনার আগের <style> ও বাকি JSX থাকবে */}
+      {/* Your existing <style> and remaining JSX continue from here */}
 
 
       <style>{`
@@ -13199,12 +13199,12 @@ export default function ExcelStudioPage() {
 
                   {columns
                     .filter((c) => {
-                      if (hiddenCols.has(c)) return false; // ⬅️ নতুন: হাইড করা কলাম রেন্ডার হবে না
+                      if (hiddenCols.has(c)) return false; // ⬅️ New: do not render hidden columns
                       if (!virtualizeCols) return true;
                       return c < sheet.frozenCols || (c >= visibleColRange.start && c <= visibleColRange.end);
                     })
                     .map((c) => {
-                      // স্ক্রল-spacer (-1 বাম, -2 ডান): ফাঁকা হেডার সেল, শুধু জায়গা ধরে রাখে
+                      // Scroll spacers (-1 left, -2 right): empty header cells that only reserve space
                       if (c < 0) {
                         const spacerW = c === -1 ? colSpacerWidths.left : colSpacerWidths.right;
                         return (
@@ -13249,7 +13249,7 @@ export default function ExcelStudioPage() {
                           }}
                           onClick={() => selectEntireColumn(c)}
                           onContextMenu={(e) => {
-                            // ডিফল্ট ব্রাউজার রাইট-ক্লিক মেনু বন্ধ করে, প্রথমে পুরো কলামটি সিলেক্ট করা হচ্ছে
+                            // Prevent the browser's default context menu and select the entire column first
                             e.preventDefault();
                             e.stopPropagation();
                             selectEntireColumn(c);
@@ -13267,7 +13267,7 @@ export default function ExcelStudioPage() {
                             zIndex: frozen ? 35 : 25,
                             backgroundColor: colMarked ? "#E3A200" : "#014E00",
                             color: colMarked ? "#013706" : "#F8D150",
-                            // ⬅️ সিলেক্ট করা কলাম হেডার এখন গাঢ় নীল (আগে ছিল সবুজ #107C10)
+                            // ⬅️ Selected column headers are now dark blue (previously green #107C10)
                             ...(viewport.scrollTop > 0 ? headerRowShadow : {}),
                           }}
                         >
@@ -13350,7 +13350,7 @@ export default function ExcelStudioPage() {
                         }}
                         onClick={() => selectEntireRow(r)}
                         onContextMenu={(e) => {
-                          // ডিফল্ট ব্রাউজার রাইট-ক্লিক মেনু বন্ধ করে, প্রথমে পুরো রোটি সিলেক্ট করা হচ্ছে
+                          // Prevent the browser's default context menu and select the entire row first
                           e.preventDefault();
                           e.stopPropagation();
                           selectEntireRow(r);
@@ -13365,7 +13365,7 @@ export default function ExcelStudioPage() {
                           height: sheet.rowHeights[r] || DEFAULT_ROW_HEIGHT,
                           backgroundColor: rowMarked ? "#E3A200" : "#014E00",
                           color: rowMarked ? "#013706" : "#F8D150",
-                          // ⬅️ কলামের সাথে মিলিয়ে রো হেডারও নীল করা হলো
+                          // ⬅️ Make row headers blue to match column headers
                           ...(viewport.scrollLeft > 0 ? headerColShadow : {}),
                         }}
                       >
@@ -13402,14 +13402,14 @@ export default function ExcelStudioPage() {
 
                       {columns
                         .filter((c) => {
-                          if (hiddenCols.has(c)) return false; // ⬅️ নতুন: হাইড করা কলাম রেন্ডার হবে না
+                          if (hiddenCols.has(c)) return false; // ⬅️ New: do not render hidden columns
                           if (!virtualizeCols) return true;
                           return c < sheet.frozenCols || (c >= visibleColRange.start && c <= visibleColRange.end);
                         })
                         .map((c) => {
                           const key = cellKey(r, c);
                           const data = sheet.cells[key];
-                          // স্ক্রল-spacer (-1 বাম, -2 ডান): ফাঁকা সেল, শুধু জায়গা ধরে রাখে
+                          // Scroll spacers (-1 left, -2 right): empty cells that only reserve space
                           if (c < 0) {
                             const spacerW = c === -1 ? colSpacerWidths.left : colSpacerWidths.right;
                             return (
@@ -13462,12 +13462,12 @@ export default function ExcelStudioPage() {
                             FORMULA_ERRORS.has(cellRawResult);
                           const isTraced = !!traceHighlight?.has(key);
 
-                          // সেলের নিজস্ব (base) ব্যাকগ্রাউন্ড হিসাব
+                          // Calculate the cell's own base background
                           const baseCellBg = isErrorValue
                             ? "#FDE7E9"
                             : cfMatch?.bg || style?.bg || (colFrozen || rowFrozen ? "#F3F2F1" : "#FFFFFF");
 
-                          // Active/Selected হলে বেস কালারের উপর নীল টিন্ট ব্লেন্ড করা হচ্ছে
+                          // Blend a blue tint over the base color when active/selected
                           let finalCellBg = baseCellBg;
                           if (isActive) {
                             finalCellBg = blendWithAlpha(baseCellBg, "#106EBE", 0.22);
@@ -13522,7 +13522,7 @@ export default function ExcelStudioPage() {
                                 maxWidth: sheet.colWidths[c] || DEFAULT_COL_WIDTH,
                                 height: rowH,
                                 minHeight: rowH,
-                                backgroundColor: finalCellBg, // ⬅️ এখন blend করা কালার থেকে আসছে (ধাপ ২-এ হিসাব করা)
+                                backgroundColor: finalCellBg, // ⬅️ Use the blended color calculated in step 2
                                 color: isErrorValue ? "#A80000" : cfMatch?.color || style?.color || "#000000",
                                 fontFamily: style?.fontFamily,
                                 fontSize: style?.fontSize,
@@ -13540,7 +13540,7 @@ export default function ExcelStudioPage() {
                                 borderLeftWidth: style?.borders?.left ? style?.borderWidth ?? 2 : undefined,
                                 borderStyle: style?.borderStyle,
                                 borderColor: style?.borders ? style?.borderColor || "#000000" : undefined,
-                                position: colFrozen || rowFrozen ? "sticky" : "relative", // ⬅️ non-frozen সেলে relative রাখা হলো, যাতে এডিটিং টেক্সটএরিয়া absolute হয়ে বাইরে overflow করতে পারে
+                                position: colFrozen || rowFrozen ? "sticky" : "relative", // ⬅️ Keep non-frozen cells relative so the editing textarea can be absolute and overflow outside the cell
                                 left: colFrozen ? leftOffset(c) : undefined,
                                 top: rowFrozen ? topOffset(r) : undefined,
                                 zIndex: colFrozen && rowFrozen ? 31 : colFrozen ? 22 : rowFrozen ? 21 : undefined,
@@ -13634,26 +13634,26 @@ export default function ExcelStudioPage() {
                                   }}
                                   onDoubleClick={(e) => e.stopPropagation()}
                                   onBlur={() => commitEdit("none")}
-                                  rows={1} // ⬅️ শুধু ১ লাইনের height, নিচে র‍্যাপ করে বাড়বে না
+                                  rows={1} // ⬅️ Single-line height only; do not grow by wrapping downward
                                   className="resize-none bg-transparent outline-none text-[#000000]"
                                   style={{
                                     userSelect: "text",
                                     WebkitUserSelect: "text",
-                                    // ⬇️ Excel/LibreOffice-এর মতো বিহেভিয়ার:
-                                    //    টেক্সট লাইন ভাঙবে না (nowrap), সেলের বাইরেও দেখা যাবে (overflow visible)
+                                    // ⬇️ Excel/LibreOffice-style behavior:
+                                    //    Text does not wrap (nowrap) and can display beyond the cell (overflow visible)
                                     position: "absolute",
                                     top: 0,
                                     left: 0,
                                     height: "100%",
                                     minWidth: "100%",
-                                    width: editWidth ? `${editWidth}px` : "100%", // ⬅️ JS দিয়ে মাপা প্রকৃত টেক্সট width
+                                    width: editWidth ? `${editWidth}px` : "100%", // ⬅️ Actual text width measured with JS
                                     maxWidth: "none",
-                                    whiteSpace: "nowrap", // ⬅️ লাইন ভাঙবে না, একটানা ডানে চলে যাবে
-                                    overflow: "hidden", // ⬅️ বক্স নিজেই কনটেন্ট অনুযায়ী চওড়া হয়ে যায় বলে ভেতরে স্ক্রলবার লাগবে না
-                                    zIndex: 60, // ⬅️ পাশের সেলগুলোর ওপরে ভেসে থাকবে
-                                    padding: "4px 8px", // td-এর px-2 py-1 এর সমান প্যাডিং বজায় রাখা হলো
+                                    whiteSpace: "nowrap", // ⬅️ Do not wrap; continue horizontally to the right
+                                    overflow: "hidden", // ⬅️ No internal scrollbar is needed because the box widens to fit its content
+                                    zIndex: 60, // ⬅️ Float above adjacent cells
+                                    padding: "4px 8px", // Preserve padding equivalent to the td's px-2 py-1
                                     boxSizing: "border-box",
-                                    backgroundColor: isErrorValue ? "#FDE7E9" : cfMatch?.bg || style?.bg || "#FFFFFF", // ⬅️ নিচের সেলের কনটেন্ট যেন দেখা না যায়, তাই সেলের কালারেই ব্যাকগ্রাউন্ড
+                                    backgroundColor: isErrorValue ? "#FDE7E9" : cfMatch?.bg || style?.bg || "#FFFFFF", // ⬅️ Match the cell's background color so underlying cell content does not show through
                                     direction: style?.textDirection || "ltr",
                                     unicodeBidi: "plaintext",
                                     textAlign: style?.align || (style?.textDirection === "rtl" ? "right" : "left"),
@@ -14498,7 +14498,7 @@ export default function ExcelStudioPage() {
         </div>
       )}
 
-      {/* কলাম হেডার রাইট-ক্লিক কনটেক্সট মেনু */}
+      {/* Column-header right-click context menu */}
       {columnContextMenu && (
         <ColumnHeaderContextMenu
           refObject={columnContextMenuRef}
@@ -14528,7 +14528,7 @@ export default function ExcelStudioPage() {
         />
       )}
 
-      {/* Column Width কাস্টম ইনপুট ডায়ালগ */}
+      {/* Custom Column Width input dialog */}
       {showColumnWidthDialog && columnWidthDialogCol !== null && (
         <ColumnWidthDialog
           colLabel={colToLetter(columnWidthDialogCol)}
@@ -14544,7 +14544,7 @@ export default function ExcelStudioPage() {
         />
       )}
 
-      {/* রো হেডার রাইট-ক্লিক কনটেক্সট মেনু */}
+      {/* Row-header right-click context menu */}
       {rowContextMenu && (
         <RowHeaderContextMenu
           refObject={rowContextMenuRef}
@@ -14574,7 +14574,7 @@ export default function ExcelStudioPage() {
         />
       )}
 
-      {/* Row Height কাস্টম ইনপুট ডায়ালগ */}
+      {/* Custom Row Height input dialog */}
       {showRowHeightDialog && rowHeightDialogRow !== null && (
         <RowHeightDialog
           rowLabel={String(rowHeightDialogRow + 1)}
@@ -15268,7 +15268,7 @@ export default function ExcelStudioPage() {
               {/* END: BUILT-IN TEMPLATES UI */}
               {/* =========================== */}
 
-              {/* এখান থেকে আপনার আগের user template list শুরু */}
+              {/* Your existing user template list starts here */}
               {templates.length === 0 ? (
                 <p className="px-1 py-4 text-sm text-[#605E5C]">
                   No templates saved yet. Use Save, then Save as Template to create one.
@@ -16030,7 +16030,7 @@ const STANDARD_COLORS = [
   "#A855F7", "#D946EF", "#EC4899", "#64748B", "#0F172A",
 ];
 
-// প্রতিটি কলামে: [বেস কালার, লাইট ৮০%, লাইট ৬০%, লাইট ৪০%, ডার্ক ২৫%, ডার্ক ৫০%]
+// Each column: [base color, light 80%, light 60%, light 40%, dark 25%, dark 50%]
 const THEME_COLOR_COLUMNS: string[][] = [
   ["#FFFFFF", "#F2F2F2", "#D9D9D9", "#BFBFBF", "#A6A6A6", "#808080"],
   ["#000000", "#7F7F7F", "#595959", "#404040", "#262626", "#0D0D0D"],
@@ -16042,7 +16042,7 @@ const THEME_COLOR_COLUMNS: string[][] = [
   ["#FFC000", "#FFF2CC", "#FFE599", "#FFD966", "#BF9000", "#7F6000"],
   ["#5B9BD5", "#DDEBF7", "#BDD7EE", "#9DC3E6", "#2E75B6", "#1F4E79"],
   ["#70AD47", "#E2EFDA", "#C6E0B4", "#A9D08E", "#548235", "#375623"],
-  // [আপগ্রেড] আধুনিক ব্র্যান্ড-গ্রেড accent কলাম
+  // [Upgrade] Modern brand-grade accent columns
   ["#0D9488", "#CCFBF1", "#99F6E4", "#5EEAD4", "#0F766E", "#134E4A"],
   ["#7C3AED", "#EDE9FE", "#DDD6FE", "#C4B5FD", "#6D28D9", "#4C1D95"],
   ["#DB2777", "#FCE7F3", "#FBCFE8", "#F9A8D4", "#BE185D", "#831843"],
@@ -16416,17 +16416,17 @@ function AdvancedFontPicker({
 }
 
 /* ============================================================================
- * কালার কনভার্সন ইউটিলিটি — HEX ⇄ RGB ⇄ HSL রূপান্তরের জন্য
+ * Color conversion utilities — for HEX ⇄ RGB ⇄ HSL conversion
  * ========================================================================== */
 
-// HEX (#RRGGBB) কে RGB অবজেক্টে রূপান্তর করে
+// Convert HEX (#RRGGBB) to an RGB object
 function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
   const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim());
   if (!m) return null;
   return { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) };
 }
 
-// RGB মানকে HEX কোডে রূপান্তর করে
+// Convert RGB values to a HEX code
 function rgbToHex(r: number, g: number, b: number): string {
   const clamp = (n: number) => Math.max(0, Math.min(255, Math.round(n)));
   return `#${[clamp(r), clamp(g), clamp(b)].map((v) => v.toString(16).padStart(2, "0")).join("")}`.toUpperCase();
@@ -16434,9 +16434,9 @@ function rgbToHex(r: number, g: number, b: number): string {
 
 
 
-// বেস কালারের (সেলের নিজস্ব ব্যাকগ্রাউন্ড) উপর একটা স্বচ্ছ (rgba) কালার
-// "ব্লেন্ড" করে একটামাত্র solid হেক্স কালার বানায় — এভাবে backgroundColor
-// একবারই সেট হয়, তাই ইনলাইন style-এর কারণে সিলেকশনের কালার হারিয়ে যায় না
+// Blend a transparent rgba color over the base color (the cell's own background)
+// to produce a single solid hex color; this lets backgroundColor
+// be set only once, preventing inline styles from overriding the selection color
 function blendWithAlpha(baseHex: string, overlayHex: string, alpha: number): string {
   const base = hexToRgb(baseHex) || { r: 255, g: 255, b: 255 };
   const overlay = hexToRgb(overlayHex) || { r: 16, g: 110, b: 190 };
@@ -16447,10 +16447,10 @@ function blendWithAlpha(baseHex: string, overlayHex: string, alpha: number): str
 }
 
 /* ============================================================================
- * Advanced Border Dropdown — Style + Width + Placement + Color — সব একসাথে
+ * Advanced Border Dropdown — Style + Width + Placement + Color — all in one
  * ========================================================================== */
 
-// বর্ডারের মিনি-প্রিভিউ লাইন — প্রতিটা স্টাইল অপশনের পাশে ছোট নমুনা দেখানোর জন্য
+// Mini border preview lines: small samples beside each style option
 
 function ToolbarSeparator() {
   return <span className="mx-0.5 h-6 w-px bg-[#C8C6C4]" aria-hidden="true" />;
@@ -16485,7 +16485,7 @@ function DeveloperMacroMenu({
       className="absolute top-full left-0 min-w-68 bg-white border border-[#D2D0CE] shadow-[0_14px_34px_rgba(0,0,0,0.18)] py-1 m-0 z-1000 rounded-b-xl overflow-hidden animate-[awmFadeIn_0.1s_ease-out]"
       role="menu"
     >
-      {/* Record / Stop Recording — লেবেল ও আইকন state অনুযায়ী পরিবর্তিত হয় */}
+      {/* Record / Stop Recording — labels and icons change with state */}
       <button
         type="button"
         role="menuitem"
@@ -16508,7 +16508,7 @@ function DeveloperMacroMenu({
 
       <div className="my-1 h-px bg-[#E1DFDD]" />
 
-      {/* Run / Saved Macros — সাব-লিস্ট, empty-state সহ */}
+      {/* Run / Saved Macros — sub-list with an empty state */}
       <button
         type="button"
         role="menuitem"
@@ -16578,8 +16578,8 @@ function DeveloperMacroMenu({
         </>
       )}
 
-      {/* আগে থেকে থাকা Developer মেনুর অন্যান্য আইটেম (View Formulas, Recalculate All ইত্যাদি) —
-          এগুলো হারিয়ে না গিয়ে এই নতুন dropdown-এর নিচের অংশে সংরক্ষিত থাকলো */}
+      {/* Preserve the existing Developer menu items (View Formulas, Recalculate All, etc.);
+          they remain in the lower section of this new dropdown rather than being lost */}
       {extraItems.length > 0 && (
         <>
           <div className="my-1 h-px bg-[#E1DFDD]" />
@@ -16665,7 +16665,7 @@ function SidebarStyleButton({ label, onClick, className = "" }: { label: string;
 }
 
 /* ============================================================================
- * Special Characters — Quick Dropdown (টুলবার বোতামে ক্লিক করলে খোলে)
+ * Special Characters — Quick Dropdown (opens from the toolbar button)
  * ========================================================================== */
 function SpecialCharactersQuickButton({
   open, onToggle, menuRef,
@@ -16697,7 +16697,7 @@ function SpecialCharactersQuickButton({
 
       {open && (
         <div className="absolute left-0 top-full z-9991 mt-1 w-64 rounded-lg border border-[#C8C6C4] bg-white py-2 shadow-2xl">
-          {/* ফেভারিট প্যানেল — দ্রুত অ্যাক্সেসের জন্য গ্রিড */}
+          {/* Favorites panel — grid for quick access */}
           <p className="px-3 pb-1 text-[10px] font-black uppercase tracking-wide text-[#8A8886]">Favorites</p>
           <div className="grid grid-cols-8 gap-1 px-3">
             {favorites.length === 0 ? (
@@ -16719,7 +16719,7 @@ function SpecialCharactersQuickButton({
 
           <div className="my-2 h-px bg-[#E1DFDD]" />
 
-          {/* সাম্প্রতিক ব্যবহৃত ক্যারেক্টার */}
+          {/* Recently used characters */}
           <p className="px-3 pb-1 text-[10px] font-black uppercase tracking-wide text-[#8A8886]">
             {recent.length === 0 ? "No recent characters" : "Recent characters"}
           </p>
@@ -16741,7 +16741,7 @@ function SpecialCharactersQuickButton({
 
           <div className="my-2 h-px bg-[#E1DFDD]" />
 
-          {/* সম্পূর্ণ ডায়ালগ ওপেন করার বাটন */}
+          {/* Button to open the full dialog */}
           <button
             type="button"
             onClick={onOpenDialog}
@@ -16756,7 +16756,7 @@ function SpecialCharactersQuickButton({
 }
 
 /* ============================================================================
- * Special Characters — সম্পূর্ণ মোডাল ডায়ালগ (LibreOffice Calc স্টাইল)
+ * Special Characters — Full Modal Dialog (LibreOffice Calc style)
  * ========================================================================== */
 function SpecialCharactersDialog({
   fonts, blocks,
@@ -16779,7 +16779,7 @@ function SpecialCharactersDialog({
   onToggleFavorite: (ch: string) => void;
   onClose: () => void;
 }) {
-  // নির্বাচিত ব্লকের সব ক্যারেক্টার জেনারেট করা হচ্ছে
+  // Generate all characters in the selected block
   const blockDef = blocks.find((b) => b.name === selectedBlock) || blocks[0];
   const allCharsInBlock = useMemo(() => {
     const out: { ch: string; code: number }[] = [];
@@ -16789,7 +16789,7 @@ function SpecialCharactersDialog({
     return out;
   }, [blockDef]);
 
-  // সার্চ বক্সে টাইপ করলে ক্যারেক্টার, নাম, hex বা decimal দিয়ে ফিল্টার হবে
+  // Filter by character, name, hex, or decimal while typing in the search box
   const filteredChars = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return allCharsInBlock;
@@ -16810,7 +16810,7 @@ function SpecialCharactersDialog({
           <button onClick={onClose} className="rounded-lg border border-[#D2D0CE] bg-[#F3F2F1] px-3 py-1 text-sm font-bold hover:bg-[#E1DFDD]">Close</button>
         </div>
 
-        {/* ফিল্টার রো: Font + Character Block + Search */}
+        {/* Filter row: Font + Character Block + Search */}
         <div className="grid grid-cols-1 gap-2 border-b border-[#D2D0CE] px-6 py-3 sm:grid-cols-3">
           <div>
             <label className="mb-1 block text-[10px] font-bold uppercase text-[#605E5C]">Font</label>
@@ -16836,7 +16836,7 @@ function SpecialCharactersDialog({
           </div>
         </div>
 
-        {/* মূল বডি: গ্রিড + প্রিভিউ প্যানেল */}
+        {/* Main body: grid + preview panel */}
         <div className="flex min-h-0 flex-1">
           <div className="grid flex-1 grid-cols-10 gap-1 overflow-y-auto p-3 awm-premium-scrollbar sm:grid-cols-12">
             {filteredChars.map(({ ch, code }) => (
@@ -16858,7 +16858,7 @@ function SpecialCharactersDialog({
             )}
           </div>
 
-          {/* ডানপাশে প্রিভিউ ও ডিটেইলস */}
+          {/* Preview and details on the right */}
           <div className="w-52 shrink-0 border-l border-[#D2D0CE] bg-[#FAFAFA] p-4">
             <div
               className="mb-3 flex h-24 items-center justify-center rounded-lg border border-[#D2D0CE] bg-white text-5xl"
@@ -16886,7 +16886,7 @@ function SpecialCharactersDialog({
           </div>
         </div>
 
-        {/* নিচে Recent ও Favorite রো */}
+        {/* Recent and Favorite rows at the bottom */}
         <div className="border-t border-[#D2D0CE] px-6 py-2">
           <p className="mb-1 text-[10px] font-black uppercase text-[#8A8886]">Recent Characters</p>
           <div className="flex flex-wrap gap-1">
@@ -16912,7 +16912,7 @@ function SpecialCharactersDialog({
           </div>
         </div>
 
-        {/* কন্ট্রোল বাটন: Insert / Cancel / Help */}
+        {/* Control buttons: Insert / Cancel / Help */}
         <div className="flex items-center justify-between border-t border-[#D2D0CE] px-6 py-4">
           <button type="button" className="rounded-md border border-[#D2D0CE] px-4 py-2 text-xs font-bold hover:bg-[#F3F2F1]">Help</button>
           <div className="flex items-center gap-2">
@@ -17205,7 +17205,7 @@ function ContextMenuDivider() {
 }
 
 /* ============================================================================
- * কলাম হেডার রাইট-ক্লিক কনটেক্সট মেনু — LibreOffice Calc স্টাইল
+ * Column-header right-click context menu — LibreOffice Calc style
  * ========================================================================== */
 function ColumnHeaderContextMenu({
   refObject,
@@ -17242,13 +17242,13 @@ function ColumnHeaderContextMenu({
       style={{ position: "fixed", left: x, top: y, zIndex: 99999 }}
       className="w-64 overflow-hidden rounded-lg border border-[#D2D0CE] bg-white py-1 text-sm shadow-2xl"
     >
-      {/* কলাম নম্বর হেডার — কোন কলামে মেনু খোলা হয়েছে তা দেখানোর জন্য */}
+      {/* Column-number header showing which column the menu is open for */}
       <div className="px-3 py-1.5 text-[11px] font-black uppercase tracking-wide text-[#8A8886]">
         Column {colToLetter(col)}
       </div>
       <ContextMenuDivider />
 
-      {/* ১. ক্লিপবোর্ড অপশন */}
+      {/* 1. Clipboard options */}
       <ContextMenuItem onClose={onClose} label="Cut" shortcut="Ctrl+X" onClick={onCut} />
       <ContextMenuItem onClose={onClose} label="Copy" shortcut="Ctrl+C" onClick={onCopy} />
       <ContextMenuItem onClose={onClose} label="Paste" shortcut="Ctrl+V" onClick={onPaste} />
@@ -17257,21 +17257,21 @@ function ColumnHeaderContextMenu({
       <ContextMenuItem onClose={onClose} label="Paste Special: Formulas" onClick={() => onPasteSpecial("formulas")} />
       <ContextMenuDivider />
 
-      {/* ২. কলাম ইনসার্ট ও ডিলিট */}
+      {/* 2. Insert and delete columns */}
       <ContextMenuItem onClose={onClose} label="Insert Columns Before" onClick={onInsertBefore} />
       <ContextMenuItem onClose={onClose} label="Insert Columns After" onClick={onInsertAfter} />
       <ContextMenuItem onClose={onClose} label="Delete Columns" onClick={onDeleteColumn} danger />
       <ContextMenuItem onClose={onClose} label="Clear Contents..." shortcut="Backspace" onClick={onClearContents} />
       <ContextMenuDivider />
 
-      {/* ৩. কলাম অ্যাডজাস্টমেন্ট ও ভিজিবিলিটি */}
+      {/* 3. Column adjustment and visibility */}
       <ContextMenuItem onClose={onClose} label="Column Width..." onClick={onOpenWidthDialog} />
       <ContextMenuItem onClose={onClose} label="Optimal Width..." onClick={onOptimalWidth} />
       <ContextMenuItem onClose={onClose} label="Hide Columns" onClick={onHideColumns} />
       <ContextMenuItem onClose={onClose} label="Show Columns" onClick={onShowColumns} />
       <ContextMenuDivider />
 
-      {/* ৪. অ্যাডভান্সড ভিউ ও ফরম্যাটিং */}
+      {/* 4. Advanced view and formatting */}
       <ContextMenuItem onClose={onClose} label="Freeze Rows and Columns" onClick={onFreeze} />
       <ContextMenuItem onClose={onClose} label="Split Window" onClick={onSplit} />
       <ContextMenuItem onClose={onClose} label="Format Cells..." shortcut="Ctrl+1" onClick={onFormatCells} />
@@ -17280,7 +17280,7 @@ function ColumnHeaderContextMenu({
 }
 
 /* ============================================================================
- * রো হেডার রাইট-ক্লিক কনটেক্সট মেনু — LibreOffice Calc স্টাইল
+ * Row-header right-click context menu — LibreOffice Calc style
  * ========================================================================== */
 function RowHeaderContextMenu({
   refObject,
@@ -17322,7 +17322,7 @@ function RowHeaderContextMenu({
       </div>
       <ContextMenuDivider />
 
-      {/* ১. ক্লিপবোর্ড অপশন */}
+      {/* 1. Clipboard options */}
       <ContextMenuItem onClose={onClose} label="Cut" shortcut="Ctrl+X" onClick={onCut} />
       <ContextMenuItem onClose={onClose} label="Copy" shortcut="Ctrl+C" onClick={onCopy} />
       <ContextMenuItem onClose={onClose} label="Paste" shortcut="Ctrl+V" onClick={onPaste} />
@@ -17331,21 +17331,21 @@ function RowHeaderContextMenu({
       <ContextMenuItem onClose={onClose} label="Paste Special: Formulas" onClick={() => onPasteSpecial("formulas")} />
       <ContextMenuDivider />
 
-      {/* ২. রো ইনসার্ট ও ডিলিট */}
+      {/* 2. Insert and delete rows */}
       <ContextMenuItem onClose={onClose} label="Insert Rows Above" onClick={onInsertAbove} />
       <ContextMenuItem onClose={onClose} label="Insert Rows Below" onClick={onInsertBelow} />
       <ContextMenuItem onClose={onClose} label="Delete Rows" onClick={onDeleteRow} danger />
       <ContextMenuItem onClose={onClose} label="Clear Contents..." shortcut="Backspace" onClick={onClearContents} />
       <ContextMenuDivider />
 
-      {/* ৩. রো অ্যাডজাস্টমেন্ট ও ভিজিবিলিটি */}
+      {/* 3. Row adjustment and visibility */}
       <ContextMenuItem onClose={onClose} label="Row Height..." onClick={onOpenHeightDialog} />
       <ContextMenuItem onClose={onClose} label="Optimal Height..." onClick={onOptimalHeight} />
       <ContextMenuItem onClose={onClose} label="Hide Rows" onClick={onHideRows} />
       <ContextMenuItem onClose={onClose} label="Show Rows" onClick={onShowRows} />
       <ContextMenuDivider />
 
-      {/* ৪. অ্যাডভান্সড ভিউ ও ফরম্যাটিং */}
+      {/* 4. Advanced view and formatting */}
       <ContextMenuItem onClose={onClose} label="Freeze Rows and Columns" onClick={onFreeze} />
       <ContextMenuItem onClose={onClose} label="Split Window" onClick={onSplit} />
       <ContextMenuItem onClose={onClose} label="Format Cells..." shortcut="Ctrl+1" onClick={onFormatCells} />
@@ -17353,7 +17353,7 @@ function RowHeaderContextMenu({
   );
 }
 
-// Row Height বসানোর ছোট মোডাল — ColumnWidthDialog-এর সমতুল্য
+// Small modal for setting Row Height — equivalent to ColumnWidthDialog
 function RowHeightDialog({
   rowLabel, value, onChange, onApply, onClose,
 }: {
@@ -17387,7 +17387,7 @@ function RowHeightDialog({
   );
 }
 
-// Column Width বসানোর ছোট মোডাল — LibreOffice-এর "Column Width..." ডায়ালগের মতো
+// Small modal for setting Column Width — like LibreOffice's "Column Width..." dialog
 function ColumnWidthDialog({
   colLabel, value, onChange, onApply, onClose,
 }: {
