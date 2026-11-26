@@ -4,6 +4,7 @@
   "private": true,
   "main": "electron/main.ts",
   "scripts": {
+    "test": "node --test",
     "pdf:assets": "node lib/copy-pdf-assets.mjs",
     "dev": "npm run pdf:assets && next dev",
     "build": "npm run pdf:assets && next build",
@@ -24,7 +25,9 @@
     "@types/bcryptjs": "^2.4.6",
     "bcryptjs": "^3.0.3",
     "exceljs": "^4.4.0",
+    "fast-xml-parser": "^5.12.1",
     "jose": "^6.2.12",
+    "jszip": "^3.10.2",
     "lucide-react": "^1.56.0",
     "mongodb": "^7.7.0",
     "mongoose": "^9.11.1",
