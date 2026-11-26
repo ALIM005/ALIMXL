@@ -11,6 +11,7 @@ import {
   evaluateSpillFunction,
   isSpillFunction,
 } from "../lib/spill-functions.mjs";
+import { bumpRandArrayEpoch } from "../lib/extra-functions.mjs";
 import {
   isArrayResult,
   writeSpill,
@@ -23,6 +24,7 @@ import {
   createSpillDependencyManager,
 } from "../lib/spill-dependency.mjs";
 import Image from "next/image";
+import PdfTableImport from "../components/PdfTableImport";
 import { createSignedScale, categoryCenter, barGeometry, collectChartRows, buildPieGroups, pieSlices } from "../lib/chart-geometry.mjs";
 import { useRouter } from "next/navigation";
 import React, {
@@ -34,6 +36,8 @@ import React, {
   useState,
 } from "react";
 import * as Icons from "lucide-react";
+import * as AlxDate from "../lib/date-time-engine";
+
 import { useLayoutEffect } from 'react';
 import AlimxlHome from "../components/AlimxlHome";
 import MyFiles from "../components/MyFiles";
@@ -144,6 +148,7 @@ interface CellStyle {
   borderWidth?: number;
   wrap?: boolean;
   numberFormat?: NumberFormat;
+  dateTimeFormat?: AlxDate.FormatOptions;
   customFormat?: string;
   decimals?: number;
   indent?: number;
@@ -447,6 +452,7 @@ function extractCellReferences(formula: string): string[] {
 }
 function evaluateSpillFormula(functionName: string, args: string[], bridge: SpillBridgeContext): SpillOutcome {
   const { sheet, allSheets, visiting, getCell, expandRange } = bridge;
+  const anchorKey = `${bridge.anchorSheetId}!${bridge.anchorRow}:${bridge.anchorCol}`;
   const findSheet = (name: string): WorkbookSheet | undefined =>
     allSheets.find((item) => sameSheetName(item.name, name));
   const resolveReference = (reference: string) => {
@@ -485,6 +491,7 @@ function evaluateSpillFormula(functionName: string, args: string[], bridge: Spil
       getGrid,
       getValue,
       getArrayOrExpression,
+      anchorKey,
     });
 
     if (typeof result === "string") {
@@ -782,7 +789,7 @@ const EXCEL_MENU_DATA: MenuCategory[] = [
       { label: "External Links...", action: "SHEET_EXTERNAL_LINKS" },
       { label: "Clear Cells...", shortcut: "Backspace", action: "SHEET_CLEAR_CELLS" },
       { label: "Cycle Cell Reference Types", shortcut: "F4", action: "SHEET_CYCLE_REF" },
-      { label: "Fill Cells", action: "SHEET_FILL_CELLS" },
+      { label: "Fill Right", action: "SHEET_FILL_CELLS" },
       { label: "Named Ranges and Expressions", action: "SHEET_NAMED_RANGES" },
       { label: "Rename Sheet...", action: "SHEET_RENAME" },
       { label: "Move or Copy Sheet...", action: "SHEET_MOVE_COPY" },
@@ -880,10 +887,10 @@ const EXCEL_MENU_DATA: MenuCategory[] = [
   }
 ];
 
-const DEFAULT_ROWS = 1000000;
-const DEFAULT_COLS = 5000;
-const MAX_ROWS = 100000;
-const MAX_COLS = 2000;
+const DEFAULT_ROWS = 2000000;
+const DEFAULT_COLS = 100000;
+const MAX_ROWS = 2000000;
+const MAX_COLS = 100000;
 const DEFAULT_COL_WIDTH = 120;
 const DEFAULT_ROW_HEIGHT = 36;
 const ROW_HEADER_WIDTH = 52;
@@ -1281,6 +1288,64 @@ const FUNCTION_LIST: { name: string; usage: string; desc: string }[] = [
   { name: "EFFECT", usage: "EFFECT(0.0525,4)", desc: "Effective annual interest rate from a nominal rate." },
   { name: "NOMINAL", usage: "NOMINAL(0.053543,4)", desc: "Nominal annual interest rate from an effective rate." },
   { name: "MIRR", usage: "MIRR(A1:A6,0.1,0.12)", desc: "Modified internal rate of return." },
+  { name: "LET", usage: "LET(x,5,x*2)", desc: "Assigns names to values, then evaluates a final expression with them." },
+  { name: "ISFORMULA", usage: "ISFORMULA(A1)", desc: "TRUE if the referenced cell contains a formula." },
+  { name: "NORM.DIST", usage: "NORM.DIST(42,40,1.5,TRUE)", desc: "Normal distribution (cumulative or density) for a mean and standard deviation." },
+  { name: "NORM.S.DIST", usage: "NORM.S.DIST(1.33,TRUE)", desc: "Standard normal distribution (cumulative or density)." },
+  { name: "NORM.INV", usage: "NORM.INV(0.9,40,1.5)", desc: "Inverse of the normal cumulative distribution." },
+  { name: "NORM.S.INV", usage: "NORM.S.INV(0.975)", desc: "Inverse of the standard normal cumulative distribution." },
+  { name: "STANDARDIZE", usage: "STANDARDIZE(42,40,1.5)", desc: "Returns a normalized (z-score) value." },
+  { name: "SKEW", usage: "SKEW(A1:A10)", desc: "Skewness of a data set." },
+  { name: "KURT", usage: "KURT(A1:A10)", desc: "Excess kurtosis of a data set." },
+  { name: "MAXA", usage: "MAXA(A1:A10)", desc: "Largest value, counting text as 0 and TRUE as 1." },
+  { name: "MINA", usage: "MINA(A1:A10)", desc: "Smallest value, counting text as 0 and TRUE as 1." },
+  { name: "AVERAGEA", usage: "AVERAGEA(A1:A10)", desc: "Average counting text as 0 and TRUE as 1." },
+  { name: "STDEVA", usage: "STDEVA(A1:A10)", desc: "Sample standard deviation counting text as 0 and TRUE as 1." },
+  { name: "VARA", usage: "VARA(A1:A10)", desc: "Sample variance counting text as 0 and TRUE as 1." },
+  { name: "COVARIANCE.P", usage: "COVARIANCE.P(A1:A5,B1:B5)", desc: "Population covariance of two data sets." },
+  { name: "COVARIANCE.S", usage: "COVARIANCE.S(A1:A5,B1:B5)", desc: "Sample covariance of two data sets." },
+  { name: "PERCENTILE.EXC", usage: "PERCENTILE.EXC(A1:A10,0.25)", desc: "K-th percentile, exclusive (0 < k < 1)." },
+  { name: "QUARTILE.EXC", usage: "QUARTILE.EXC(A1:A10,1)", desc: "Quartile of a data set, exclusive." },
+  { name: "PERCENTRANK.EXC", usage: "PERCENTRANK.EXC(A1:A10,7)", desc: "Percentage rank of a value, exclusive." },
+  { name: "PERCENTRANK", usage: "PERCENTRANK(A1:A10,7)", desc: "Percentage rank of a value (same as PERCENTRANK.INC)." },
+  { name: "SINH", usage: "SINH(1)", desc: "Hyperbolic sine." },
+  { name: "COSH", usage: "COSH(1)", desc: "Hyperbolic cosine." },
+  { name: "TANH", usage: "TANH(1)", desc: "Hyperbolic tangent." },
+  { name: "ASINH", usage: "ASINH(1)", desc: "Inverse hyperbolic sine." },
+  { name: "ACOSH", usage: "ACOSH(10)", desc: "Inverse hyperbolic cosine." },
+  { name: "ATANH", usage: "ATANH(0.5)", desc: "Inverse hyperbolic tangent." },
+  { name: "SQRTPI", usage: "SQRTPI(2)", desc: "Square root of (number * PI)." },
+  { name: "FACTDOUBLE", usage: "FACTDOUBLE(7)", desc: "Double factorial of a number." },
+  { name: "SEC", usage: "SEC(1)", desc: "Secant of an angle in radians." },
+  { name: "CSC", usage: "CSC(1)", desc: "Cosecant of an angle in radians." },
+  { name: "COT", usage: "COT(1)", desc: "Cotangent of an angle in radians." },
+  { name: "BITAND", usage: "BITAND(12,10)", desc: "Bitwise AND of two non-negative integers." },
+  { name: "BITOR", usage: "BITOR(12,10)", desc: "Bitwise OR of two non-negative integers." },
+  { name: "BITXOR", usage: "BITXOR(12,10)", desc: "Bitwise XOR of two non-negative integers." },
+  { name: "BITLSHIFT", usage: "BITLSHIFT(4,2)", desc: "Shifts bits to the left." },
+  { name: "BITRSHIFT", usage: "BITRSHIFT(13,2)", desc: "Shifts bits to the right." },
+  { name: "DELTA", usage: "DELTA(5,4)", desc: "1 if two numbers are equal, otherwise 0." },
+  { name: "GESTEP", usage: "GESTEP(5,4)", desc: "1 if a number is greater than or equal to a step value." },
+  { name: "BIN2DEC", usage: "BIN2DEC(1100100)", desc: "Converts a binary number to decimal." },
+  { name: "DEC2BIN", usage: "DEC2BIN(9,4)", desc: "Converts a decimal number to binary." },
+  { name: "HEX2DEC", usage: "HEX2DEC(\"A5\")", desc: "Converts a hexadecimal number to decimal." },
+  { name: "DEC2HEX", usage: "DEC2HEX(100,4)", desc: "Converts a decimal number to hexadecimal." },
+  { name: "OCT2DEC", usage: "OCT2DEC(\"17\")", desc: "Converts an octal number to decimal." },
+  { name: "DEC2OCT", usage: "DEC2OCT(58)", desc: "Converts a decimal number to octal." },
+  { name: "RRI", usage: "RRI(96,10000,11000)", desc: "Equivalent interest rate for the growth of an investment." },
+  { name: "HSTACK", usage: "HSTACK(A1:A3,B1:B3)", desc: "Appends arrays horizontally (side by side)." },
+  { name: "VSTACK", usage: "VSTACK(A1:B2,A5:B6)", desc: "Appends arrays vertically (one below another)." },
+  { name: "SORTBY", usage: "SORTBY(A1:B5,B1:B5,-1)", desc: "Sorts a range by the values of another range." },
+  { name: "RANDARRAY", usage: "RANDARRAY(3,2,1,100,TRUE)", desc: "Array of random numbers." },
+  { name: "TAKE", usage: "TAKE(A1:C5,2,2)", desc: "Returns rows or columns from the start or end of an array." },
+  { name: "DROP", usage: "DROP(A1:C5,1,1)", desc: "Removes rows or columns from the start or end of an array." },
+  { name: "CHOOSECOLS", usage: "CHOOSECOLS(A1:D5,1,3)", desc: "Returns the chosen columns from an array." },
+  { name: "CHOOSEROWS", usage: "CHOOSEROWS(A1:D5,1,-1)", desc: "Returns the chosen rows from an array." },
+  { name: "TOCOL", usage: "TOCOL(A1:C3)", desc: "Returns an array as a single column." },
+  { name: "TOROW", usage: "TOROW(A1:C3)", desc: "Returns an array as a single row." },
+  { name: "WRAPROWS", usage: "WRAPROWS(A1:A9,3)", desc: "Wraps a row or column of values into rows." },
+  { name: "WRAPCOLS", usage: "WRAPCOLS(A1:A9,3)", desc: "Wraps a row or column of values into columns." },
+  { name: "EXPAND", usage: "EXPAND(A1:B2,4,4,0)", desc: "Expands an array to given dimensions with a pad value." },
 ];
 
 const FUNCTION_CATEGORIES: Record<string, string> = {
@@ -1405,6 +1470,64 @@ const FUNCTION_CATEGORIES: Record<string, string> = {
   "EFFECT": "Financial",
   "NOMINAL": "Financial",
   "MIRR": "Financial",
+  "LET": "Math",
+  "ISFORMULA": "Logical",
+  "NORM.DIST": "Statistical",
+  "NORM.S.DIST": "Statistical",
+  "NORM.INV": "Statistical",
+  "NORM.S.INV": "Statistical",
+  "STANDARDIZE": "Statistical",
+  "SKEW": "Statistical",
+  "KURT": "Statistical",
+  "MAXA": "Statistical",
+  "MINA": "Statistical",
+  "AVERAGEA": "Statistical",
+  "STDEVA": "Statistical",
+  "VARA": "Statistical",
+  "COVARIANCE.P": "Statistical",
+  "COVARIANCE.S": "Statistical",
+  "PERCENTILE.EXC": "Statistical",
+  "QUARTILE.EXC": "Statistical",
+  "PERCENTRANK.EXC": "Statistical",
+  "PERCENTRANK": "Statistical",
+  "SINH": "Math",
+  "COSH": "Math",
+  "TANH": "Math",
+  "ASINH": "Math",
+  "ACOSH": "Math",
+  "ATANH": "Math",
+  "SQRTPI": "Math",
+  "FACTDOUBLE": "Math",
+  "SEC": "Math",
+  "CSC": "Math",
+  "COT": "Math",
+  "BITAND": "Math",
+  "BITOR": "Math",
+  "BITXOR": "Math",
+  "BITLSHIFT": "Math",
+  "BITRSHIFT": "Math",
+  "DELTA": "Math",
+  "GESTEP": "Math",
+  "BIN2DEC": "Math",
+  "DEC2BIN": "Math",
+  "HEX2DEC": "Math",
+  "DEC2HEX": "Math",
+  "OCT2DEC": "Math",
+  "DEC2OCT": "Math",
+  "RRI": "Financial",
+  "HSTACK": "Lookup",
+  "VSTACK": "Lookup",
+  "SORTBY": "Lookup",
+  "RANDARRAY": "Math",
+  "TAKE": "Lookup",
+  "DROP": "Lookup",
+  "CHOOSECOLS": "Lookup",
+  "CHOOSEROWS": "Lookup",
+  "TOCOL": "Lookup",
+  "TOROW": "Lookup",
+  "WRAPROWS": "Lookup",
+  "WRAPCOLS": "Lookup",
+  "EXPAND": "Lookup",
 };
 
 const GALLERY_STAMPS = ["✔", "✖", "★", "⚠", "📌", "🏢", "💰", "📈", "📉", "🕒", "✍", "📎"];
@@ -2037,8 +2160,11 @@ function formatDisplayNumber(value: number, decimals: number | null = null): str
 }
 
 function excelDateToSerial(date: Date): number {
-  const utc = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
-  return Math.round((utc - Date.UTC(1899, 11, 30)) / 86400000);
+  return AlxDate.toSerial({
+    year: date.getFullYear(),
+    month: date.getMonth() + 1,
+    day: date.getDate(),
+  }, "1900");
 }
 
 function parseDateTextToSerial(text: string): number | null {
@@ -2437,7 +2563,7 @@ function tokenize(rawSrc: string): Token[] {
       let out = "";
       while (j < src.length && /[A-Za-z0-9_]/.test(src[j])) out += src[j++];
       // [Step 2] Dotted function names: PERCENTILE.INC(, RANK.EQ(, MODE.SNGL(
-      while (src[j] === "." && /^\.[A-Za-z][A-Za-z0-9_]*\(/.test(src.slice(j))) {
+      while (src[j] === "." && /^(?:\.[A-Za-z][A-Za-z0-9_]*)+\(/.test(src.slice(j))) {
         out += src[j++];
         while (j < src.length && /[A-Za-z0-9_]/.test(src[j])) out += src[j++];
       }
@@ -2800,13 +2926,15 @@ function evalArrayNode(
     const rows = Math.max(left.length, right.length);
     const cols = Math.max(left[0].length, right[0].length);
     if ((left.length !== rows && left.length !== 1) || (right.length !== rows && right.length !== 1) ||
-        (left[0].length !== cols && left[0].length !== 1) || (right[0].length !== cols && right[0].length !== 1)) return [["#VALUE!"]];
+      (left[0].length !== cols && left[0].length !== 1) || (right[0].length !== cols && right[0].length !== 1)) return [["#VALUE!"]];
     if (rows * cols > 1000000) return [["#NUM!"]];
     return Array.from({ length: rows }, (_, r) => Array.from({ length: cols }, (_, c) => {
       const l = left[left.length === 1 ? 0 : r][left[0].length === 1 ? 0 : c];
       const v = right[right.length === 1 ? 0 : r][right[0].length === 1 ? 0 : c];
-      return evalNode({ kind: "bin", op: node.op,
-        left: { kind: "ref", value: "__array_left" }, right: { kind: "ref", value: "__array_right" } },
+      return evalNode({
+        kind: "bin", op: node.op,
+        left: { kind: "ref", value: "__array_left" }, right: { kind: "ref", value: "__array_right" }
+      },
         key => key === "__array_left" ? l : key === "__array_right" ? v : getCell(key), expandRange);
     }));
   }
@@ -3548,12 +3676,20 @@ function evalNode(node: Node, getCell: (key: string) => EvalResult, expandRange:
           return true;
         case "FALSE":
           return false;
-        case "TODAY":
-          {
-            return excelDateToSerial(new Date());
-          }
-        case "NOW":
-          return new Date().toLocaleString();
+        case "TODAY": {
+          if (node.args.length !== 0) return "#VALUE!";
+          return excelDateToSerial(new Date());
+        }
+        case "NOW": {
+          if (node.args.length !== 0) return "#VALUE!";
+          const current = new Date();
+          return AlxDate.toSerial({
+            year: current.getFullYear(), month: current.getMonth() + 1,
+            day: current.getDate(), hour: current.getHours(),
+            minute: current.getMinutes(), second: current.getSeconds(),
+            millisecond: current.getMilliseconds(),
+          }, "1900");
+        }
         case "UPPER":
           return String(evalNode(node.args[0], getCell, expandRange)).toUpperCase();
         case "LOWER":
@@ -4863,7 +4999,7 @@ function HomeDataToolsDialog({ mode, workbookName, sheetName, onClose, onXlsx, o
   const buttonClass = "w-full rounded-xl border border-green-700/30 bg-green-50 px-4 py-3 text-left text-sm font-semibold text-green-950 hover:bg-green-100 focus-visible:outline-2 focus-visible:outline-green-700 disabled:cursor-wait disabled:opacity-50";
   return <dialog ref={dialogRef} aria-labelledby="home-data-tools-title" onCancel={e => { e.preventDefault(); if (!lock.current) onClose(); }} onKeyDown={e => e.stopPropagation()} className="fixed inset-0 m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-lg overflow-auto rounded-2xl border border-green-700/30 bg-white p-6 text-slate-900 shadow-2xl backdrop:bg-black/50">
     <header className="mb-4 flex items-center justify-between gap-4"><h2 id="home-data-tools-title" className="text-xl font-bold">{mode === "export" ? "Export Data" : "Backup & Restore"}</h2><button type="button" disabled={working} onClick={onClose} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50" aria-label="Close data tools">Close</button></header>
-    <p className="mb-2 .break-words text-sm">Current workbook: {workbookName || "Untitled Workbook"}</p>
+    <p className="mb-2 wrap-break-words text-sm">Current workbook: {workbookName || "ALIMXL Workbook"}</p>
     <p className="mb-4 text-xs leading-5 text-slate-600">হোমস্ক্রিনে নয়, বর্তমানে মেমরিতে খোলা workbook-এর ডেটা ব্যবহার হবে। সংরক্ষিত অন্য workbook চাইলে আগে My Files / Recent Files থেকে খুলুন।</p>
     <div className="space-y-3">
       {mode === "export" && <>
@@ -4878,6 +5014,370 @@ function HomeDataToolsDialog({ mode, workbookName, sheetName, onClose, onXlsx, o
     {error && <p role="alert" className="mt-2 text-sm text-red-700">{error}</p>}
   </dialog>;
 }
+
+
+// DATE_TIME_MANAGER_START — UI stays in app/page.tsx.
+type AlxDateOperation =
+  | "format" | "convert" | "insert" | "addDays" | "addMonths"
+  | "addYears" | "difference" | "age" | "year" | "month"
+  | "day" | "workday" | "networkdays";
+
+interface AlxDateTarget {
+  sheetId: string;
+  source: WorkbookSheet;
+  keys: string[];
+  sample: Array<{ key: string; raw: string; evaluated: EvalResult }>;
+  active: string;
+}
+interface AlxDateWrite {
+  key: string;
+  value?: string;
+  style: Partial<CellStyle>;
+}
+interface AlxDatePlan {
+  writes: AlxDateWrite[];
+  preview: Array<{ key: string; before: string; after: string }>;
+}
+
+function AlxDateTimeManager({ target, onClose, onApply }: {
+  target: AlxDateTarget;
+  onClose: () => void;
+  onApply: (plan: AlxDatePlan) => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [operation, setOperation] = useState<AlxDateOperation>("format");
+  const [settings, setSettings] = useState<AlxDate.FormatOptions>(() => ({
+    preset: target.source.cells[target.active]?.style?.dateTimeFormat?.preset ?? "dmy",
+    ...target.source.cells[target.active]?.style?.dateTimeFormat,
+    dateSystem: "1900",
+  }));
+  const [inputOrder, setInputOrder] = useState<"" | AlxDate.InputOrder>(target.source.cells[target.active]?.style?.dateTimeFormat?.inputOrder ?? "");
+  const [dateInput, setDateInput] = useState("");
+  const [endInput, setEndInput] = useState("");
+  const [amount, setAmount] = useState("7");
+  const [timeZone, setTimeZone] = useState("Asia/Dhaka");
+  const [insertMode, setInsertMode] = useState<"picked" | "today" | "now" | "todayFormula" | "nowFormula">("picked");
+  const [weekend, setWeekend] = useState<number[]>([5, 6]);
+  const [holidayText, setHolidayText] = useState("");
+  const [overflow, setOverflow] = useState<AlxDate.OverflowPolicy>("clamp");
+  const [destination, setDestination] = useState(target.active);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [plan, setPlan] = useState<AlxDatePlan | null>(null);
+  const [overwriteApproved, setOverwriteApproved] = useState(false);
+
+  useEffect(() => {
+    const element = dialog.current;
+    const previous = document.activeElement;
+    if (element && !element.open) element.showModal();
+    return () => {
+      if (element?.open) element.close();
+      if (previous instanceof HTMLElement && previous.isConnected) {
+        previous.focus({ preventScroll: true });
+      }
+    };
+  }, []);
+
+  const dirty = () => {
+    setPlan(null);
+    setError("");
+    setOverwriteApproved(false);
+  };
+
+  const options: AlxDate.FormatOptions = {
+    ...settings,
+    dateSystem: "1900",
+    ...(inputOrder ? { inputOrder } : { inputOrder: undefined }),
+  };
+
+  const readInput = (input: string): AlxDate.CivilDateTime => {
+    const trimmed = input.trim();
+    const ref = /^\$?[A-Za-z]+\$?[1-9]\d*$/.test(trimmed)
+      ? trimmed.replace(/\$/g, "").toUpperCase()
+      : null;
+    if (ref) {
+      const found = target.sample.find((item) => item.key === ref);
+      if (!found) {
+        throw new Error("Cell references must be inside the captured selection. You can also enter a date directly.");
+      }
+      if (typeof found.evaluated === "boolean") throw new Error("Boolean values are not dates.");
+      return AlxDate.parseDate(found.evaluated, options);
+    }
+    const normalized = AlxDate.normalizeDigits(trimmed);
+    if (/^\d+(?:\.\d+)?$/.test(normalized)) {
+      return AlxDate.fromSerial(Number(normalized), "1900");
+    }
+    return AlxDate.parseDate(normalized, options);
+  };
+
+  const prepare = () => {
+    setError("");
+    setPlan(null);
+    setOverwriteApproved(false);
+    setBusy(true);
+    try {
+      const style: Partial<CellStyle> = {
+        numberFormat: "date",
+        dateTimeFormat: { ...options },
+      };
+      const writes: AlxDateWrite[] = [];
+      const preview: AlxDatePlan["preview"] = [];
+      const describe = (input: AlxDate.DateInput) => AlxDate.formatDate(input, options);
+      // Validate the selected format even when all selected cells are blank.
+      describe("2026-11-25 14:30:15");
+
+      if (operation === "format" || operation === "convert") {
+        for (const item of target.sample) {
+          if (item.raw === "") {
+            if (operation === "format") writes.push({ key: item.key, style });
+            continue;
+          }
+          if (typeof item.evaluated === "boolean") {
+            throw new Error(`${item.key}: Boolean values are not dates.`);
+          }
+          let value: AlxDate.DateInput = item.evaluated;
+          if (operation === "convert" && typeof value === "string") {
+            const numeric = AlxDate.normalizeDigits(value.trim());
+            if (/^\d+(?:\.\d+)?$/.test(numeric)) value = Number(numeric);
+          }
+          const parsed = AlxDate.parseDate(value, options);
+          writes.push({
+            key: item.key,
+            style,
+            ...(operation === "convert"
+              ? { value: String(AlxDate.toSerial(parsed, "1900")) }
+              : {}),
+          });
+          if (preview.length < 30) {
+            preview.push({ key: item.key, before: item.raw, after: describe(parsed) });
+          }
+        }
+      } else {
+        const key = destination.trim().toUpperCase();
+        const position = parseKey(key);
+        if (!position || position.row < 0 || position.col < 0 ||
+          position.row >= target.source.gridRows || position.col >= target.source.gridCols) {
+          throw new Error("Destination must be a valid cell inside the current sheet.");
+        }
+        const destinationCell = target.source.cells[key];
+        if (destinationCell?.mergedInto || (destinationCell?.rowSpan ?? 1) > 1 ||
+          (destinationCell?.colSpan ?? 1) > 1) {
+          throw new Error("Choose an unmerged destination cell.");
+        }
+        let value = "";
+        let after = "";
+        let resultStyle = style;
+        if (operation === "insert") {
+          if (insertMode === "todayFormula" || insertMode === "nowFormula") {
+            value = insertMode === "todayFormula" ? "=TODAY()" : "=NOW()";
+            after = `${value} — uses the browser's local timezone on recalculation`;
+          } else {
+            const date = insertMode === "today" ? AlxDate.today(timeZone)
+              : insertMode === "now" ? AlxDate.now(timeZone)
+                : readInput(dateInput);
+            value = String(AlxDate.toSerial(date, "1900"));
+            after = describe(date);
+          }
+        } else {
+          const first = readInput(dateInput);
+          const numberResult = (number: number) => {
+            value = String(number);
+            after = value;
+            resultStyle = { numberFormat: "number", decimals: 0 };
+          };
+          const dateResult = (date: AlxDate.DateParts) => {
+            value = String(AlxDate.toSerial(date, "1900"));
+            after = describe(date);
+          };
+          const integerAmount = () => {
+            const raw = AlxDate.normalizeDigits(amount.trim());
+            if (!/^[+-]?\d+$/.test(raw) || !Number.isSafeInteger(Number(raw))) {
+              throw new Error("Amount must be a safe whole number.");
+            }
+            return Number(raw);
+          };
+          const business = (): AlxDate.BusinessOptions => ({
+            dateSystem: "1900",
+            weekend,
+            holidays: holidayText.split(/\r?\n/).map((item) => item.trim())
+              .filter(Boolean).map(readInput),
+          });
+          switch (operation) {
+            case "addDays": dateResult(AlxDate.addDays(first, integerAmount())); break;
+            case "addMonths": dateResult(AlxDate.addMonths(first, integerAmount(), { overflow })); break;
+            case "addYears": dateResult(AlxDate.addYears(first, integerAmount(), { overflow })); break;
+            case "difference": numberResult(AlxDate.dateDifference(first, readInput(endInput)).days); break;
+            case "age": {
+              const age = AlxDate.ageBetween(first, readInput(endInput));
+              value = `${age.years} years, ${age.months} months, ${age.days} days`;
+              after = value;
+              resultStyle = { numberFormat: "text" };
+              break;
+            }
+            case "year": numberResult(first.year); break;
+            case "month": numberResult(first.month); break;
+            case "day": numberResult(first.day); break;
+            case "workday": dateResult(AlxDate.addBusinessDays(first, integerAmount(), business())); break;
+            case "networkdays": numberResult(AlxDate.countBusinessDays(first, readInput(endInput), business())); break;
+          }
+        }
+        writes.push({ key, value, style: resultStyle });
+        preview.push({ key, before: destinationCell?.value ?? "", after });
+      }
+      if (!writes.length) throw new Error("No non-empty cells are available for this operation.");
+      setPlan({ writes, preview });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Date operation failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const overwrites = plan?.writes.filter((write) =>
+    write.value !== undefined &&
+    Boolean(target.source.cells[write.key]?.value) &&
+    target.source.cells[write.key]?.value !== write.value,
+  ).length ?? 0;
+  const inputClass = "w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500";
+  const buttonClass = "rounded-lg border border-blue-200 bg-white px-4 py-2 text-blue-800 hover:bg-blue-50 disabled:opacity-40";
+  const isBusiness = operation === "workday" || operation === "networkdays";
+  const needsEnd = ["difference", "age", "networkdays"].includes(operation);
+  const needsAmount = ["addDays", "addMonths", "addYears", "workday"].includes(operation);
+  const calculations = operation !== "format" && operation !== "convert" && operation !== "insert";
+
+  return (
+    <dialog ref={dialog} aria-labelledby="alx-date-title"
+      onCancel={(event) => { event.preventDefault(); onClose(); }}
+      onKeyDown={(event) => event.stopPropagation()}
+      className="alx-dtm m-auto w-[min(1000px,95vw)] max-h-[90vh] overflow-auto rounded-2xl border p-0"
+      style={{ zIndex: 100000 }}>
+      <style>{`
+.alx-dtm{color-scheme:light;background:#f7f8f4;color:#172d25;border:1px solid #c5a253;box-shadow:0 28px 90px #022c2252,0 0 0 5px #ffffff25;font-family:Inter,"Segoe UI",Arial,sans-serif;font-size:15px;line-height:1.55;scrollbar-width:thin;scrollbar-color:#9aafa2 #edf2eb}
+.alx-dtm::backdrop{background:rgba(5,24,17,.48);backdrop-filter:blur(3px)}
+.alx-dtm .alx-dtm-header{background:linear-gradient(115deg,#043a2b,#086044);border-bottom:2px solid #c5a253;color:#fff}
+.alx-dtm .alx-dtm-eyebrow{font-size:10px;letter-spacing:.16em;font-weight:700;color:#f0dba1;margin-bottom:5px}
+.alx-dtm .alx-dtm-title{font-size:25px;line-height:1.3;font-weight:700;letter-spacing:-.025em;color:#fff;margin:0}
+.alx-dtm .alx-dtm-subtitle{font-size:12px;color:#e0eee5;margin-top:7px}
+.alx-dtm button{font:inherit;font-weight:600;cursor:pointer;transition:background-color .15s,box-shadow .15s,transform .15s;min-height:42px}
+.alx-dtm button:disabled{cursor:not-allowed;opacity:.45}
+.alx-dtm button:focus-visible,.alx-dtm input:focus-visible,.alx-dtm select:focus-visible,.alx-dtm textarea:focus-visible{outline:3px solid #087443;outline-offset:3px}
+.alx-dtm .alx-dtm-header button{background:#ffffff12;border:1px solid #d9e8dc70;color:white;border-radius:10px}
+.alx-dtm .alx-dtm-header button:hover{background:#ffffff25}
+.alx-dtm .alx-dtm-header button:focus-visible{outline-color:#f0dba1}
+.alx-dtm .alx-dtm-operation,.alx-dtm .alx-dtm-settings{background:white;border:1px solid #dbe4d9;border-radius:14px;padding:18px;box-shadow:0 3px 12px #173d2505}
+.alx-dtm label>span{display:block;font-size:13px;font-weight:650;color:#294638;margin-bottom:7px;line-height:1.5}
+.alx-dtm select,.alx-dtm input:not([type=checkbox]),.alx-dtm textarea{background:#fff;color:#172d25;border:1px solid #b5c9bc;border-radius:9px;min-height:44px;font-size:14px;font-weight:450;padding:10px 12px;box-shadow:0 1px 2px #153b2005}
+.alx-dtm select:hover,.alx-dtm input:not([type=checkbox]):hover,.alx-dtm textarea:hover{border-color:#648e76}
+.alx-dtm select:focus,.alx-dtm input:focus,.alx-dtm textarea:focus{border-color:#087443;--tw-ring-color:transparent}
+.alx-dtm option{background:#fff;color:#172d25}
+.alx-dtm input::placeholder,.alx-dtm textarea::placeholder{color:#64776c}
+.alx-dtm input[type=checkbox]{accent-color:#087443;width:17px;height:17px;flex-shrink:0}
+.alx-dtm .alx-dtm-note{background:#edf5ed;color:#294d37;border:1px solid #d4e4d4;border-left:3px solid #7d9f69;line-height:1.65}
+.alx-dtm .alx-dtm-preview-button{padding:11px 21px;background:linear-gradient(120deg,#07643e,#09834c);color:#fff;border:1px solid #07643e;border-radius:10px;box-shadow:0 4px 10px #07643e20}
+.alx-dtm .alx-dtm-preview-button:hover{background:#065b38;box-shadow:0 5px 14px #07643e30}
+.alx-dtm .alx-dtm-preview{background:#f0f5ed;border-color:#d7e2d1}
+.alx-dtm .alx-dtm-section-title{font-size:18px;font-weight:700;color:#10452e}
+.alx-dtm .alx-dtm-preview-caption{font-size:12px;color:#52645b;margin-top:4px}
+.alx-dtm table{background:#fff;color:#203b2e;font-size:13px}
+.alx-dtm thead{background:#e5eddf;color:#244630}
+.alx-dtm th{font-weight:700;padding:12px}
+.alx-dtm td{padding:12px;border-color:#e0e9dd}
+.alx-dtm td:last-child{color:#075c36;font-weight:650;background:#f5faf2;font-variant-numeric:tabular-nums}
+.alx-dtm .alx-dtm-actions{position:sticky;bottom:0;background:#f0f5ed;padding:14px 0 2px;border-top:1px solid #d7e2d1}
+.alx-dtm .alx-dtm-actions button:not(.alx-dtm-apply){border-color:#b8cabb;color:#294638;background:#fff}
+.alx-dtm .alx-dtm-apply{background:linear-gradient(110deg,#f5e5ae,#e2c46b);color:#243321;border:1px solid #b29644;padding:11px 22px;border-radius:10px;box-shadow:0 3px 9px #80662215}
+.alx-dtm .alx-dtm-apply:hover{background:#efda91;box-shadow:0 4px 12px #80662228}
+.alx-dtm fieldset{border-color:#d0ddce;background:#fff}
+.alx-dtm legend{color:#294638;font-size:13px;font-weight:650;padding:0 7px}
+@media(max-width:640px){.alx-dtm .alx-dtm-header{padding:16px}.alx-dtm .alx-dtm-title{font-size:21px}.alx-dtm .alx-dtm-form,.alx-dtm .alx-dtm-preview{padding:16px}.alx-dtm .alx-dtm-settings,.alx-dtm .alx-dtm-operation{padding:14px}.alx-dtm .alx-dtm-actions button{flex:1}.alx-dtm .alx-dtm-eyebrow{letter-spacing:.09em;font-size:9px}}
+`}</style>
+      <div className="alx-dtm-header sticky top-0 z-10 flex items-center justify-between gap-4 px-6 py-4">
+        <div><div className="alx-dtm-eyebrow">ALIMXL WORKSPACE / DATE TOOLS</div><h2 id="alx-date-title" className="alx-dtm-title">Date &amp; Time Manager</h2>
+          <p className="alx-dtm-subtitle"> {target.keys.length.toLocaleString()} selected cells · Gregorian · Workbook serial system: 1900</p></div>
+        <button type="button" onClick={onClose} className={buttonClass} aria-label="Close Date and Time Manager">Close</button>
+      </div>
+      <form className="alx-dtm-form space-y-5 p-6" onSubmit={(event) => { event.preventDefault(); prepare(); }}
+        onChange={dirty}>
+        <label className="alx-dtm-operation block space-y-1"><span>Operation</span>
+          <select className={inputClass} value={operation} onChange={(event) => setOperation(event.target.value as AlxDateOperation)}>
+            <option value="format">Format selected cells — keep values and formulas</option>
+            <option value="convert">Convert selected values to numeric dates</option>
+            <option value="insert">Insert date / time / TODAY / NOW</option>
+            <option value="addDays">Add or subtract days</option>
+            <option value="addMonths">Add or subtract months</option>
+            <option value="addYears">Add or subtract years</option>
+            <option value="difference">Difference in days</option>
+            <option value="age">Age — years, months, days</option>
+            <option value="year">Extract year</option>
+            <option value="month">Extract month number</option>
+            <option value="day">Extract day number</option>
+            <option value="workday">Add or subtract business days</option>
+            <option value="networkdays">Count business days — inclusive</option>
+          </select>
+        </label>
+        <div className="alx-dtm-settings grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <label className="space-y-1"><span>Display format</span>
+            <select className={inputClass} value={settings.preset ?? "dmy"} onChange={(event) => setSettings((old) => ({ ...old, preset: event.target.value as AlxDate.FormatPreset }))}>
+              {AlxDate.DATE_FORMAT_PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
+            </select>
+          </label>
+          <label className="space-y-1"><span>Display language / region</span>
+            <select className={inputClass} value={settings.locale ?? "en-US"} onChange={(event) => setSettings((old) => ({ ...old, locale: event.target.value }))}>
+              <option value="en-US">English — United States</option><option value="en-GB">English — United Kingdom</option><option value="bn-BD">বাংলা — বাংলাদেশ</option>
+            </select>
+          </label>
+          <label className="space-y-1"><span>Digits</span>
+            <select className={inputClass} value={settings.digits ?? "latn"} onChange={(event) => setSettings((old) => ({ ...old, digits: event.target.value as AlxDate.Digits }))}>
+              <option value="latn">English — 123</option><option value="beng">বাংলা — ১২৩</option>
+            </select>
+          </label>
+          <label className="space-y-1"><span>Non-ISO input order</span>
+            <select className={inputClass} value={inputOrder} onChange={(event) => setInputOrder(event.target.value as "" | AlxDate.InputOrder)}>
+              <option value="">Require explicit selection</option><option value="DMY">Day / Month / Year</option><option value="MDY">Month / Day / Year</option><option value="YMD">Year / Month / Day</option>
+            </select>
+          </label>
+          <label className="space-y-1"><span>Clock</span>
+            <select className={inputClass} value={settings.hour12 ? "12" : "24"} onChange={(event) => setSettings((old) => ({ ...old, hour12: event.target.value === "12" }))}>
+              <option value="24">24-hour</option><option value="12">12-hour</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={settings.showSeconds ?? false} onChange={(event) => setSettings((old) => ({ ...old, showSeconds: event.target.checked }))} />Show seconds</label>
+        </div>
+        {settings.preset === "custom" && <label className="block space-y-1"><span>Custom pattern — MM = month; mm = minute; [text] = literal</span>
+          <input className={inputClass} maxLength={256} value={settings.pattern ?? ""} placeholder="DD.MM.YYYY [at] HH:mm:ss" onChange={(event) => setSettings((old) => ({ ...old, pattern: event.target.value }))} />
+        </label>}
+        {operation === "insert" && <div className="grid gap-4 sm:grid-cols-2">
+          <label className="space-y-1"><span>Insert type</span><select className={inputClass} value={insertMode} onChange={(event) => setInsertMode(event.target.value as typeof insertMode)}>
+            <option value="picked">Picked or entered date</option><option value="today">Today&apos;s date — fixed value</option><option value="now">Current date and time — fixed value</option><option value="todayFormula">TODAY() — recalculated formula</option><option value="nowFormula">NOW() — recalculated formula</option>
+          </select></label>
+          <label className="space-y-1"><span>Timezone for fixed current values</span><input className={inputClass} maxLength={100} value={timeZone} onChange={(event) => setTimeZone(event.target.value)} placeholder="Asia/Dhaka" /></label>
+        </div>}
+        {(calculations || (operation === "insert" && insertMode === "picked")) && <div className="grid gap-4 sm:grid-cols-2">
+          <label className="space-y-1"><span>Start date / selected cell reference / serial</span><input className={inputClass} maxLength={256} value={dateInput} onChange={(event) => setDateInput(event.target.value)} placeholder="2026-11-25 or A1" /></label>
+          <label className="space-y-1"><span>Calendar picker</span><input className={inputClass} type="date" min="0001-01-01" max="9999-12-31" onChange={(event) => setDateInput(event.target.value)} /></label>
+          {needsEnd && <label className="space-y-1"><span>End / as-of date</span><input className={inputClass} maxLength={256} value={endInput} onChange={(event) => setEndInput(event.target.value)} placeholder="2026-12-25 or B1" /></label>}
+          {needsAmount && <label className="space-y-1"><span>Amount — negative subtracts</span><input className={inputClass} value={amount} maxLength={20} onChange={(event) => setAmount(event.target.value)} /></label>}
+          {["addMonths", "addYears"].includes(operation) && <label className="space-y-1"><span>Month-end overflow</span><select className={inputClass} value={overflow} onChange={(event) => setOverflow(event.target.value as AlxDate.OverflowPolicy)}><option value="clamp">Use last valid day</option><option value="reject">Reject invalid target day</option></select></label>}
+        </div>}
+        {isBusiness && <fieldset className="space-y-3 rounded-xl border border-blue-100 p-4"><legend>Business calendar</legend>
+          <div className="flex flex-wrap gap-4">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label, day) => <label key={day} className="flex gap-2"><input type="checkbox" checked={weekend.includes(day)} onChange={(event) => setWeekend((old) => event.target.checked ? [...old, day] : old.filter((item) => item !== day))} />{label} off</label>)}</div>
+          <label className="block space-y-1"><span>Holidays — one date per line</span><textarea className={inputClass} rows={3} maxLength={200000} value={holidayText} onChange={(event) => setHolidayText(event.target.value)} placeholder="2026-12-16" /></label>
+        </fieldset>}
+        {operation !== "format" && operation !== "convert" && <label className="block space-y-1"><span>Destination cell — result is inserted here</span><input className={inputClass} maxLength={30} value={destination} onChange={(event) => setDestination(event.target.value)} /></label>}
+        <p className="alx-dtm-note rounded-lg p-3 text-sm">{operation === "format" ? "Display only; underlying values and formulas stay unchanged. Invalid non-empty dates block the whole operation." : operation === "convert" ? "Conversion replaces selected formulas/text with numeric date values. Review the preview before applying." : "Calculations insert fixed results. TODAY() and NOW() insert live formulas; they use the browser's timezone and refresh when the workbook recalculates."}</p>
+        {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-red-800">{error}</p>}
+        <button type="submit" disabled={busy} className="alx-dtm-preview-button">{busy ? "Preparing…" : "Prepare preview"}</button>
+      </form>
+      {plan && <div className="alx-dtm-preview space-y-4 border-t px-6 py-5">
+        <div><div className="alx-dtm-section-title">Review your changes</div><p className="alx-dtm-preview-caption">{plan.writes.length.toLocaleString()} cells will be updated · Showing up to 30 preview rows</p></div>
+        <div className="max-h-52 overflow-auto rounded-lg border border-blue-100"><table className="w-full text-left text-sm"><thead className="bg-blue-50"><tr><th className="p-2">Cell</th><th className="p-2">Before</th><th className="p-2">After</th></tr></thead><tbody>{plan.preview.map((row) => <tr key={row.key} className="border-t border-blue-50"><td className="p-2">{row.key}</td><td className="max-w-64 wrap-break-words p-2">{row.before}</td><td className="max-w-80 wrap-break-words p-2">{row.after}</td></tr>)}</tbody></table></div>
+        {overwrites > 0 && <label className="flex items-start gap-2 text-sm text-red-800"><input type="checkbox" checked={overwriteApproved} onChange={(event) => setOverwriteApproved(event.target.checked)} />I approve replacing existing content in {overwrites} cells, including any formulas.</label>}
+        <div className="alx-dtm-actions flex flex-wrap justify-end gap-3"> <button type="button" className={buttonClass} onClick={onClose}>Cancel</button><button type="button" disabled={overwrites > 0 && !overwriteApproved} className="alx-dtm-apply" onClick={() => onApply(plan)}>Apply — one Undo step</button></div>
+      </div>}
+    </dialog>
+  );
+}
+// DATE_TIME_MANAGER_END
 
 export default function ExcelStudioPage() {
   const router = useRouter();
@@ -4919,11 +5419,14 @@ export default function ExcelStudioPage() {
   const homeDataMode = useRef<"import" | "restore">("import");
   const homeDataLoading = useRef(false);
 
+  const [dateManagerTarget, setDateManagerTarget] = useState<AlxDateTarget | null>(null);
+  const dateApplyLock = useRef(false);
+
   const [appLocale, setAppLocale] = useState<AppLocale>("en");
   const [rtlEnabled, setRtlEnabled] = useState(false);
   const [showChartWizard, setShowChartWizard] = useState(false);
   const [, setRefreshTick] = useState(0);
-  const [workbookName, setWorkbookName] = useState("Untitled Workbook");
+  const [workbookName, setWorkbookName] = useState("ALIMXL Workbook");
   const [workbookId, setWorkbookId] = useState<string | null>(null);
   const localSaveInProgressRef = useRef(false);
   const [sheets, setSheetsRaw] = useState<WorkbookSheet[]>([createSheet("Sheet 1")]);
@@ -5357,6 +5860,14 @@ export default function ExcelStudioPage() {
     sheetsRef.current = previous;
     libSyncExchangeRates(previous);
     setSheetsRaw(previous);
+
+    setActiveSheetIndex((currentIndex) =>
+      Math.min(
+        Math.max(0, currentIndex),
+        Math.max(0, previous.length - 1)
+      )
+    );
+
     setHistoryVersion((v) => v + 1);
     showToast("Undo");
   }, [showToast]);
@@ -5373,11 +5884,20 @@ export default function ExcelStudioPage() {
     sheetsRef.current = nextState;
     libSyncExchangeRates(nextState);
     setSheetsRaw(nextState);
+
+    setActiveSheetIndex((currentIndex) =>
+      Math.min(
+        Math.max(0, currentIndex),
+        Math.max(0, nextState.length - 1)
+      )
+    );
+
     setHistoryVersion((v) => v + 1);
     showToast("Redo");
   }, [showToast]);
 
   const updateSheet = useCallback((patch: Partial<WorkbookSheet> | ((s: WorkbookSheet) => Partial<WorkbookSheet>)) => {
+    bumpRandArrayEpoch();
     setSheets((prev) =>
       prev.map((s, i) => {
         if (i !== activeSheetIndex) return s;
@@ -5994,25 +6514,13 @@ export default function ExcelStudioPage() {
     if (numberFormat === "text") return String(rawValue);
 
     if (numberFormat === "date") {
-      // [Calculation fix] Numbers such as 5 are no longer interpreted as dates; parse YYYY-MM-DD as a local date
-      // (previously parsed as UTC, showing the previous day in time zones behind UTC)
-      if (typeof rawValue !== "string") return String(rawValue);
-      const text = rawValue.trim();
-      const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
-      if (iso) {
-        const y = Number(iso[1]);
-        const m = Number(iso[2]);
-        const d = Number(iso[3]);
-        const local = new Date(y, m - 1, d);
-        if (local.getFullYear() === y && local.getMonth() === m - 1 && local.getDate() === d) {
-          return local.toLocaleDateString();
-        }
-        return rawValue;
-      }
-      if (!/[\/\-]|[A-Za-z]/.test(text)) return rawValue;
-      const date = new Date(text);
-      if (!Number.isNaN(date.getTime())) return date.toLocaleDateString();
-      return rawValue;
+      const result = AlxDate.attempt(() => AlxDate.formatDate(rawValue, {
+        preset: "dmy",
+        ...style?.dateTimeFormat,
+        dateSystem: "1900",
+      }));
+      // Invalid dates stay visible for correction; never silently coerce them.
+      return result.ok ? result.value : String(rawValue);
     }
 
     const numeric =
@@ -8318,22 +8826,143 @@ export default function ExcelStudioPage() {
     return o;
   }, [sheet.gridRows, sheet.rowHeights, hiddenRows]);
 
-  const visibleRowRange = useMemo(() => {
-    if (!virtualizeRows) return { start: 0, end: sheet.gridRows - 1 };
-    const first = findIndexByOffset(rowOffsets, viewport.scrollTop);
-    const last = findIndexByOffset(rowOffsets, viewport.scrollTop + viewport.clientHeight);
-    return {
-      start: Math.max(sheet.frozenRows, first - ROW_BUFFER),
-      end: Math.min(sheet.gridRows - 1, last + ROW_BUFFER),
-    };
-  }, [virtualizeRows, rowOffsets, viewport.scrollTop, viewport.clientHeight, sheet.gridRows, sheet.frozenRows, ROW_BUFFER]);
+  // Keep the physical table height bounded while preserving
+  // the complete logical row range.
+  const MAX_PHYSICAL_ROW_HEIGHT = 4_000_000;
 
-  const topSpacerHeight = virtualizeRows
-    ? Math.max(0, rowOffsets[visibleRowRange.start] - rowOffsets[sheet.frozenRows])
+  const logicalRowsHeight =
+    rowOffsets[sheet.gridRows] ?? 0;
+
+  const physicalRowsHeight = virtualizeRows
+    ? Math.min(
+      logicalRowsHeight,
+      MAX_PHYSICAL_ROW_HEIGHT
+    )
+    : logicalRowsHeight;
+
+  const rowHeightCompression = Math.max(
+    0,
+    logicalRowsHeight - physicalRowsHeight
+  );
+
+  const logicalScrollTop = (() => {
+    if (rowHeightCompression === 0) {
+      return viewport.scrollTop;
+    }
+
+    const physicalScrollRange = Math.max(
+      0,
+      physicalRowsHeight +
+      HEADER_HEIGHT -
+      viewport.clientHeight
+    );
+
+    const logicalScrollRange = Math.max(
+      0,
+      logicalRowsHeight +
+      HEADER_HEIGHT -
+      viewport.clientHeight
+    );
+
+    if (physicalScrollRange === 0) return 0;
+
+    const progress = Math.min(
+      1,
+      Math.max(
+        0,
+        viewport.scrollTop / physicalScrollRange
+      )
+    );
+
+    return progress * logicalScrollRange;
+  })();
+
+  const visibleRowRange = useMemo(() => {
+    if (!virtualizeRows) {
+      return {
+        start: 0,
+        end: sheet.gridRows - 1,
+      };
+    }
+
+    const first = findIndexByOffset(
+      rowOffsets,
+      logicalScrollTop
+    );
+
+    const last = findIndexByOffset(
+      rowOffsets,
+      logicalScrollTop + viewport.clientHeight
+    );
+
+    return {
+      start: Math.max(
+        sheet.frozenRows,
+        first - ROW_BUFFER
+      ),
+      end: Math.min(
+        sheet.gridRows - 1,
+        last + ROW_BUFFER
+      ),
+    };
+  }, [
+    virtualizeRows,
+    rowOffsets,
+    logicalScrollTop,
+    viewport.clientHeight,
+    sheet.gridRows,
+    sheet.frozenRows,
+    ROW_BUFFER,
+  ]);
+
+  const rawTopSpacerHeight = virtualizeRows
+    ? Math.max(
+      0,
+      rowOffsets[visibleRowRange.start] -
+      rowOffsets[sheet.frozenRows]
+    )
     : 0;
-  const bottomSpacerHeight = virtualizeRows
-    ? Math.max(0, rowOffsets[sheet.gridRows] - rowOffsets[visibleRowRange.end + 1])
+
+  const rawBottomSpacerHeight = virtualizeRows
+    ? Math.max(
+      0,
+      logicalRowsHeight -
+      rowOffsets[visibleRowRange.end + 1]
+    )
     : 0;
+
+  // Distribute compression between the two spacers.
+  // Never compress the actual rendered rows.
+  const minimumTopCompression = Math.max(
+    0,
+    rowHeightCompression - rawBottomSpacerHeight
+  );
+
+  const maximumTopCompression = Math.min(
+    rowHeightCompression,
+    rawTopSpacerHeight
+  );
+
+  const topCompression = rowHeightCompression > 0
+    ? Math.min(
+      maximumTopCompression,
+      Math.max(
+        minimumTopCompression,
+        logicalScrollTop - viewport.scrollTop
+      )
+    )
+    : 0;
+
+  const topSpacerHeight = Math.max(
+    0,
+    rawTopSpacerHeight - topCompression
+  );
+
+  const bottomSpacerHeight = Math.max(
+    0,
+    rawBottomSpacerHeight -
+    (rowHeightCompression - topCompression)
+  );
 
   // Only the rows that will actually be rendered
   const renderRows = useMemo(() => {
@@ -9250,6 +9879,637 @@ export default function ExcelStudioPage() {
     showToast("AutoSum applied.");
   };
 
+  const [pdfImportFile, setPdfImportFile] =
+    useState<File | null>(null);
+
+  const [pdfViewer, setPdfViewer] = useState<{
+    url: string;
+    name: string;
+    file: File;
+  } | null>(null);
+
+  // ===== EXCEL GRID SHORTCUTS START =====
+
+  const pendingKeyboardNavigationRef = useRef<{
+    sheetId: string;
+    row: number;
+    col: number;
+  } | null>(null);
+
+  const handleExcelGridShortcut = useEffectEvent(
+    (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        showHomeScreen ||
+        showLoadDialog ||
+        pdfViewer !== null ||
+        pdfImportFile !== null
+      ) {
+        return;
+      }
+
+      const target = event.target;
+
+      if (!(target instanceof HTMLElement)) return;
+
+      const grid = document.getElementById(
+        "awm-print-area"
+      );
+
+      if (!grid || !grid.contains(target)) return;
+
+      if (
+        document.querySelector(
+          '[role="dialog"][aria-modal="true"]'
+        )
+      ) {
+        return;
+      }
+
+      const typing = Boolean(
+        target.closest(
+          "input, textarea, select, " +
+          '[contenteditable="true"]'
+        )
+      );
+
+      const modifier =
+        event.ctrlKey || event.metaKey;
+
+      const lowerKey = event.key.toLowerCase();
+
+      const consume = () => {
+        event.preventDefault();
+        event.stopPropagation();
+      };
+
+      const moveTo = (
+        requestedRow: number,
+        requestedCol: number,
+        extend = false
+      ) => {
+        const nextRow = Math.max(
+          0,
+          Math.min(
+            sheet.gridRows - 1,
+            requestedRow
+          )
+        );
+
+        const nextCol = Math.max(
+          0,
+          Math.min(
+            sheet.gridCols - 1,
+            requestedCol
+          )
+        );
+
+        setCtrlSelectedRows([]);
+        setCtrlSelectedCols([]);
+        setCtrlSelectedCells([]);
+
+        if (extend) {
+          setSelection({
+            r1: selection.r1,
+            c1: selection.c1,
+            r2: nextRow,
+            c2: nextCol,
+          });
+        } else {
+          setActiveCell(
+            cellKey(nextRow, nextCol)
+          );
+
+          setSelection({
+            r1: nextRow,
+            c1: nextCol,
+            r2: nextRow,
+            c2: nextCol,
+          });
+        }
+
+        pendingKeyboardNavigationRef.current = {
+          sheetId: sheet.id,
+          row: nextRow,
+          col: nextCol,
+        };
+      };
+
+      // Keep normal text editing shortcuts native.
+      // Commit only Enter/Tab from the cell editor.
+      if (typing || editingKey !== null) {
+        if (
+          editingKey !== null &&
+          !modifier &&
+          !event.altKey &&
+          (event.key === "Tab" ||
+            event.key === "Enter")
+        ) {
+          consume();
+
+          const position =
+            parseKey(editingKey) ?? activePos;
+
+          commitEdit("none");
+
+          const step = event.shiftKey ? -1 : 1;
+
+          moveTo(
+            position.row +
+            (event.key === "Enter" ? step : 0),
+            position.col +
+            (event.key === "Tab" ? step : 0)
+          );
+        }
+
+        return;
+      }
+
+      // Formatting shortcuts use existing formatting logic.
+      if (
+        modifier &&
+        !event.altKey &&
+        !event.shiftKey &&
+        ["b", "i", "u"].includes(lowerKey)
+      ) {
+        consume();
+
+        const field =
+          lowerKey === "b"
+            ? "bold"
+            : lowerKey === "i"
+              ? "italic"
+              : "underline";
+
+        toggleStyle(field);
+        return;
+      }
+
+      // Alt+= and the numpad equivalent.
+      if (
+        event.altKey &&
+        !modifier &&
+        (
+          event.key === "=" ||
+          event.code === "NumpadAdd"
+        )
+      ) {
+        consume();
+        closeMenu();
+        autoSum();
+        return;
+      }
+
+      // Select the active column/row without moving
+      // the active cell to the start of the sheet.
+      if (
+        event.code === "Space" &&
+        !event.altKey &&
+        (
+          (modifier && !event.shiftKey) ||
+          (!modifier && event.shiftKey)
+        )
+      ) {
+        consume();
+
+        setCtrlSelectedRows([]);
+        setCtrlSelectedCols([]);
+        setCtrlSelectedCells([]);
+
+        if (modifier) {
+          setSelection({
+            r1: 0,
+            c1: activePos.col,
+            r2: sheet.gridRows - 1,
+            c2: activePos.col,
+          });
+        } else {
+          setSelection({
+            r1: activePos.row,
+            c1: 0,
+            r2: activePos.row,
+            c2: sheet.gridCols - 1,
+          });
+        }
+
+        return;
+      }
+
+      // Ctrl+Home / Ctrl+End.
+      // Ctrl+Shift variants extend the selection too.
+      if (
+        modifier &&
+        !event.altKey &&
+        (
+          event.key === "Home" ||
+          event.key === "End"
+        )
+      ) {
+        consume();
+
+        let lastRow = 0;
+        let lastCol = 0;
+
+        if (event.key === "End") {
+          for (
+            const [reference, cell] of
+            Object.entries(sheet.cells)
+          ) {
+            const position = parseKey(reference);
+
+            if (
+              !position ||
+              position.row < 0 ||
+              position.col < 0 ||
+              position.row >= sheet.gridRows ||
+              position.col >= sheet.gridCols
+            ) {
+              continue;
+            }
+
+            const hasContent =
+              cell.value !== "" ||
+              Boolean(cell.style) ||
+              Boolean(cell.image) ||
+              Boolean(cell.hyperlink) ||
+              Boolean(cell.comment) ||
+              Boolean(cell.validation) ||
+              Boolean(cell.mergedInto) ||
+              (cell.rowSpan ?? 1) > 1 ||
+              (cell.colSpan ?? 1) > 1;
+
+            if (!hasContent) continue;
+
+            lastRow = Math.max(
+              lastRow,
+              Math.min(
+                sheet.gridRows - 1,
+                position.row +
+                Math.max(1, cell.rowSpan ?? 1) -
+                1
+              )
+            );
+
+            lastCol = Math.max(
+              lastCol,
+              Math.min(
+                sheet.gridCols - 1,
+                position.col +
+                Math.max(1, cell.colSpan ?? 1) -
+                1
+              )
+            );
+          }
+        }
+
+        moveTo(
+          lastRow,
+          lastCol,
+          event.shiftKey
+        );
+
+        return;
+      }
+
+      // Enter/Tab while not editing.
+      if (
+        !modifier &&
+        !event.altKey &&
+        (
+          event.key === "Enter" ||
+          event.key === "Tab"
+        )
+      ) {
+        consume();
+
+        const step = event.shiftKey ? -1 : 1;
+
+        moveTo(
+          activePos.row +
+          (event.key === "Enter" ? step : 0),
+          activePos.col +
+          (event.key === "Tab" ? step : 0)
+        );
+
+        return;
+      }
+
+      const arrows = [
+        "ArrowUp",
+        "ArrowDown",
+        "ArrowLeft",
+        "ArrowRight",
+      ];
+
+      if (
+        event.altKey ||
+        !arrows.includes(event.key)
+      ) {
+        return;
+      }
+
+      consume();
+
+      const vertical =
+        event.key === "ArrowUp" ||
+        event.key === "ArrowDown";
+
+      const direction =
+        event.key === "ArrowUp" ||
+          event.key === "ArrowLeft"
+          ? -1
+          : 1;
+
+      const baseRow = event.shiftKey
+        ? selection.r2
+        : activePos.row;
+
+      const baseCol = event.shiftKey
+        ? selection.c2
+        : activePos.col;
+
+      const current = vertical
+        ? baseRow
+        : baseCol;
+
+      const maximum = vertical
+        ? sheet.gridRows - 1
+        : sheet.gridCols - 1;
+
+      let destination = Math.max(
+        0,
+        Math.min(
+          maximum,
+          current + direction
+        )
+      );
+
+      if (modifier) {
+        const occupied = new Set<number>();
+
+        for (
+          const [reference, cell] of
+          Object.entries(sheet.cells)
+        ) {
+          if (cell.value === "") continue;
+
+          const position = parseKey(reference);
+
+          if (!position) continue;
+
+          const aligned = vertical
+            ? position.col === baseCol
+            : position.row === baseRow;
+
+          const index = vertical
+            ? position.row
+            : position.col;
+
+          if (
+            aligned &&
+            index >= 0 &&
+            index <= maximum
+          ) {
+            occupied.add(index);
+          }
+        }
+
+        if (
+          occupied.has(current) &&
+          occupied.has(destination)
+        ) {
+          // Move to the end of the contiguous run.
+          while (
+            destination + direction >= 0 &&
+            destination + direction <= maximum &&
+            occupied.has(
+              destination + direction
+            )
+          ) {
+            destination += direction;
+          }
+        } else {
+          // Find the next populated cell, or sheet edge.
+          destination =
+            direction > 0 ? maximum : 0;
+
+          for (const index of occupied) {
+            if (
+              direction > 0 &&
+              index > current
+            ) {
+              destination = Math.min(
+                destination,
+                index
+              );
+            } else if (
+              direction < 0 &&
+              index < current
+            ) {
+              destination = Math.max(
+                destination,
+                index
+              );
+            }
+          }
+        }
+      }
+
+      // Skip hidden destinations where possible.
+      const hidden = vertical
+        ? hiddenRows
+        : hiddenCols;
+
+      while (
+        hidden.has(destination) &&
+        destination + direction >= 0 &&
+        destination + direction <= maximum
+      ) {
+        destination += direction;
+      }
+
+      moveTo(
+        vertical ? destination : baseRow,
+        vertical ? baseCol : destination,
+        event.shiftKey
+      );
+    }
+  );
+
+  useEffect(() => {
+    const onExcelKeyDown = (
+      event: KeyboardEvent
+    ) => {
+      handleExcelGridShortcut(event);
+    };
+
+    window.addEventListener(
+      "keydown",
+      onExcelKeyDown,
+      true
+    );
+
+    return () => {
+      window.removeEventListener(
+        "keydown",
+        onExcelKeyDown,
+        true
+      );
+    };
+  }, []);
+
+  // Reveal keyboard destinations using the same
+  // compressed vertical scroll model as the grid.
+  useLayoutEffect(() => {
+    const pending =
+      pendingKeyboardNavigationRef.current;
+
+    if (!pending || editingKey !== null) return;
+
+    if (pending.sheetId !== sheet.id) {
+      pendingKeyboardNavigationRef.current = null;
+      return;
+    }
+
+    const grid = document.getElementById(
+      "awm-print-area"
+    );
+
+    if (!grid) return;
+
+    const scale = Math.max(
+      0.1,
+      zoomLevel / 100
+    );
+
+    const height = grid.clientHeight / scale;
+    const width = grid.clientWidth / scale;
+
+    const physicalRange = Math.max(
+      0,
+      physicalRowsHeight +
+      HEADER_HEIGHT -
+      height
+    );
+
+    const logicalRange = Math.max(
+      0,
+      logicalRowsHeight +
+      HEADER_HEIGHT -
+      height
+    );
+
+    const physicalTop = grid.scrollTop / scale;
+
+    const currentLogicalTop =
+      rowHeightCompression > 0 &&
+        physicalRange > 0
+        ? Math.min(
+          1,
+          Math.max(
+            0,
+            physicalTop / physicalRange
+          )
+        ) * logicalRange
+        : physicalTop;
+
+    let desiredLogicalTop = currentLogicalTop;
+
+    if (pending.row >= sheet.frozenRows) {
+      const top =
+        HEADER_HEIGHT +
+        rowOffsets[pending.row];
+
+      const bottom =
+        HEADER_HEIGHT +
+        rowOffsets[pending.row + 1];
+
+      const frozenHeight =
+        HEADER_HEIGHT +
+        rowOffsets[sheet.frozenRows];
+
+      if (
+        top <
+        currentLogicalTop + frozenHeight
+      ) {
+        desiredLogicalTop =
+          top - frozenHeight;
+      } else if (
+        bottom >
+        currentLogicalTop + height
+      ) {
+        desiredLogicalTop =
+          bottom - height;
+      }
+    }
+
+    desiredLogicalTop = Math.max(
+      0,
+      Math.min(
+        logicalRange,
+        desiredLogicalTop
+      )
+    );
+
+    const desiredPhysicalTop =
+      rowHeightCompression > 0 &&
+        logicalRange > 0
+        ? (
+          desiredLogicalTop /
+          logicalRange
+        ) * physicalRange
+        : desiredLogicalTop;
+
+    let desiredLeft = grid.scrollLeft / scale;
+
+    if (pending.col >= sheet.frozenCols) {
+      const left =
+        ROW_HEADER_WIDTH +
+        colOffsets[pending.col];
+
+      const right =
+        ROW_HEADER_WIDTH +
+        colOffsets[pending.col + 1];
+
+      const frozenWidth =
+        ROW_HEADER_WIDTH +
+        colOffsets[sheet.frozenCols];
+
+      if (
+        left <
+        desiredLeft + frozenWidth
+      ) {
+        desiredLeft = left - frozenWidth;
+      } else if (
+        right >
+        desiredLeft + width
+      ) {
+        desiredLeft = right - width;
+      }
+    }
+
+    grid.scrollTop =
+      desiredPhysicalTop * scale;
+
+    grid.scrollLeft =
+      Math.max(0, desiredLeft) * scale;
+
+    const destination = cellRefs.current.get(
+      cellKey(pending.row, pending.col)
+    );
+
+    if (destination) {
+      destination.focus({
+        preventScroll: true,
+      });
+
+      pendingKeyboardNavigationRef.current = null;
+    }
+  });
+
+  // ===== EXCEL GRID SHORTCUTS END =====
+
   const insertFunctionFromToolbar = () => {
     startEditing(activeCell, "=");
     setShowFunctionWizard(true);
@@ -9475,7 +10735,7 @@ export default function ExcelStudioPage() {
 
       const entry: RecentFileEntry = {
         id: savedId,
-        name: name.trim() || "Untitled Workbook",
+        name: name.trim() || "ALIMXL Workbook",
         openedAt: new Date().toISOString(),
       };
 
@@ -9516,7 +10776,7 @@ export default function ExcelStudioPage() {
       "New Workbook",
       "Create a new workbook? Unsaved changes will be lost.",
       () => {
-        setWorkbookName("Untitled Workbook");
+        setWorkbookName("ALIMXL Workbook");
         setWorkbookId(null);
         setSheets([createSheet("Sheet 1")]);
         setActiveSheetIndex(0);
@@ -9633,20 +10893,257 @@ export default function ExcelStudioPage() {
     });
   }, []);
 
-  const [pdfViewer, setPdfViewer] = useState<{ url: string; name: string } | null>(null);
+  // ===== PDF IMPORT: STATE AND COMMIT HANDLER START =====
+
   useEffect(() => {
     if (!pdfViewer) return;
+
     const url = pdfViewer.url;
-    return () => URL.revokeObjectURL(url);
-  }, [pdfViewer]);
-  useEffect(() => {
-    if (!pdfViewer) return;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setPdfViewer(null);
+
+    return () => {
+      URL.revokeObjectURL(url);
     };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
   }, [pdfViewer]);
+
+  useEffect(() => {
+    // When the import dialog is open, its own Escape
+    // handling must not also close the PDF viewer.
+    if (!pdfViewer || pdfImportFile) return;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setPdfViewer(null);
+      }
+    };
+
+    window.addEventListener("keydown", closeOnEscape);
+
+    return () => {
+      window.removeEventListener(
+        "keydown",
+        closeOnEscape
+      );
+    };
+  }, [pdfViewer, pdfImportFile]);
+
+  const appendPdfRows = (rows: string[][]) => {
+    if (localSaveInProgressRef.current) {
+      throw new Error(
+        "সেভ চলছে। সেভ শেষ হলে আবার Import করুন।"
+      );
+    }
+
+    if (editingKey !== null) {
+      throw new Error(
+        "বর্তমান cell-এর editing শেষ করে আবার Import করুন।"
+      );
+    }
+
+    if (
+      !Array.isArray(rows) ||
+      rows.length === 0 ||
+      rows.length > MAX_ROWS
+    ) {
+      throw new Error(
+        "PDF-এর row সংখ্যা অনুমোদিত সীমার মধ্যে নেই।"
+      );
+    }
+
+    let columns = 0;
+    let populatedCells = 0;
+
+    // Resource guard for this initial PDF import implementation.
+    const PDF_IMPORT_MAX_POPULATED_CELLS = 1_000_000;
+
+    for (const row of rows) {
+      if (!Array.isArray(row)) {
+        throw new Error(
+          "PDF থেকে পাওয়া row-এর গঠন সঠিক নয়।"
+        );
+      }
+
+      columns = Math.max(columns, row.length);
+
+      if (columns > MAX_COLS) {
+        throw new Error(
+          "PDF-এর column সংখ্যা অনুমোদিত সীমার বেশি।"
+        );
+      }
+
+      for (const value of row) {
+        if (typeof value !== "string") {
+          throw new Error(
+            "PDF থেকে পাওয়া cell-এর মান সঠিক নয়।"
+          );
+        }
+
+        if (value !== "") {
+          populatedCells++;
+
+          if (
+            populatedCells >
+            PDF_IMPORT_MAX_POPULATED_CELLS
+          ) {
+            throw new Error(
+              "এই PDF import-এর populated cell সীমা " +
+              "১০,০০,০০০। PDF ছোট ভাগে ভাগ করে আনুন।"
+            );
+          }
+        }
+      }
+    }
+
+    if (columns === 0 || populatedCells === 0) {
+      throw new Error(
+        "Import করার মতো কোনো cell data পাওয়া যায়নি।"
+      );
+    }
+
+    const previousSheets = sheetsRef.current;
+
+    if (previousSheets.length === 0) {
+      throw new Error(
+        "বর্তমান workbook-এ কোনো sheet পাওয়া যায়নি।"
+      );
+    }
+
+    let suffix = 1;
+
+    const existingNames = new Set(
+      previousSheets.map((item) =>
+        item.name.trim().toLowerCase()
+      )
+    );
+
+    while (
+      existingNames.has(
+        `pdf import ${suffix}`.toLowerCase()
+      )
+    ) {
+      suffix++;
+    }
+
+    const sheetName = `PDF Import ${suffix}`;
+
+    const addedSheet = createSheet(
+      sheetName,
+      `pdf_${Date.now()}`
+    );
+
+    addedSheet.gridRows = Math.min(
+      MAX_ROWS,
+      Math.max(100, rows.length)
+    );
+
+    addedSheet.gridCols = Math.min(
+      MAX_COLS,
+      Math.max(26, columns)
+    );
+
+    for (
+      let rowIndex = 0;
+      rowIndex < rows.length;
+      rowIndex++
+    ) {
+      const row = rows[rowIndex];
+
+      for (
+        let colIndex = 0;
+        colIndex < row.length;
+        colIndex++
+      ) {
+        const value = row[colIndex];
+
+        if (value === "") continue;
+
+        // PDF content must be treated as extracted data,
+        // not as a restored spreadsheet formula.
+        //
+        // Preserve leading-zero identifiers as text too.
+        const mustRemainText =
+          /^\s*[=+@]/.test(value) ||
+          /^\s*-/.test(value) &&
+          !/^\s*-\d+(?:\.\d+)?\s*$/.test(value) ||
+          /^\s*[+-]?0\d/.test(value);
+
+        addedSheet.cells[
+          cellKey(rowIndex, colIndex)
+        ] = mustRemainText
+            ? {
+              value,
+              style: {
+                numberFormat: "text",
+              },
+            }
+            : {
+              value,
+            };
+      }
+    }
+
+    for (
+      let colIndex = 0;
+      colIndex < columns;
+      colIndex++
+    ) {
+      addedSheet.colWidths[colIndex] = 140;
+    }
+
+    // All validation and construction above happen before
+    // the workbook is changed.
+    //
+    // Use the existing history-aware setter.
+    // Do not replace or mutate an existing sheet.
+    setSheets([
+      ...previousSheets,
+      addedSheet,
+    ]);
+
+    // Open the newly appended sheet without replacing
+    // any existing sheet or changing the workbook identity.
+    setActiveSheetIndex(previousSheets.length);
+
+    setActiveCell("A1");
+    setSelection({
+      r1: 0,
+      c1: 0,
+      r2: 0,
+      c2: 0,
+    });
+
+    setCtrlSelectedRows([]);
+    setCtrlSelectedCols([]);
+    setCtrlSelectedCells([]);
+
+    setEditingKey(null);
+    setEditValue("");
+    setClipboard(null);
+    setFormatPainter(null);
+    setSaveState("idle");
+
+    setPdfImportFile(null);
+    setPdfViewer(null);
+    setShowHomeScreen(false);
+
+    // Start the imported sheet at its top-left corner.
+    // The existing scroll handler synchronizes viewport state.
+    window.requestAnimationFrame(() => {
+      const area = document.getElementById("awm-print-area");
+
+      if (area) {
+        area.scrollTop = 0;
+        area.scrollLeft = 0;
+      }
+    });
+
+    showToast(
+      `Opened "${sheetName}" with ` +
+      `${rows.length.toLocaleString()} rows and ` +
+      `${columns.toLocaleString()} columns. Review the converted data.`
+    );
+  };
+
+  // ===== PDF IMPORT: STATE AND COMMIT HANDLER END =====
 
   const onFileSelected = async (file: File) => {
     if (file.name.toLowerCase().endsWith(".pdf")) {
@@ -9658,7 +11155,11 @@ export default function ExcelStudioPage() {
         throw new Error("ফাইলটিতে PDF header পাওয়া যায়নি। সঠিক PDF নির্বাচন করুন।");
       }
       const blob = new Blob([file], { type: "application/pdf" });
-      setPdfViewer({ url: URL.createObjectURL(blob), name: file.name });
+      setPdfViewer({
+        url: URL.createObjectURL(blob),
+        name: file.name,
+        file,
+      });
       return;
     }
     if (file.name.toLowerCase().endsWith(".json")) {
@@ -9918,7 +11419,7 @@ export default function ExcelStudioPage() {
 
     if (
       !workbookId &&
-      (!nameToUse || nameToUse === "Untitled Workbook")
+      (!nameToUse || nameToUse === "ALIMXL Workbook")
     ) {
       requestPrompt(
         "Save Workbook",
@@ -9926,7 +11427,7 @@ export default function ExcelStudioPage() {
         (entered) => {
           proceed(entered.trim());
         },
-        nameToUse === "Untitled Workbook" ? "" : nameToUse
+        nameToUse === "ALIMXL Workbook" ? "" : nameToUse
       );
       return;
     }
@@ -10857,18 +12358,21 @@ export default function ExcelStudioPage() {
 
   // 🛡️ P0-FIX-2: cap Select All to prevent crashes on large grids
   const selectAllCells = () => {
-    const totalCells = sheet.gridRows * sheet.gridCols;
-    if (totalCells > MAX_SELECTION_CELLS) {
-      const maxRows = Math.max(1, Math.floor(MAX_SELECTION_CELLS / sheet.gridCols));
-      setSelection({ r1: 0, c1: 0, r2: maxRows - 1, c2: sheet.gridCols - 1 });
-      showToast(`All cells selected (limited to first ${maxRows} rows).`);
-    } else {
-      setSelection({ r1: 0, c1: 0, r2: sheet.gridRows - 1, c2: sheet.gridCols - 1 });
-      showToast("All cells selected.");
-    }
-    setActiveCell("A1");
-  };
+    setCtrlSelectedRows([]);
+    setCtrlSelectedCols([]);
+    setCtrlSelectedCells([]);
 
+    setSelection({
+      r1: 0,
+      c1: 0,
+      r2: sheet.gridRows - 1,
+      c2: sheet.gridCols - 1,
+    });
+
+    showToast(
+      "Entire sheet selected. Bulk actions and statistics remain limited to 50,000 cells."
+    );
+  };
   const toggleFreezeRowsAndColumns = () => {
     const shouldFreeze = sheet.frozenRows === 0 && sheet.frozenCols === 0;
     updateSheet({ frozenRows: shouldFreeze ? Math.max(1, activePos.row + 1) : 0, frozenCols: shouldFreeze ? Math.max(1, activePos.col + 1) : 0 });
@@ -10913,6 +12417,85 @@ export default function ExcelStudioPage() {
     // Insert a new column immediately left of the leftmost selected column
     insertColumnAtIndex(Math.min(selection.c1, selection.c2));
   };
+
+
+  // DATE_TIME_MANAGER_BRIDGE_START
+  const openDateTimeManager = () => {
+    if (editingKey) {
+      showToast("Finish editing the current cell before opening Date & Time Manager.");
+      return;
+    }
+    const rowCount = Math.abs(selection.r2 - selection.r1) + 1;
+    const colCount = Math.abs(selection.c2 - selection.c1) + 1;
+    if (rowCount * colCount > 10000 || selectionCells.length > 10000) {
+      showToast("Date Manager supports up to 10,000 selected cells per operation.");
+      return;
+    }
+    const current = sheetsRef.current.find((item) => item.id === sheet.id);
+    if (!current) return;
+    const keys = [...selectionCells];
+    if (!keys.length) return;
+    if (keys.some((key) => {
+      const cell = current.cells[key];
+      return Boolean(cell?.mergedInto) || (cell?.rowSpan ?? 1) > 1 || (cell?.colSpan ?? 1) > 1;
+    })) {
+      showToast("Unmerge the selected cells before using Date & Time Manager.");
+      return;
+    }
+    setDateManagerTarget({
+      sheetId: current.id,
+      source: current,
+      keys,
+      active: activeCell,
+      sample: keys.map((key) => ({
+        key,
+        raw: current.cells[key]?.value ?? "",
+        evaluated: getCellValue(key),
+      })),
+    });
+  };
+
+  const applyDateTimePlan = (plan: AlxDatePlan) => {
+    if (!dateManagerTarget || dateApplyLock.current) return;
+    dateApplyLock.current = true;
+    try {
+      const target = dateManagerTarget;
+      const currentSheets = sheetsRef.current;
+      const index = currentSheets.findIndex((item) => item.id === target.sheetId);
+      if (index < 0 || currentSheets[index] !== target.source || sheet.id !== target.sheetId) {
+        showToast("The sheet changed after preview. Close and reopen Date Manager before applying.");
+        return;
+      }
+      if (!plan.writes.length || plan.writes.length > 10000) {
+        showToast("Invalid Date Manager update size.");
+        return;
+      }
+      const nextCells = { ...currentSheets[index].cells };
+      for (const write of plan.writes) {
+        const previous = nextCells[write.key] ?? { value: "" };
+        nextCells[write.key] = {
+          ...previous,
+          ...(write.value === undefined ? {} : { value: write.value }),
+          style: { ...previous.style, ...write.style },
+        };
+      }
+      // One workbook update means one Undo step for the complete operation.
+      setSheets(currentSheets.map((item, itemIndex) => itemIndex === index
+        ? { ...item, cells: nextCells }
+        : item));
+      for (const write of plan.writes) {
+        if (write.value !== undefined) {
+          recordAction({ type: "SET_VALUE", keys: [write.key], value: write.value });
+        }
+        recordAction({ type: "SET_STYLE", keys: [write.key], style: write.style });
+      }
+      setDateManagerTarget(null);
+      showToast(`Date Manager updated ${plan.writes.length} cells. Ctrl+Z undoes this operation.`);
+    } finally {
+      dateApplyLock.current = false;
+    }
+  };
+  // DATE_TIME_MANAGER_BRIDGE_END
 
   const applyNumberFormat = (format: NumberFormat) => {
     applyStyleToSelection({ numberFormat: format });
@@ -11400,6 +12983,10 @@ export default function ExcelStudioPage() {
       case "INSERT_SPECIAL_CHAR":
         setShowSpecialCharsDialog(true);
         break;
+      case "DATA_CALCULATE":
+        setRefreshTick((tick) => tick + 1);
+        showToast("Workbook recalculated.");
+        break;
       case "INSERT_DATE":
         insertDate();
         break;
@@ -11502,6 +13089,33 @@ export default function ExcelStudioPage() {
       case "SHEET_CLEAR_CELLS":
         clearSelection();
         break;
+      case "SHEET_FILL_CELLS": {
+        const r1 = Math.min(selection.r1, selection.r2);
+        const r2 = Math.max(selection.r1, selection.r2);
+        const c1 = Math.min(selection.c1, selection.c2);
+        const c2 = Math.max(selection.c1, selection.c2);
+
+        if (c1 === c2) {
+          showToast(
+            "Fill Right: select the source column and at least one destination column."
+          );
+          break;
+        }
+
+        const previousSeriesMode = fillSeriesMode.current;
+        fillSeriesMode.current = false;
+
+        try {
+          commitFill(
+            { r1, r2, c1, c2: c1 },
+            { r1, r2, c1, c2 }
+          );
+        } finally {
+          fillSeriesMode.current = previousSeriesMode;
+        }
+
+        break;
+      }
       default:
         showToast(`Action Triggered: ${action}`);
         break;
@@ -12192,7 +13806,10 @@ export default function ExcelStudioPage() {
     const input = homeDataInput.current;
     if (!input) return;
     homeDataMode.current = mode;
-    input.accept = mode === "restore" ? ".json" : ".xlsx,.xls,.csv,.json";
+    input.accept =
+      mode === "restore"
+        ? ".json"
+        : ".xlsx,.xls,.csv,.json,.pdf";
     input.value = "";
     input.click();
   }
@@ -12208,12 +13825,114 @@ export default function ExcelStudioPage() {
       }
     >
 
+      {dateManagerTarget && (
+        <AlxDateTimeManager
+          target={dateManagerTarget}
+          onClose={() => setDateManagerTarget(null)}
+          onApply={applyDateTimePlan}
+        />
+      )}
+
+      {/* PDF IMPORT PREVIEW START */}
+
+      {pdfImportFile && (
+        <PdfTableImport
+          file={pdfImportFile}
+          maxRows={MAX_ROWS}
+          maxCols={MAX_COLS}
+          onClose={() => {
+            setPdfImportFile(null);
+          }}
+          onImport={appendPdfRows}
+        />
+      )}
+
+      {/* PDF IMPORT PREVIEW END */}
+
       {pdfViewer && (
         <div className="fixed inset-0 z-100000 flex flex-col bg-white text-black" role="dialog" aria-modal="true" aria-label="PDF viewer">
           <div className="flex items-center justify-between gap-3 border-b bg-slate-100 p-3">
             <div className="min-w-0"><div className="truncate font-semibold">{pdfViewer.name}</div>
               <div className="text-sm">PDF শুধু দেখার জন্য খোলা হয়েছে; মূল শিট অপরিবর্তিত আছে।</div></div>
-            <button type="button" autoFocus className="shrink-0 rounded border bg-white px-4 py-2" onClick={() => setPdfViewer(null)}>বন্ধ করে শিটে ফিরুন</button>
+
+            {/* PDF VIEWER ACTIONS START */}
+
+            <div className="flex flex-wrap items-center justify-end gap-2.5">
+              <button
+                type="button"
+                disabled={pdfImportFile !== null}
+                className={
+                  "inline-flex min-h-11 items-center justify-center " +
+                  "gap-2 rounded-xl border border-emerald-700 " +
+                  "bg-emerald-700 px-5 py-2.5 text-sm font-semibold " +
+                  "text-white shadow-sm transition-colors " +
+                  "hover:border-emerald-800 hover:bg-emerald-800 " +
+                  "focus-visible:outline-none focus-visible:ring-4 " +
+                  "focus-visible:ring-emerald-200 " +
+                  "disabled:cursor-not-allowed disabled:opacity-50 " +
+                  "motion-reduce:transition-none"
+                }
+                onClick={() => {
+                  if (pdfImportFile) return;
+
+                  if (localSaveInProgressRef.current) {
+                    showToast(
+                      "Please wait until the workbook has finished saving."
+                    );
+                    return;
+                  }
+
+                  if (editingKey !== null) {
+                    showToast(
+                      "Finish editing the current cell before converting."
+                    );
+                    return;
+                  }
+
+                  setPdfImportFile(pdfViewer.file);
+                }}
+              >
+                <Icons.FileSpreadsheet
+                  size={18}
+                  aria-hidden="true"
+                />
+
+                <span>Convert to Spreadsheet</span>
+
+                <Icons.ArrowRight
+                  size={16}
+                  aria-hidden="true"
+                />
+              </button>
+
+              <button
+                type="button"
+                autoFocus
+                className={
+                  "inline-flex min-h-11 shrink-0 items-center " +
+                  "justify-center gap-2 rounded-xl border " +
+                  "border-slate-300 bg-white px-4 py-2.5 " +
+                  "text-sm font-semibold text-slate-700 shadow-sm " +
+                  "transition-colors hover:border-slate-400 " +
+                  "hover:bg-slate-50 focus-visible:outline-none " +
+                  "focus-visible:ring-4 focus-visible:ring-slate-200 " +
+                  "motion-reduce:transition-none"
+                }
+                onClick={() => {
+                  setPdfViewer(null);
+                }}
+              >
+                <Icons.X
+                  size={17}
+                  aria-hidden="true"
+                />
+
+                <span>Back to Spreadsheet</span>
+              </button>
+            </div>
+
+            {/* PDF VIEWER ACTIONS END */}
+
           </div>
           <object data={pdfViewer.url} type="application/pdf" className="min-h-0 flex-1 w-full" aria-label={pdfViewer.name}>
             <p className="p-4">এখানে PDF দেখা না গেলে <a className="underline" href={pdfViewer.url} target="_blank" rel="noopener noreferrer">আলাদা ট্যাবে PDF খুলুন</a>।</p>
@@ -12270,7 +13989,7 @@ export default function ExcelStudioPage() {
             setEditingKey(null);
             setEditValue("");
 
-            setWorkbookName("Untitled Workbook");
+            setWorkbookName("ALIMXL Workbook");
             setWorkbookId(null);
             replaceWorkbookSheets([createSheet("Sheet 1")]);
             setActiveSheetIndex(0);
@@ -12455,9 +14174,21 @@ export default function ExcelStudioPage() {
             void refreshRecentFromDevice();
             setShowHomeScreen(true);
           }}
-          className="mr-2 rounded-md border border-[#D2D0CE] bg-white px-3 py-1.5 text-xs font-semibold text-[#107C41] transition-colors hover:bg-[#EEF5F0] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#107C41]"
+          className="relative isolate mr-2 overflow-hidden rounded-md border border-[#D2D0CE] bg-transparent px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#107C41]"
         >
-          Home
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute left-1/2 top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 rotate-45"
+            style={{
+              background:
+                "linear-gradient(135deg, #016200 0%, #013706 100%)",
+              border: "1px solid rgba(21, 128, 61, 0.45)",
+              boxShadow:
+                "inset 0 0 5px rgba(255, 255, 255, 0.8), 0 0 4px rgba(34, 197, 94, 0.2)",
+              opacity: 0.65,
+            }}
+          />
+          <span className="relative z-10 font-bold text-white">Home</span>
         </button>
 
 
@@ -12546,17 +14277,24 @@ export default function ExcelStudioPage() {
           );
         })}
 
-
-
         <div className="alx-workbook-title ml-auto flex items-center gap-2 px-3">
-          <div className="ml-auto hidden items-center gap-2 rounded-lg border border-[#C8C6C4] bg-linear-to-b from-white to-[#EDEBE9] px-3 py-1 text-xs font-black text-[#3B3A39] shadow-sm md:flex">
+          <a
+            href="https://smartfamilyitsolutionsworld.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Visit Smart Family IT Solutions World (opens in a new tab)"
+            className="ml-auto hidden items-center gap-2 rounded-lg border border-[#C8C6C4] bg-transparent px-3 py-1 text-xs font-black text-white no-underline shadow-sm md:flex"
+          >
             <Icons.Crown size={16} className="text-amber-500" />
             SMART FAMILY IT SOLUTIONS WORLD LLC
-          </div>
+          </a>
+
+
           <input
             value={workbookName}
             onChange={(e) => setWorkbookName(e.target.value)}
-            className="h-7 w-56 rounded-md border border-[#C8C6C4] bg-white px-3 text-xs font-bold outline-none shadow-inner transition-all focus:border-[#106EBE] focus:ring-2 focus:ring-[#106EBE]/15"
+            className="h-7 w-56 rounded-md border border-[#C8C6C4] bg-white px-3 text-sm text-center font-bold text-[#6B21A8] outline-none shadow-inner transition-all focus:border-[#106EBE] focus:ring-2 focus:ring-[#106EBE]/15"
+            style={{ color: "#6B21A8", WebkitTextFillColor: "#6B21A8" }}
             aria-label="Workbook name"
           />
           {saveState === "saving" && <span className="text-xs text-[#106EBE] font-bold whitespace-nowrap">Saving...</span>}
@@ -12650,40 +14388,152 @@ export default function ExcelStudioPage() {
           />
 
 
-          <div className="relative">
+          {/* START: Sapphire Border Thickness */}
+          <div
+            className="relative"
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.stopPropagation();
+                setBorderWidthMenuOpen(false);
+              }
+            }}
+          >
             <button
               type="button"
               onClick={() => setBorderWidthMenuOpen((v) => !v)}
               title="Border Thickness"
               aria-label="Border Thickness"
-              aria-haspopup="menu"
+              aria-haspopup="true"
               aria-expanded={borderWidthMenuOpen}
-              className={`flex h-8 w-6 items-center justify-center rounded-md border shadow-sm transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-[#106EBE]/30 ${borderWidthMenuOpen ? "border-[#106EBE] bg-[#E5F1FB] text-[#106EBE]" : "border-transparent text-[#323130] hover:border-[#C8C6C4] hover:bg-white hover:text-[#106EBE] hover:shadow-md"}`}
+              className={`${sapphireToolbarClass(borderWidthMenuOpen)} text-[#205FA9]`}
             >
-              <Icons.ChevronDown size={16} />
+              <svg
+                width="28"
+                height="27"
+                viewBox="0 0 32 32"
+                fill="none"
+                aria-hidden="true"
+              >
+                <path
+                  d="M5 7.5h15"
+                  stroke="#4389D2"
+                  strokeWidth="1"
+                  strokeLinecap="round"
+                />
+
+                <path
+                  d="M5 15.5h15"
+                  stroke="#286BC0"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                />
+
+                <path
+                  d="M5 24h15"
+                  stroke="#193F6C"
+                  strokeWidth="4.5"
+                  strokeLinecap="round"
+                />
+
+                <path
+                  d="M6 22.7h13"
+                  stroke="#8FC2F4"
+                  strokeWidth="0.8"
+                  strokeLinecap="round"
+                />
+
+                <path
+                  d="m24 14 3 3 3-3"
+                  stroke="#205FA9"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+
+              <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+                Border Thickness
+              </span>
             </button>
+
             {borderWidthMenuOpen && (
-              <React.Fragment>
-                <div className="fixed inset-0 z-40" onClick={() => setBorderWidthMenuOpen(false)} aria-hidden="true" />
-                <div className="absolute left-0 top-full z-50 mt-1 w-32 overflow-hidden rounded-md border border-[#C8C6C4] bg-white py-1 shadow-lg">
-                  {[{ label: "Thin", value: 1 }, { label: "Medium", value: 2 }, { label: "Thick", value: 4 }].map((opt) => {
-                    const isActive = (activeCellStyle.borderWidth || 2) === opt.value;
+              <>
+                <div
+                  className="fixed inset-0 z-9990"
+                  onClick={() => setBorderWidthMenuOpen(false)}
+                  aria-hidden="true"
+                />
+
+                <div
+                  role="group"
+                  aria-label="Border Thickness"
+                  className="absolute left-0 top-full z-9991 mt-1 w-44 overflow-hidden rounded-lg border border-[#B9C8D8] bg-white p-1 shadow-[0_8px_24px_rgba(25,63,108,0.18)]"
+                >
+                  {[
+                    { label: "Thin", value: 1 },
+                    { label: "Medium", value: 2 },
+                    { label: "Thick", value: 4 },
+                  ].map((opt) => {
+                    const isActive =
+                      (activeCellStyle.borderWidth || 2) === opt.value;
+
                     return (
                       <button
                         key={opt.value}
                         type="button"
-                        onClick={() => { applyStyleToSelection({ borderWidth: opt.value }); showToast("Border width applied."); setBorderWidthMenuOpen(false); }}
-                        className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-xs ${isActive ? "bg-[#E5F1FB] font-bold text-[#106EBE]" : "text-[#323130] hover:bg-[#F3F2F1]"}`}
+                        aria-pressed={isActive}
+                        onClick={() => {
+                          applyStyleToSelection({
+                            borderWidth: opt.value,
+                          });
+                          showToast("Border width applied.");
+                          setBorderWidthMenuOpen(false);
+                        }}
+                        className={`flex min-h-9 w-full items-center gap-3 rounded-md border px-2.5 py-2 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3675A7]/40 ${isActive
+                          ? "border-[#C7DDF1] bg-[#E8F3FF] font-semibold text-[#193F6C]"
+                          : "border-transparent bg-white text-[#334B63] hover:border-[#D9E6F2] hover:bg-[#EFF6FF]"
+                          }`}
                       >
-                        {opt.label}
-                        {isActive && <Icons.Check size={12} />}
+                        <svg
+                          width="30"
+                          height="16"
+                          viewBox="0 0 30 16"
+                          fill="none"
+                          className="shrink-0"
+                          aria-hidden="true"
+                        >
+                          <path
+                            d="M3 8h24"
+                            stroke={
+                              isActive ? "#205FA9" : "#527BA5"
+                            }
+                            strokeWidth={opt.value}
+                            strokeLinecap="round"
+                          />
+                        </svg>
+
+                        <span className="flex-1">
+                          {opt.label}
+                        </span>
+
+                        <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                          {isActive && (
+                            <Icons.Check
+                              size={14}
+                              className="text-[#205FA9]"
+                            />
+                          )}
+                        </span>
                       </button>
                     );
                   })}
                 </div>
-              </React.Fragment>
+              </>
             )}
           </div>
+          {/* END: Sapphire Border Thickness */}
+
+
           <SpreadsheetToolbarIconButton
             button={{
               label: activeCellStyle.textDirection === "rtl" ? "Text Direction: RTL" : "Text Direction: LTR",
@@ -12762,26 +14612,115 @@ export default function ExcelStudioPage() {
           {/* Currency split-button: main button applies the active currency, chevron opens the world-currency dropdown */}
           <div className="relative">
             <div className="flex items-stretch">
+
               <button
                 type="button"
                 title="Apply currency format"
                 aria-label="Currency"
-                onClick={() => applyStyleToSelection({ numberFormat: "currency", currencyCode: activeCellStyle.currencyCode || "USD" })}
-                className={`inline-flex items-center gap-1 rounded-l-md border px-2 py-1 text-xs font-medium shadow-inner transition ${activeCellStyle.numberFormat === "currency" ? "border-[#106EBE] bg-[#E5F1FB] text-[#106EBE]" : "border-[#C8C6C4] bg-white text-[#444] hover:border-[#106EBE] hover:bg-[#F4F9FD]"}`}
+                onClick={() =>
+                  applyStyleToSelection({
+                    numberFormat: "currency",
+                    currencyCode: activeCellStyle.currencyCode || "USD",
+                  })
+                }
+                className={[
+                  "group relative inline-flex h-8 shrink-0 items-center justify-center gap-1.5",
+                  "rounded-l-md border border-r-0 px-2",
+                  "text-xs font-semibold",
+                  "transition-[background-color,border-color,box-shadow] duration-150",
+                  "focus-visible:outline-none focus-visible:ring-2",
+                  "focus-visible:ring-[#3675A7]/40",
+                  "motion-reduce:transition-none",
+                  activeCellStyle.numberFormat === "currency"
+                    ? "border-[#3675A7] bg-[#E8F3FF] text-[#193F6C] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] hover:bg-[#DCEEFF]"
+                    : "border-[#B9C8D8] bg-white text-[#205FA9] shadow-sm hover:border-[#7B9EC3] hover:bg-[#EFF6FF]",
+                ].join(" ")}
               >
-                <Icons.CircleDollarSign size={14} />
-                <span className="hidden md:inline">{findCurrency(activeCellStyle.currencyCode).code}</span>
+                <svg
+                  width="24"
+                  height="24"
+                  viewBox="0 0 32 32"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  {/* Chrome coin frame */}
+                  <circle
+                    cx="16"
+                    cy="16"
+                    r="12"
+                    fill="#DCE8F3"
+                    stroke="#526A83"
+                    strokeWidth="1.1"
+                  />
+
+                  {/* Ice-blue coin face */}
+                  <circle
+                    cx="16"
+                    cy="16"
+                    r="9.7"
+                    fill="#EFF7FF"
+                    stroke="#739BC7"
+                    strokeWidth="0.8"
+                  />
+
+                  {/* Chrome rim reflection */}
+                  <path
+                    d="M6 13A10.4 10.4 0 0 1 20 6.2"
+                    stroke="#FFFFFF"
+                    strokeWidth="1.3"
+                    strokeLinecap="round"
+                  />
+
+                  {/* Sapphire currency mark */}
+                  <path
+                    d="
+                      M20.1 11.1
+                      C19.2 10.3 17.9 9.8 16.1 9.8
+                      C13.6 9.8 12 11 12 12.8
+                      C12 14.6 13.7 15.3 16 15.9
+                      C18.4 16.5 20 17.2 20 19.1
+                      C20 21 18.3 22.2 15.8 22.2
+                      C14.1 22.2 12.5 21.6 11.4 20.5
+                      M16 7.5v17
+                    "
+                    stroke="#205FA9"
+                    strokeWidth="2.1"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+
+                <span className="hidden md:inline">
+                  {findCurrency(activeCellStyle.currencyCode).code}
+                </span>
               </button>
+
               <button
                 type="button"
                 title="Choose currency"
                 aria-label="Choose currency"
                 aria-expanded={currencyMenuOpen}
                 onClick={() => setCurrencyMenuOpen((v) => !v)}
-                className={`inline-flex items-center rounded-r-md border border-l-0 px-1 py-1 shadow-inner transition ${currencyMenuOpen ? "border-[#106EBE] bg-[#E5F1FB] text-[#106EBE]" : "border-[#C8C6C4] bg-white text-[#444] hover:border-[#106EBE] hover:bg-[#F4F9FD]"}`}
+                className={[
+                  "inline-flex h-8 w-4 shrink-0 items-center justify-center",
+                  "rounded-r-md border shadow-sm",
+                  "transition-colors duration-150",
+                  "focus-visible:outline-none focus-visible:ring-2",
+                  "focus-visible:ring-[#3675A7]/40",
+                  "motion-reduce:transition-none",
+                  currencyMenuOpen ||
+                    activeCellStyle.numberFormat === "currency"
+                    ? "border-[#3675A7] bg-[#E8F3FF] text-[#205FA9] hover:bg-[#DCEEFF]"
+                    : "border-[#B9C8D8] bg-white text-[#205FA9] hover:border-[#7B9EC3] hover:bg-[#EFF6FF]",
+                ].join(" ")}
               >
-                {currencyMenuOpen ? <Icons.ChevronUp size={14} /> : <Icons.ChevronDown size={14} />}
+                {currencyMenuOpen ? (
+                  <Icons.ChevronUp size={12} />
+                ) : (
+                  <Icons.ChevronDown size={12} />
+                )}
               </button>
+
             </div>
 
             {currencyMenuOpen && (
@@ -12793,6 +14732,14 @@ export default function ExcelStudioPage() {
                   aria-hidden="true"
                 />
                 <div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-md border border-[#C8C6C4] bg-white shadow-lg">
+                  <div className="border-b border-[#E1DFDD] px-3 py-2">
+                    <div className="text-xs font-semibold text-[#014E00]">
+                      Currency Format
+                    </div>
+                    <p className="mt-1 text-[11px] leading-4 text-[#605E5C]">
+                      শুধু প্রদর্শনের ফরম্যাট বদলায়—মুদ্রা রূপান্তর করে না।
+                    </p>
+                  </div>
                   <div className="border-b border-[#E1DFDD] p-2">
                     <div className="flex items-center gap-2 rounded-md border border-[#D2D0CE] px-2 py-1">
                       <Icons.Search size={12} className="text-[#605E5C]" />
@@ -12827,7 +14774,20 @@ export default function ExcelStudioPage() {
                               <span className="w-8 shrink-0 text-center font-semibold">{c.symbol}</span>
                               <span className="truncate">{c.name}</span>
                             </span>
-                            <span className="shrink-0 font-mono text-[10px] text-[#605E5C]">{c.code}</span>
+                            <span className="flex shrink-0 items-center gap-2">
+                              <span className="font-mono text-[10px] text-[#605E5C]">
+                                {c.code}
+                              </span>
+                              <span className="inline-flex w-3 items-center justify-center">
+                                {active && (
+                                  <Icons.Check
+                                    size={12}
+                                    className="text-[#014E00]"
+                                    aria-label="Selected currency"
+                                  />
+                                )}
+                              </span>
+                            </span>
                           </button>
                         </li>
                       );
@@ -12842,7 +14802,7 @@ export default function ExcelStudioPage() {
           </div>
           <SpreadsheetToolbarIconButton button={{ label: "Percentage", icon: Icons.Percent, active: activeCellStyle.numberFormat === "percentage", kind: "toggle", onClick: () => applyNumberFormat("percentage") }} />
           <SpreadsheetToolbarIconButton button={{ label: "Number", icon: Icons.Binary, active: activeCellStyle.numberFormat === "number", kind: "toggle", onClick: () => applyNumberFormat("number") }} />
-          <SpreadsheetToolbarIconButton button={{ label: "Date", icon: Icons.CalendarDays, active: activeCellStyle.numberFormat === "date", kind: "toggle", onClick: () => applyNumberFormat("date") }} />
+          <SpreadsheetToolbarIconButton button={{ label: "Date & Time Manager", icon: Icons.CalendarDays, active: dateManagerTarget !== null, kind: "toggle", onClick: openDateTimeManager }} />
           <SpreadsheetToolbarIconButton button={{ label: "Scientific", icon: Icons.Superscript, active: activeCellStyle.numberFormat === "scientific", kind: "toggle", onClick: () => applyNumberFormat("scientific") }} />
           <SpreadsheetToolbarIconButton button={{ label: "Accounting", icon: Icons.Receipt, active: activeCellStyle.numberFormat === "accounting", kind: "toggle", onClick: () => applyNumberFormat("accounting") }} />
           <SpreadsheetToolbarIconButton button={{ label: "Text Format", icon: Icons.Type, active: activeCellStyle.numberFormat === "text", kind: "toggle", onClick: () => applyNumberFormat("text") }} />
@@ -12856,7 +14816,7 @@ export default function ExcelStudioPage() {
                 showToast("Custom format applied.");
               }
             }}
-            className="w-36 rounded-md border border-[#D2D0CE] bg-white px-2 py-1 text-xs outline-none focus:border-[#106EBE]"
+            className="w-18 rounded-md border border-[#D2D0CE] bg-white px-2 py-0.4 text-xs outline-none focus:border-[#106EBE]"
           />
           <SpreadsheetToolbarIconButton button={{ label: "Increase Decimal", icon: Icons.Plus, onClick: () => adjustDecimals(1) }} />
           <SpreadsheetToolbarIconButton button={{ label: "Decrease Decimal", icon: Icons.Minus, onClick: () => adjustDecimals(-1) }} />
@@ -12867,123 +14827,558 @@ export default function ExcelStudioPage() {
 
           <div className="relative" ref={borderMenuRef}>
             <div className="flex items-stretch">
+              {/* START: Premium Sapphire Border Split Buttons */}
               <button
                 type="button"
                 onClick={toggleBorderAll}
-                className="inline-flex items-center gap-1 rounded-l-md border border-C8C6C4 bg-white px-2 py-1 text-xs shadow-inner hover:border-106EBE hover:bg-F4F9FD"
                 title="Apply Border"
                 aria-label="Apply Border"
+                className={[
+                  "group relative inline-flex h-8 w-8 shrink-0",
+                  "items-center justify-center rounded-l-md",
+                  "border border-[#B9C8D8] bg-white",
+                  "shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(25,63,108,0.12)]",
+                  "transition-[background-color,border-color,box-shadow,transform] duration-150",
+                  "hover:z-10 hover:border-[#7B9EC3] hover:bg-[#EFF6FF]",
+                  "focus-visible:z-20 focus-visible:outline-none",
+                  "focus-visible:ring-2 focus-visible:ring-[#3675A7]/40",
+                  "active:translate-y-px active:bg-[#E2EDF8] active:shadow-none",
+                  "motion-reduce:transition-none",
+                ].join(" ")}
               >
-                <Icons.Square size={14} />
+                <svg
+                  width="27"
+                  height="27"
+                  viewBox="0 0 32 32"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  {/* Ice-white spreadsheet panel */}
+                  <rect
+                    x="5"
+                    y="5"
+                    width="22"
+                    height="22"
+                    rx="1"
+                    fill="#F1F8FF"
+                    stroke="#193F6C"
+                    strokeWidth="1.5"
+                  />
+
+                  {/* Soft sapphire cell shading */}
+                  <path
+                    d="M6 6h9.3v9.3H6z"
+                    fill="#D8EAFC"
+                  />
+                  <path
+                    d="M16.7 16.7H26V26h-9.3z"
+                    fill="#D8EAFC"
+                  />
+
+                  {/* Sapphire outer border and cell dividers */}
+                  <path
+                    d="M5.8 5.8h20.4v20.4H5.8zM16 5.8v20.4M5.8 16h20.4"
+                    stroke="#286BC0"
+                    strokeWidth="1.8"
+                    strokeLinejoin="round"
+                  />
+
+                  {/* Chrome-like upper reflection */}
+                  <path
+                    d="M7 7h7M18 7h7M7 18v7"
+                    stroke="#FFFFFF"
+                    strokeWidth="0.9"
+                    strokeLinecap="round"
+                  />
+                </svg>
+
+                <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+                  Apply Border
+                </span>
               </button>
 
               <button
                 type="button"
-                onClick={() => setBorderMenuOpen(v => !v)}
-                className="inline-flex items-center rounded-r-md border border-l-0 border-C8C6C4 bg-white px-1 py-1 text-xs shadow-inner hover:border-106EBE hover:bg-F4F9FD"
+                onClick={() => setBorderMenuOpen((v) => !v)}
                 title="Open border menu"
                 aria-label="Open border menu"
                 aria-expanded={borderMenuOpen}
+                className={[
+                  "relative inline-flex h-8 w-4 shrink-0",
+                  "items-center justify-center rounded-r-md",
+                  "border border-l-0",
+                  "shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(25,63,108,0.12)]",
+                  "transition-[background-color,border-color,box-shadow] duration-150",
+                  "focus-visible:z-20 focus-visible:outline-none",
+                  "focus-visible:ring-2 focus-visible:ring-[#3675A7]/40",
+                  "active:bg-[#DCEBFA]",
+                  "motion-reduce:transition-none",
+                  borderMenuOpen
+                    ? "border-[#7B9EC3] bg-[#E2EDF8]"
+                    : "border-[#B9C8D8] bg-white hover:border-[#7B9EC3] hover:bg-[#EFF6FF]",
+                ].join(" ")}
               >
-                <Icons.ChevronDown size={14} />
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <path
+                    d={borderMenuOpen ? "M4 10l4-4 4 4" : "M4 6l4 4 4-4"}
+                    stroke="#205FA9"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
               </button>
+              {/* END: Premium Sapphire Border Split Buttons */}
             </div>
 
             {borderMenuOpen && (
               <div
-                className="absolute left-0 top-full z-50 mt-1 w-72 rounded-md border border-C8C6C4 bg-white py-1 shadow-lg"
+                className="absolute right-0 top-full z-50 mt-1 w-max rounded-none border border-[#A0A0A0] bg-[#F0F0F0] p-1 shadow-[2px_2px_3px_rgba(0,0,0,0.3)]"
+                role="group"
+                aria-label="Borders"
                 onPointerDown={(e) => {
                   e.stopPropagation();
                 }}
                 onClick={(e) => {
                   e.stopPropagation();
                 }}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    e.stopPropagation();
+                    closeBorderMenu();
+                  }
+                }}
               >
-                <button
-                  type="button"
-                  onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                  onClick={() => { applyBorderPreset("none"); closeBorderMenu(); }}
-                  className="flex w-full items-center gap-3 px-3 py-2 text-left text-xs hover:bg-E5F1FB"
+                <div
+                  className="mb-1 px-0.5 text-xs font-normal leading-5"
+                  style={{ color: "#333333" }}
                 >
-                  No Border
-                </button>
+                  Borders
+                </div>
 
-                <button
-                  type="button"
-                  onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                  onClick={() => { applyBorderPreset("left"); closeBorderMenu(); }}
-                  className="flex w-full items-center gap-3 px-3 py-2 text-left text-xs hover:bg-E5F1FB"
-                >
-                  Left Border
-                </button>
+                <div className="grid grid-cols-4 gap-0 border border-[#B8B8B8] p-px">
+                  {(
+                    [
+                      {
+                        preset: "none",
+                        label: "No Border",
+                        path: "",
+                      },
+                      {
+                        preset: "outside",
+                        label: "Outside Borders",
+                        path: "M4 4H20V20H4Z",
+                      },
+                      {
+                        preset: "all",
+                        label: "All Borders",
+                        path: "M4 4H20V20H4Z M12 4V20 M4 12H20",
+                      },
+                      {
+                        preset: "inside",
+                        label: "Inside Borders",
+                        path: "M12 4V20 M4 12H20",
+                      },
+                      {
+                        preset: "left",
+                        label: "Left Border",
+                        path: "M4 4V20",
+                      },
+                      {
+                        preset: "right",
+                        label: "Right Border",
+                        path: "M20 4V20",
+                      },
+                      {
+                        preset: "top",
+                        label: "Top Border",
+                        path: "M4 4H20",
+                      },
+                      {
+                        preset: "bottom",
+                        label: "Bottom Border",
+                        path: "M4 20H20",
+                      },
+                    ] as const
+                  ).map((item) => (
+                    <button
+                      key={item.preset}
+                      type="button"
+                      title={item.label}
+                      aria-label={item.label}
+                      className="flex h-6 w-6 items-center justify-center rounded-none border border-transparent bg-transparent hover:border-[#7DA2CE] hover:bg-[#DDEBFA] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#106EBE]"
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      onClick={() => {
+                        applyBorderPreset(item.preset);
+                        closeBorderMenu();
+                      }}
+                    >
+                      <svg
+                        width="24"
+                        height="24"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M4 4H20V20H4Z M12 4V20 M4 12H20"
+                          stroke="#B0B0B0"
+                          strokeWidth="1"
+                          strokeDasharray="1 2"
+                        />
 
-                <button
-                  type="button"
-                  onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                  onClick={() => { applyBorderPreset("right"); closeBorderMenu(); }}
-                  className="flex w-full items-center gap-3 px-3 py-2 text-left text-xs hover:bg-E5F1FB"
-                >
-                  Right Border
-                </button>
-
-                <button
-                  type="button"
-                  onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                  onClick={() => { applyBorderPreset("top"); closeBorderMenu(); }}
-                  className="flex w-full items-center gap-3 px-3 py-2 text-left text-xs hover:bg-E5F1FB"
-                >
-                  Top Border
-                </button>
-
-                <button
-                  type="button"
-                  onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                  onClick={() => { applyBorderPreset("bottom"); closeBorderMenu(); }}
-                  className="flex w-full items-center gap-3 px-3 py-2 text-left text-xs hover:bg-E5F1FB"
-                >
-                  Bottom Border
-                </button>
-
-                <button
-                  type="button"
-                  onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                  onClick={() => { applyBorderPreset("all"); closeBorderMenu(); }}
-                  className="flex w-full items-center gap-3 px-3 py-2 text-left text-xs hover:bg-E5F1FB"
-                >
-                  All Borders
-                </button>
-
-                <button
-                  type="button"
-                  onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                  onClick={() => { applyBorderPreset("outside"); closeBorderMenu(); }}
-                  className="flex w-full items-center gap-3 px-3 py-2 text-left text-xs hover:bg-E5F1FB"
-                >
-                  Outside Borders
-                </button>
-
-                <button
-                  type="button"
-                  onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                  onClick={() => { applyBorderPreset("inside"); closeBorderMenu(); }}
-                  className="flex w-full items-center gap-3 px-3 py-2 text-left text-xs hover:bg-E5F1FB"
-                >
-                  Inside Borders
-                </button>
+                        {item.path && (
+                          <path
+                            d={item.path}
+                            stroke="#333333"
+                            strokeWidth="1.6"
+                            strokeLinecap="square"
+                            strokeLinejoin="miter"
+                          />
+                        )}
+                      </svg>
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
           </div>
 
-          <select
-            value={activeCellStyle.borderStyle || "solid"}
-            onChange={(e) => { applyStyleToSelection({ borderStyle: e.target.value as CellStyle["borderStyle"] }); showToast("Border style applied."); }}
-            className="h-6 w-4 rounded-md border border-[#C8C6C4] bg-white px-1 text-[10px] shadow-inner outline-none hover:border-[#106EBE] focus:border-[#106EBE]"
-            title="Border Style"
-            aria-label="Border Style"
-          >
+          {/* START: Premium Sapphire Border Style */}
+          <details
+            className="group relative"
+            onBlur={(e) => {
+              const dropdown = e.currentTarget;
+              const nextTarget = e.relatedTarget;
 
-            {BORDER_STYLE_OPTIONS.map((style) => <option key={style} value={style}>{style}</option>)}
-          </select>
+              if (
+                nextTarget instanceof window.Node &&
+                dropdown.contains(nextTarget)
+              ) {
+                return;
+              }
+
+              dropdown.open = false;
+            }}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+
+              if (e.key === "Escape") {
+                e.preventDefault();
+                e.currentTarget.open = false;
+                e.currentTarget.querySelector("summary")?.focus();
+              }
+            }}
+          >
+            <summary
+              title="Border Style"
+              aria-label="Choose border style"
+              className={[
+                "flex h-8 w-12 cursor-pointer list-none items-center",
+                "justify-center gap-1 rounded-md border",
+                "border-[#B9C8D8] bg-white text-[#205FA9]",
+                "shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(25,63,108,0.12)]",
+                "transition-[background-color,border-color,box-shadow] duration-150",
+                "hover:border-[#7B9EC3] hover:bg-[#EFF6FF] hover:shadow-md",
+                "focus-visible:outline-none focus-visible:ring-2",
+                "focus-visible:ring-[#3675A7]/40",
+                "group-open:border-[#3675A7] group-open:bg-[#E8F3FF]",
+                "motion-reduce:transition-none",
+                "[&::-webkit-details-marker]:hidden",
+              ].join(" ")}
+            >
+              <svg
+                width="25"
+                height="25"
+                viewBox="0 0 28 28"
+                fill="none"
+                className="shrink-0"
+                aria-hidden="true"
+              >
+                <path
+                  d="M4 5h20"
+                  stroke="#205FA9"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M4 11h20"
+                  stroke="#286BC0"
+                  strokeWidth="1.6"
+                  strokeDasharray="4 3"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M4 17h20"
+                  stroke="#4389D2"
+                  strokeWidth="2"
+                  strokeDasharray="0.1 3.9"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M4 22h20M4 25h20"
+                  stroke="#193F6C"
+                  strokeWidth="1.1"
+                  strokeLinecap="round"
+                />
+              </svg>
+
+              <Icons.ChevronDown
+                size={11}
+                className="shrink-0 text-[#205FA9] transition-transform duration-150 group-open:rotate-180 motion-reduce:transition-none"
+              />
+            </summary>
+
+            <div
+              role="group"
+              aria-label="Border Style"
+              className="absolute right-0 top-full z-9991 mt-1.5 overflow-hidden rounded-xl border border-[#B9C8D8] bg-white text-[#193F6C] shadow-[0_12px_32px_rgba(25,63,108,0.18),0_2px_6px_rgba(25,63,108,0.08)]"
+              style={{
+                width: "min(400px, calc(100vw - 24px))",
+                minWidth: "min(400px, calc(100vw - 24px))",
+                boxSizing: "border-box",
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                className="border-b border-[#D7E4F1] bg-linear-to-b from-white to-[#EFF6FF]"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  padding: "10px 12px",
+                }}
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <span
+                    aria-hidden="true"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[#C7DDF1] bg-white shadow-sm"
+                  >
+                    <svg
+                      width="19"
+                      height="19"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                    >
+                      <path
+                        d="M3 5h18"
+                        stroke="#205FA9"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                      />
+                      <path
+                        d="M3 11h18"
+                        stroke="#286BC0"
+                        strokeWidth="1.5"
+                        strokeDasharray="3 3"
+                        strokeLinecap="round"
+                      />
+                      <path
+                        d="M3 17h18M3 20h18"
+                        stroke="#193F6C"
+                        strokeWidth="1"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </span>
+
+                  <span className="whitespace-nowrap text-xs font-semibold tracking-wide text-[#193F6C]">
+                    Border Style
+                  </span>
+                </div>
+
+                <span className="shrink-0 whitespace-nowrap rounded-md border border-[#D7E4F1] bg-white px-2 py-1 text-[10px] font-medium text-[#527BA5]">
+                  Style &amp; Width
+                </span>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 12,
+                  padding: 12,
+                  maxHeight: "min(520px, 65vh)",
+                  overflowY: "auto",
+                  overscrollBehavior: "contain",
+                }}
+              >
+                {(
+                  [
+                    {
+                      label: "Solid",
+                      style: "solid",
+                      widths: [1, 2, 3, 4, 5],
+                    },
+                    {
+                      label: "Dashed",
+                      style: "dashed",
+                      widths: [1, 2, 3, 4, 5],
+                    },
+                    {
+                      label: "Dotted",
+                      style: "dotted",
+                      widths: [1, 2, 3, 4, 5],
+                    },
+                    {
+                      label: "Double",
+                      style: "double",
+                      widths: [3, 4, 5, 6, 7],
+                    },
+                  ] as const
+                ).map((group) => (
+                  <div
+                    key={group.style}
+                    className="min-w-0 rounded-lg border border-[#E0EAF4] bg-[#F8FBFF]"
+                    style={{ padding: 6 }}
+                  >
+                    <div className="mb-1.5 flex items-center gap-2 px-1.5 py-1">
+                      <span
+                        aria-hidden="true"
+                        className="h-1 w-1 shrink-0 rounded-full bg-[#4389D2]"
+                      />
+                      <span className="whitespace-nowrap text-[11px] font-semibold tracking-wide text-[#315A83]">
+                        {group.label}
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 4,
+                      }}
+                    >
+                      {group.widths.map((width) => {
+                        const isSelected =
+                          (activeCellStyle.borderStyle || "solid") ===
+                          group.style &&
+                          (activeCellStyle.borderWidth ?? 2) === width;
+
+                        return (
+                          <button
+                            key={`${group.style}-${width}`}
+                            type="button"
+                            aria-pressed={isSelected}
+                            aria-label={`${group.label} ${width}px`}
+                            title={`${group.label} — ${width}px`}
+                            className={[
+                              "rounded-md border text-xs",
+                              "transition-colors duration-150",
+                              "focus-visible:outline-none focus-visible:ring-2",
+                              "focus-visible:ring-[#3675A7]/40",
+                              "motion-reduce:transition-none",
+                              isSelected
+                                ? "border-[#A8C9E8] bg-[#E8F3FF] text-[#174D91] shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]"
+                                : "border-transparent bg-white text-[#527BA5] hover:border-[#C7DDF1] hover:bg-[#EFF6FF] hover:text-[#205FA9]",
+                            ].join(" ")}
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns:
+                                "minmax(0, 1fr) 26px 14px",
+                              alignItems: "center",
+                              gap: 8,
+                              width: "100%",
+                              minWidth: 0,
+                              height: 34,
+                              padding: "0 8px",
+                              boxSizing: "border-box",
+                              textAlign: "left",
+                            }}
+                            onClick={(e) => {
+                              const dropdown =
+                                e.currentTarget.closest("details");
+
+                              applyStyleToSelection({
+                                borderStyle: group.style,
+                                borderWidth: width,
+                              });
+
+                              showToast(
+                                `${group.label} ${width}px selected.`
+                              );
+
+                              if (dropdown) {
+                                dropdown.open = false;
+                                dropdown
+                                  .querySelector("summary")
+                                  ?.focus();
+                              }
+                            }}
+                          >
+                            <span
+                              aria-hidden="true"
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                width: "100%",
+                                minWidth: 0,
+                                height: 16,
+                              }}
+                            >
+                              <span
+                                style={{
+                                  display: "block",
+                                  width: "100%",
+                                  height: 0,
+                                  borderTopStyle: group.style,
+                                  borderTopWidth: width,
+                                  borderTopColor: "#205FA9",
+                                }}
+                              />
+                            </span>
+
+                            <span
+                              className={
+                                isSelected
+                                  ? "font-semibold text-[#174D91]"
+                                  : "text-[#607D99]"
+                              }
+                              style={{
+                                fontSize: 10,
+                                whiteSpace: "nowrap",
+                                textAlign: "right",
+                              }}
+                            >
+                              {width}px
+                            </span>
+
+                            <span
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                width: 14,
+                                height: 16,
+                              }}
+                            >
+                              {isSelected && (
+                                <Icons.Check
+                                  size={12}
+                                  className="text-[#205FA9]"
+                                />
+                              )}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </details>
+          {/* END: Premium Sapphire Border Style */}
 
         </div>
 
@@ -13784,39 +16179,95 @@ export default function ExcelStudioPage() {
                     Exchange Rates: sheet রেট ব্যবহৃত হচ্ছে
                   </span>
                 )}
-                <select
-                  className="rounded border border-[#D2D0CE] bg-white px-1 py-0.5 text-[11px]"
-                  value={displayGrouping}
-                  onChange={(event) => {
-                    const next = event.target.value as DisplayGrouping;
-                    setDisplayGrouping(next);
-                    DISPLAY_SETTINGS.grouping = next;
-                  }}
-                  title="সংখ্যার গ্রুপিং: ১২,৫০,০০০ (BD) বা 1,250,000 (Western)"
+
+                {/* START: Clear Number Display Preferences */}
+                <div
+                  role="group"
+                  aria-label="সংখ্যা প্রদর্শনের সেটিং"
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-[#B9C8D8] bg-white px-2 py-1 text-[#193F6C] shadow-sm"
                 >
-                  <option value="western">1,250,000</option>
-                  <option value="bd">১২,৫০,০০০</option>
-                </select>
-                <select
-                  className="rounded border border-[#D2D0CE] bg-white px-1 py-0.5 text-[11px]"
-                  value={displayDigits}
-                  onChange={(event) => {
-                    const next = event.target.value as DisplayDigits;
-                    setDisplayDigits(next);
-                    DISPLAY_SETTINGS.digits = next;
-                  }}
-                  title="ফলাফলের অঙ্ক: English, বাংলা বা আরবি"
+                  <label className="flex items-center gap-1.5">
+                    <span className="whitespace-nowrap text-[11px] font-medium">
+                      কমার ধরন
+                    </span>
+
+                    <select
+                      value={displayGrouping}
+                      onChange={(event) => {
+                        const next = event.target.value as DisplayGrouping;
+                        DISPLAY_SETTINGS.grouping = next;
+                        setDisplayGrouping(next);
+                      }}
+                      title="সংখ্যার কমার অবস্থান নির্বাচন করুন; মূল মান পরিবর্তন হবে না"
+                      className="h-7 max-w-full rounded-md border border-[#B9C8D8] bg-white px-1.5 text-[11px] text-[#193F6C] outline-none hover:border-[#7B9EC3] focus-visible:ring-2 focus-visible:ring-[#3675A7]/40"
+                    >
+                      <option value="western">
+                        International — 1,250,000
+                      </option>
+                      <option value="bd">
+                        লাখ–কোটি — 12,50,000
+                      </option>
+                    </select>
+                  </label>
+
+                  <label className="flex items-center gap-1.5">
+                    <span className="whitespace-nowrap text-[11px] font-medium">
+                      অঙ্ক
+                    </span>
+
+                    <select
+                      value={displayDigits}
+                      onChange={(event) => {
+                        const next = event.target.value as DisplayDigits;
+                        DISPLAY_SETTINGS.digits = next;
+                        setDisplayDigits(next);
+                      }}
+                      title="সংখ্যা প্রদর্শনের অঙ্ক নির্বাচন করুন; এটি মুদ্রা রূপান্তর নয়"
+                      className="h-7 max-w-full rounded-md border border-[#B9C8D8] bg-white px-1.5 text-[11px] text-[#193F6C] outline-none hover:border-[#7B9EC3] focus-visible:ring-2 focus-visible:ring-[#3675A7]/40"
+                    >
+                      <option value="latin">English — 123</option>
+                      <option value="bengali">বাংলা — ১২৩</option>
+                      <option value="arabic">Arabic — ١٢٣</option>
+                    </select>
+                  </label>
+
+                  <span className="whitespace-nowrap text-[10px] text-[#607D99]">
+                    Display only; underlying value unchanged
+                  </span>
+                </div>
+                {/* END: Clear Number Display Preferences */}
+
+                <button
+                  onClick={toggleDarkMode}
+                  className="rounded-md border border-[#D2D0CE] bg-white px-2 py-0.5 hover:border-[#106EBE]"
+                  title="Toggle Dark Mode"
                 >
-                  <option value="latin">123</option>
-                  <option value="bengali">১২৩</option>
-                  <option value="arabic">١٢৩</option>
-                </select>
-                <button onClick={toggleDarkMode} className="rounded-md border border-[#D2D0CE] bg-white px-2 py-0.5 hover:border-[#106EBE]" title="Toggle Dark Mode">
                   {darkMode ? "Light Mode" : "Dark Mode"}
                 </button>
-                <button onClick={zoomOut} className="rounded-md border border-[#D2D0CE] bg-white px-2 py-0.5 hover:border-[#106EBE]" title="Zoom Out">-</button>
-                <button onClick={resetZoom} className="rounded-md border border-[#D2D0CE] bg-white px-2 py-0.5 hover:border-[#106EBE]" title="Reset Zoom">{zoomLevel}%</button>
-                <button onClick={zoomIn} className="rounded-md border border-[#D2D0CE] bg-white px-2 py-0.5 hover:border-[#106EBE]" title="Zoom In">+</button>
+
+                <button
+                  onClick={zoomOut}
+                  className="rounded-md border border-[#D2D0CE] bg-white px-2 py-0.5 hover:border-[#106EBE]"
+                  title="Zoom Out"
+                >
+                  -
+                </button>
+
+                <button
+                  onClick={resetZoom}
+                  className="rounded-md border border-[#D2D0CE] bg-white px-2 py-0.5 hover:border-[#106EBE]"
+                  title="Reset Zoom"
+                >
+                  {zoomLevel}%
+                </button>
+
+                <button
+                  onClick={zoomIn}
+                  className="rounded-md border border-[#D2D0CE] bg-white px-2 py-0.5 hover:border-[#106EBE]"
+                  title="Zoom In"
+                >
+                  +
+                </button>
               </div>
             </div>
           )}
@@ -15909,8 +18360,3485 @@ function AutoFilterDropdown({
   );
 }
 
+// START: White Sapphire Chrome Toolbar Helpers
+
+function sapphireToolbarClass(active = false) {
+  return [
+    "group relative flex h-8 w-8 shrink-0 items-center justify-center",
+    "rounded-md border shadow-sm",
+    "transition-[background-color,border-color,box-shadow,transform] duration-150",
+    "focus-visible:outline-none focus-visible:ring-2",
+    "focus-visible:ring-[#3675A7]/40",
+    "active:translate-y-px active:shadow-none",
+    "motion-reduce:transition-none",
+    active
+      ? "border-[#3675A7] bg-[#E8F3FF] hover:bg-[#DCEEFF]"
+      : "border-[#B9C8D8] bg-white hover:border-[#7B9EC3] hover:bg-[#EFF6FF] hover:shadow-md",
+  ].join(" ");
+}
+
+function SapphireToolbarIcon({
+  label,
+}: {
+  label: string;
+}) {
+  const id = React.useId().replace(/:/g, "");
+  const blueId = `${id}-sapphire`;
+  const chromeId = `${id}-chrome`;
+  const iceId = `${id}-ice`;
+
+  const blue = `url(#${blueId})`;
+  const chrome = `url(#${chromeId})`;
+  const ice = `url(#${iceId})`;
+
+  const isRtl = label.includes("RTL");
+  const isColumn = label.includes("Columns");
+  const isDelete = label.startsWith("Delete");
+  const isSortDescending = label === "Sort Descending";
+
+  const grid = (
+    <>
+      <rect
+        x="4"
+        y="5"
+        width="24"
+        height="22"
+        rx="1.6"
+        fill={ice}
+        stroke="#205FA9"
+        strokeWidth="1.2"
+      />
+      <path
+        d="M12 5.5v21M20 5.5v21M4.5 12.3h23M4.5 19.7h23"
+        stroke="#739BC7"
+        strokeWidth="0.85"
+      />
+      <path
+        d="M6 6.3h20"
+        stroke="#FFFFFF"
+        strokeWidth="0.9"
+        strokeLinecap="round"
+      />
+    </>
+  );
+
+  let artwork: React.ReactNode = null;
+
+  switch (label) {
+    case "Undo":
+    case "Redo":
+      artwork = (
+        <g transform={label === "Redo" ? "translate(32 0) scale(-1 1)" : undefined}>
+          <path
+            d="M11 8v5h9c5 0 8 3 8 7s-3 7-8 7h-5v-4h5c2.7 0 4-1.1 4-3s-1.3-3-4-3h-9v5L3 15l8-7Z"
+            fill={blue}
+            stroke="#193F6C"
+            strokeWidth="0.9"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M12.5 14h7.3c3.5 0 5.4 1.3 6.2 3.2"
+            stroke="#9BCBFF"
+            strokeWidth="0.9"
+            strokeLinecap="round"
+          />
+        </g>
+      );
+      break;
+
+    case "Find and Replace":
+      artwork = (
+        <>
+          <circle
+            cx="13"
+            cy="12.5"
+            r="7"
+            fill={ice}
+            stroke="#205FA9"
+            strokeWidth="1.8"
+          />
+          <path
+            d="m18.3 18 9 9"
+            stroke="#193F6C"
+            strokeWidth="4"
+            strokeLinecap="round"
+          />
+          <path
+            d="m20 19 6.5 6.5M9 11a4 4 0 0 1 4-3"
+            stroke="#9BCBFF"
+            strokeWidth="1"
+            strokeLinecap="round"
+          />
+          <path
+            d="M3 25h12m-3-3 3 3-3 3"
+            stroke="#CE9436"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </>
+      );
+      break;
+
+    case "Spelling":
+      artwork = (
+        <>
+          <path
+            d="m6 20 6-16h3l6 16h-4l-1.2-4H11l-1.2 4H6Zm6-7h2.9L13.5 8 12 13Z"
+            fill={blue}
+            stroke="#193F6C"
+            strokeWidth="0.5"
+            strokeLinejoin="round"
+          />
+          <path
+            d="m15 25 4 4L29 18"
+            stroke="#21986A"
+            strokeWidth="2.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </>
+      );
+      break;
+
+    case "Toggle Grid Lines":
+      artwork = grid;
+      break;
+
+    case "Insert Rows":
+    case "Insert Columns":
+    case "Delete Rows":
+    case "Delete Columns":
+      artwork = (
+        <>
+          {grid}
+          <rect
+            x={isColumn ? 12 : 4.6}
+            y={isColumn ? 5.6 : 12.3}
+            width={isColumn ? 8 : 22.8}
+            height={isColumn ? 20.8 : 7.4}
+            fill={isDelete ? "#C34C56" : blue}
+          />
+          <path
+            d="M12.8 16h6.4"
+            stroke="#FFFFFF"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+          />
+          {!isDelete && (
+            <path
+              d="M16 12.8v6.4"
+              stroke="#FFFFFF"
+              strokeWidth="1.7"
+              strokeLinecap="round"
+            />
+          )}
+        </>
+      );
+      break;
+
+    case "Sort Ascending":
+    case "Sort Descending":
+      artwork = (
+        <>
+          <text
+            x="10"
+            y="13"
+            textAnchor="middle"
+            fill="#205FA9"
+            fontFamily="Arial, sans-serif"
+            fontSize="12"
+            fontWeight="700"
+          >
+            {isSortDescending ? "Z" : "A"}
+          </text>
+          <text
+            x="10"
+            y="27"
+            textAnchor="middle"
+            fill="#193F6C"
+            fontFamily="Arial, sans-serif"
+            fontSize="12"
+            fontWeight="700"
+          >
+            {isSortDescending ? "A" : "Z"}
+          </text>
+          <path
+            d="M24 5v22m-4-4 4 4 4-4"
+            stroke="#205FA9"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </>
+      );
+      break;
+
+    case "AutoFilter":
+      artwork = (
+        <>
+          <path
+            d="M3 5h26L19 17v9l-6 3V17L3 5Z"
+            fill={ice}
+            stroke="#205FA9"
+            strokeWidth="1.5"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M6 6.5h20L18 16h-4L6 6.5Z"
+            fill={blue}
+          />
+          <path
+            d="M8 7.5h16"
+            stroke="#9BCBFF"
+            strokeWidth="0.9"
+            strokeLinecap="round"
+          />
+        </>
+      );
+      break;
+
+    case "Insert Image":
+      artwork = (
+        <>
+          <rect
+            x="3"
+            y="6"
+            width="26"
+            height="21"
+            rx="2"
+            fill={chrome}
+            stroke="#526A83"
+            strokeWidth="1.1"
+          />
+          <rect x="5.5" y="8.5" width="21" height="16" rx="0.7" fill={ice} />
+          <path
+            d="m6 23 7-8 5 5 4-6 4 9H6Z"
+            fill={blue}
+          />
+          <circle cx="11" cy="12.5" r="2.2" fill="#E4AF4D" />
+          <path d="M25 3v7m-3.5-3.5h7" stroke="#21986A" strokeWidth="1.8" strokeLinecap="round" />
+        </>
+      );
+      break;
+
+    case "Insert Chart":
+      artwork = (
+        <>
+          <path d="M4 4v24h25" stroke="#526A83" strokeWidth="1.4" strokeLinecap="round" />
+          <rect x="7" y="17" width="5" height="9" rx="0.8" fill={blue} />
+          <rect x="15" y="11" width="5" height="15" rx="0.8" fill={ice} stroke="#205FA9" strokeWidth="0.8" />
+          <rect x="23" y="5" width="5" height="21" rx="0.8" fill="#CE9436" />
+          <path d="M8 18h3M16 12h3M24 6h3" stroke="#FFFFFF" strokeWidth="0.8" strokeLinecap="round" />
+        </>
+      );
+      break;
+
+    case "Insert Pivot Table":
+      artwork = (
+        <>
+          {grid}
+          <path d="M4.6 5.6h22.8v6.5H4.6z" fill={blue} />
+          <path d="M4.6 12.4h7v14h-7z" fill="#A4C8ED" />
+          <path d="M12.5 12.8h14.8v13.6H12.5z" fill={blue} opacity="0.85" />
+          <path
+            d="M15 17h8m-2-2 2 2-2 2M23 23h-8m2-2-2 2 2 2"
+            stroke="#FFFFFF"
+            strokeWidth="1.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </>
+      );
+      break;
+
+    case "Insert Hyperlink":
+      artwork = (
+        <g transform="rotate(-35 16 16)">
+          <rect x="3" y="11" width="17" height="10" rx="5" fill={ice} stroke="#205FA9" strokeWidth="2" />
+          <rect x="12" y="11" width="17" height="10" rx="5" fill={chrome} stroke="#205FA9" strokeWidth="2" />
+          <path d="M11 16h10" stroke="#193F6C" strokeWidth="2" strokeLinecap="round" />
+          <path d="M6 13h6M21 13h4" stroke="#FFFFFF" strokeWidth="0.9" strokeLinecap="round" />
+        </g>
+      );
+      break;
+
+    case "Insert Comment":
+      artwork = (
+        <>
+          <path
+            d="M4 5h24v18H14l-7 6v-6H4V5Z"
+            fill={ice}
+            stroke="#205FA9"
+            strokeWidth="1.4"
+            strokeLinejoin="round"
+          />
+          <path d="M6 6.5h20" stroke="#FFFFFF" strokeWidth="1" strokeLinecap="round" />
+          <path d="M16 9v10m-5-5h10" stroke="#205FA9" strokeWidth="2" strokeLinecap="round" />
+        </>
+      );
+      break;
+
+    case "Show Draw Functions":
+      artwork = (
+        <>
+          <path d="M5 14V5h9" stroke="#CE9436" strokeWidth="1.5" strokeLinecap="round" />
+          <path d="m10 22 14-18 5 4-14 18-5-4Z" fill={blue} stroke="#193F6C" strokeWidth="1" strokeLinejoin="round" />
+          <path d="m10 22-3 8 8-4-5-4Z" fill="#E4AF4D" stroke="#9A6825" strokeWidth="0.8" strokeLinejoin="round" />
+          <path d="m14 20 11-14" stroke="#9BCBFF" strokeWidth="1" strokeLinecap="round" />
+        </>
+      );
+      break;
+
+    case "Freeze Rows and Columns":
+      artwork = (
+        <>
+          {grid}
+          <path d="M4.6 5.6h22.8v6.4H4.6zM4.6 12h7v14.4h-7z" fill="#B8D5F3" />
+          <path d="M12 5.6v20.8M4.6 12.3h22.8" stroke="#CE9436" strokeWidth="2.2" />
+          <path d="M21 16v9m-4-7 8 5m-8 0 8-5" stroke="#205FA9" strokeWidth="1.1" strokeLinecap="round" />
+        </>
+      );
+      break;
+
+    case "Split Window":
+      artwork = (
+        <>
+          <rect x="4" y="5" width="24" height="22" rx="1.5" fill={ice} stroke="#205FA9" strokeWidth="1.2" />
+          <path d="M5 10h22" stroke="#739BC7" strokeWidth="1" />
+          <path d="M14.5 5.6h3v20.8h-3z" fill={chrome} stroke="#526A83" strokeWidth="0.7" />
+          <path d="M7 7.5h3" stroke="#FFFFFF" strokeWidth="1" strokeLinecap="round" />
+        </>
+      );
+      break;
+
+    case "Insert Special Character":
+      artwork = (
+        <path
+          d="M5 27v-4h5C5 18 5 10 9 6c4-4 10-4 14 0s4 12-1 17h5v4H17v-5c7-5 6-15-1-15S8 17 15 22v5H5Z"
+          fill={blue}
+          stroke="#193F6C"
+          strokeWidth="0.7"
+          strokeLinejoin="round"
+        />
+      );
+      break;
+
+    case "Border Color":
+      artwork = (
+        <>
+          {grid}
+          <path d="M4.5 26.5h23M27.5 5.5v21" stroke="#205FA9" strokeWidth="2.8" />
+        </>
+      );
+      break;
+
+    default:
+      if (label.startsWith("Text Direction")) {
+        artwork = (
+          <>
+            <path
+              d="M20 5H12a5 5 0 0 0 0 10h2v5m4-15v15"
+              stroke="#193F6C"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <g transform={isRtl ? "translate(32 0) scale(-1 1)" : undefined}>
+              <path d="M5 26h22m-5-4 5 4-5 4" stroke="#205FA9" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </g>
+          </>
+        );
+      }
+  }
+
+  return (
+    <svg
+      width="27"
+      height="28"
+      viewBox="0 0 32 32"
+      fill="none"
+      aria-hidden="true"
+    >
+      <defs>
+        <linearGradient id={blueId} x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#4A97EB" />
+          <stop offset="45%" stopColor="#286BC0" />
+          <stop offset="100%" stopColor="#123E80" />
+        </linearGradient>
+
+        <linearGradient id={chromeId} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#ACBDCD" />
+          <stop offset="38%" stopColor="#F3F7FB" />
+          <stop offset="65%" stopColor="#C0CEDB" />
+          <stop offset="100%" stopColor="#75899F" />
+        </linearGradient>
+
+        <linearGradient id={iceId} x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#FFFFFF" />
+          <stop offset="55%" stopColor="#EAF5FF" />
+          <stop offset="100%" stopColor="#BCD8F5" />
+        </linearGradient>
+      </defs>
+
+      {artwork}
+    </svg>
+  );
+}
+
+// END: White Sapphire Chrome Toolbar Helpers
+
 function SpreadsheetToolbarIconButton({ button }: { button: SpreadsheetToolbarButton }) {
   const Icon = button.icon;
+  // START: Premium Sapphire Decrease Indent Button
+  if (button.label === "Decrease Indent") {
+    return (
+      <button
+        type="button"
+        onClick={button.onClick}
+        title={button.label}
+        aria-label={button.label}
+        className={[
+          "group relative flex h-8 w-8 shrink-0 items-center justify-center",
+          "rounded-md border border-[#B9C8D8] bg-white",
+          "shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(25,63,108,0.12)]",
+          "transition-[background-color,border-color,box-shadow,transform] duration-150",
+          "hover:border-[#7B9EC3] hover:bg-[#EFF6FF] hover:shadow-md",
+          "focus-visible:outline-none focus-visible:ring-2",
+          "focus-visible:ring-[#3675A7]/40",
+          "active:translate-y-px active:bg-[#E2EDF8] active:shadow-none",
+          "motion-reduce:transition-none",
+        ].join(" ")}
+      >
+        <svg
+          width="27"
+          height="27"
+          viewBox="0 0 32 32"
+          fill="none"
+          aria-hidden="true"
+        >
+          {/* Sapphire text lines */}
+          <g
+            fill="#286BC0"
+            stroke="#193F6C"
+            strokeWidth="0.65"
+          >
+            <rect x="5" y="5" width="22" height="3" rx="0.8" />
+            <rect x="17" y="11.5" width="10" height="3" rx="0.8" />
+            <rect x="17" y="18" width="10" height="3" rx="0.8" />
+            <rect x="5" y="24.5" width="22" height="3" rx="0.8" />
+          </g>
+
+          {/* Ice-blue line reflections */}
+          <path
+            d="
+              M6 5.9h20
+              M18 12.4h8
+              M18 18.9h8
+              M6 25.4h20
+            "
+            stroke="#A8D5FF"
+            strokeWidth="0.7"
+            strokeLinecap="round"
+          />
+
+          {/* Navy outline of the left-pointing arrow */}
+          <path
+            d="M12.5 16h-8M8 12.5 4.5 16 8 19.5"
+            stroke="#193F6C"
+            strokeWidth="3.3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {/* Sapphire outdent arrow */}
+          <path
+            d="M12.5 16h-8M8 12.5 4.5 16 8 19.5"
+            stroke="#367BC5"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {/* Arrow reflection */}
+          <path
+            d="M6.5 15.5H12"
+            stroke="#B5DDFF"
+            strokeWidth="0.65"
+            strokeLinecap="round"
+          />
+        </svg>
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {button.label}
+        </span>
+      </button>
+    );
+  }
+  // END: Premium Sapphire Decrease Indent Button
+  // START: Premium Sapphire Increase Indent Button
+  if (button.label === "Increase Indent") {
+    return (
+      <button
+        type="button"
+        onClick={button.onClick}
+        title={button.label}
+        aria-label={button.label}
+        className={[
+          "group relative flex h-8 w-8 shrink-0 items-center justify-center",
+          "rounded-md border border-[#B9C8D8] bg-white",
+          "shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(25,63,108,0.12)]",
+          "transition-[background-color,border-color,box-shadow,transform] duration-150",
+          "hover:border-[#7B9EC3] hover:bg-[#EFF6FF] hover:shadow-md",
+          "focus-visible:outline-none focus-visible:ring-2",
+          "focus-visible:ring-[#3675A7]/40",
+          "active:translate-y-px active:bg-[#E2EDF8] active:shadow-none",
+          "motion-reduce:transition-none",
+        ].join(" ")}
+      >
+        <svg
+          width="27"
+          height="27"
+          viewBox="0 0 32 32"
+          fill="none"
+          aria-hidden="true"
+        >
+          {/* Sapphire text lines */}
+          <g
+            fill="#286BC0"
+            stroke="#193F6C"
+            strokeWidth="0.65"
+          >
+            <rect x="5" y="5" width="22" height="3" rx="0.8" />
+            <rect x="17" y="11.5" width="10" height="3" rx="0.8" />
+            <rect x="17" y="18" width="10" height="3" rx="0.8" />
+            <rect x="5" y="24.5" width="22" height="3" rx="0.8" />
+          </g>
+
+          {/* Ice-blue line reflections */}
+          <path
+            d="
+              M6 5.9h20
+              M18 12.4h8
+              M18 18.9h8
+              M6 25.4h20
+            "
+            stroke="#A8D5FF"
+            strokeWidth="0.7"
+            strokeLinecap="round"
+          />
+
+          {/* Navy outline of the right-pointing arrow */}
+          <path
+            d="M4.5 16h8M9 12.5l3.5 3.5L9 19.5"
+            stroke="#193F6C"
+            strokeWidth="3.3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {/* Sapphire indent arrow */}
+          <path
+            d="M4.5 16h8M9 12.5l3.5 3.5L9 19.5"
+            stroke="#367BC5"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {/* Arrow reflection */}
+          <path
+            d="M5 15.5h5.5"
+            stroke="#B5DDFF"
+            strokeWidth="0.65"
+            strokeLinecap="round"
+          />
+        </svg>
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {button.label}
+        </span>
+      </button>
+    );
+  }
+  // END: Premium Sapphire Increase Indent Button
+  // START: Premium Sapphire Decrease Decimal Button
+  if (button.label === "Decrease Decimal") {
+    return (
+      <button
+        type="button"
+        onClick={button.onClick}
+        title={button.label}
+        aria-label={button.label}
+        className={[
+          "group relative flex h-8 w-8 shrink-0 items-center justify-center",
+          "rounded-md border border-[#B9C8D8] bg-white",
+          "shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(25,63,108,0.12)]",
+          "transition-[background-color,border-color,box-shadow,transform] duration-150",
+          "hover:border-[#7B9EC3] hover:bg-[#EFF6FF] hover:shadow-md",
+          "focus-visible:outline-none focus-visible:ring-2",
+          "focus-visible:ring-[#3675A7]/40",
+          "active:translate-y-px active:bg-[#E2EDF8] active:shadow-none",
+          "motion-reduce:transition-none",
+        ].join(" ")}
+      >
+        <svg
+          width="27"
+          height="27"
+          viewBox="0 0 32 32"
+          fill="none"
+          aria-hidden="true"
+        >
+          {/* Sapphire minus with a navy edge */}
+          <rect
+            x="5"
+            y="13.5"
+            width="22"
+            height="5"
+            rx="0.8"
+            fill="#286BC0"
+            stroke="#193F6C"
+            strokeWidth="0.9"
+          />
+
+          {/* Ice-blue upper-edge reflection */}
+          <path
+            d="M6.2 14.7h19.6"
+            stroke="#B5DDFF"
+            strokeWidth="0.85"
+            strokeLinecap="round"
+          />
+
+          {/* Subtle lower sapphire reflection */}
+          <path
+            d="M6.5 17.5h19"
+            stroke="#205FA9"
+            strokeWidth="0.65"
+            strokeLinecap="round"
+          />
+        </svg>
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {button.label}
+        </span>
+      </button>
+    );
+  }
+  // END: Premium Sapphire Decrease Decimal Button
+  // START: Premium Sapphire Increase Decimal Button
+  if (button.label === "Increase Decimal") {
+    return (
+      <button
+        type="button"
+        onClick={button.onClick}
+        title={button.label}
+        aria-label={button.label}
+        className={[
+          "group relative flex h-8 w-8 shrink-0 items-center justify-center",
+          "rounded-md border border-[#B9C8D8] bg-white",
+          "shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(25,63,108,0.12)]",
+          "transition-[background-color,border-color,box-shadow,transform] duration-150",
+          "hover:border-[#7B9EC3] hover:bg-[#EFF6FF] hover:shadow-md",
+          "focus-visible:outline-none focus-visible:ring-2",
+          "focus-visible:ring-[#3675A7]/40",
+          "active:translate-y-px active:bg-[#E2EDF8] active:shadow-none",
+          "motion-reduce:transition-none",
+        ].join(" ")}
+      >
+        <svg
+          width="27"
+          height="27"
+          viewBox="0 0 32 32"
+          fill="none"
+          aria-hidden="true"
+        >
+          {/* Sapphire plus with a navy edge */}
+          <path
+            d="
+              M13.5 5h5v8.5H27v5h-8.5V27h-5v-8.5H5v-5h8.5V5Z
+            "
+            fill="#286BC0"
+            stroke="#193F6C"
+            strokeWidth="0.9"
+            strokeLinejoin="round"
+          />
+
+          {/* Ice-blue upper-edge reflections */}
+          <path
+            d="M14.7 6.2h2.6M6.2 14.7h8.5V7.8"
+            stroke="#B5DDFF"
+            strokeWidth="0.85"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {/* Right-arm reflection */}
+          <path
+            d="M19.7 14.7h6"
+            stroke="#8FC5FF"
+            strokeWidth="0.75"
+            strokeLinecap="round"
+          />
+
+          {/* Vertical stem reflection */}
+          <path
+            d="M14.7 19.7v6"
+            stroke="#8FC5FF"
+            strokeWidth="0.75"
+            strokeLinecap="round"
+          />
+        </svg>
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {button.label}
+        </span>
+      </button>
+    );
+  }
+  // END: Premium Sapphire Increase Decimal Button
+  // START: Premium Sapphire Text Format Button
+  if (button.label === "Text Format") {
+    const isTextFormatActive = !!button.active;
+
+    return (
+      <button
+        type="button"
+        onClick={button.onClick}
+        title={button.label}
+        aria-label={button.label}
+        aria-pressed={isTextFormatActive}
+        className={[
+          "group relative flex h-8 w-8 shrink-0 items-center justify-center",
+          "rounded-md border",
+          "transition-[background-color,border-color,box-shadow,transform] duration-150",
+          "focus-visible:outline-none focus-visible:ring-2",
+          "focus-visible:ring-[#3675A7]/40",
+          "active:translate-y-px",
+          "motion-reduce:transition-none",
+          isTextFormatActive
+            ? "border-[#3675A7] bg-[#E8F3FF] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(54,117,167,0.12)] hover:bg-[#DCEEFF]"
+            : "border-[#B9C8D8] bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(25,63,108,0.12)] hover:border-[#7B9EC3] hover:bg-[#EFF6FF] hover:shadow-md",
+        ].join(" ")}
+      >
+        <svg
+          width="27"
+          height="27"
+          viewBox="0 0 32 32"
+          fill="none"
+          aria-hidden="true"
+        >
+          {/* Sapphire capital T with serif details */}
+          <path
+            d="
+              M5 5h22v6h-3V8.5h-6V24h3v3H11v-3h3V8.5H8V11H5V5Z
+            "
+            fill={isTextFormatActive ? "#205FA9" : "#286BC0"}
+            stroke="#193F6C"
+            strokeWidth="0.9"
+            strokeLinejoin="round"
+          />
+
+          {/* Ice-blue top-edge reflection */}
+          <path
+            d="M6.2 6.2h19.6"
+            stroke="#B5DDFF"
+            strokeWidth="0.85"
+            strokeLinecap="round"
+          />
+
+          {/* Stem reflection */}
+          <path
+            d="M15.2 9.5V24"
+            stroke="#8FC5FF"
+            strokeWidth="0.8"
+            strokeLinecap="round"
+          />
+
+          {/* Serif reflection */}
+          <path
+            d="M12.2 25h7.6"
+            stroke="#A8D5FF"
+            strokeWidth="0.75"
+            strokeLinecap="round"
+          />
+
+          {/* Subtle titanium baseline */}
+          <path
+            d="M7 29h18"
+            stroke="#A9BACB"
+            strokeWidth="0.8"
+            strokeLinecap="round"
+          />
+        </svg>
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {button.label}
+        </span>
+      </button>
+    );
+  }
+  // END: Premium Sapphire Text Format Button
+  // START: Premium Sapphire Accounting Button
+  if (button.label === "Accounting") {
+    const isAccountingActive = !!button.active;
+
+    return (
+      <button
+        type="button"
+        onClick={button.onClick}
+        title={button.label}
+        aria-label={button.label}
+        aria-pressed={isAccountingActive}
+        className={[
+          "group relative flex h-8 w-8 shrink-0 items-center justify-center",
+          "rounded-md border",
+          "transition-[background-color,border-color,box-shadow,transform] duration-150",
+          "focus-visible:outline-none focus-visible:ring-2",
+          "focus-visible:ring-[#3675A7]/40",
+          "active:translate-y-px",
+          "motion-reduce:transition-none",
+          isAccountingActive
+            ? "border-[#3675A7] bg-[#E8F3FF] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(54,117,167,0.12)] hover:bg-[#DCEEFF]"
+            : "border-[#B9C8D8] bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(25,63,108,0.12)] hover:border-[#7B9EC3] hover:bg-[#EFF6FF] hover:shadow-md",
+        ].join(" ")}
+      >
+        <svg
+          width="27"
+          height="27"
+          viewBox="0 0 32 32"
+          fill="none"
+          aria-hidden="true"
+        >
+          {/* White receipt with titanium border */}
+          <path
+            d="
+              M7 3.5
+              10 5l3-1.5L16 5l3-1.5L22 5l3-1.5
+              v25L22 27l-3 1.5L16 27l-3 1.5L10 27l-3 1.5
+              v-25Z
+            "
+            fill="#F7FBFF"
+            stroke="#526A83"
+            strokeWidth="1.15"
+            strokeLinejoin="round"
+          />
+
+          {/* Subtle chrome side shading */}
+          <path
+            d="M23 6v19.5l1.3.7V5.4L23 6Z"
+            fill="#CCDCEB"
+          />
+
+          {/* Sapphire receipt header */}
+          <path
+            d="M10 8h12"
+            stroke="#739BC7"
+            strokeWidth="1"
+            strokeLinecap="round"
+          />
+
+          {/* Sapphire accounting mark */}
+          <path
+            d="
+              M19.5 12.1
+              C18.7 11.3 17.6 11 16.1 11
+              C13.9 11 12.5 12 12.5 13.5
+              C12.5 15 14 15.6 16 16.1
+              C18.1 16.6 19.5 17.3 19.5 18.9
+              C19.5 20.5 18 21.5 15.9 21.5
+              C14.3 21.5 13 21 12 20.1
+              M16 9.5v13.3
+            "
+            stroke="#193F6C"
+            strokeWidth="2.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          <path
+            d="
+              M19.5 12.1
+              C18.7 11.3 17.6 11 16.1 11
+              C13.9 11 12.5 12 12.5 13.5
+              C12.5 15 14 15.6 16 16.1
+              C18.1 16.6 19.5 17.3 19.5 18.9
+              C19.5 20.5 18 21.5 15.9 21.5
+              C14.3 21.5 13 21 12 20.1
+              M16 9.5v13.3
+            "
+            stroke={isAccountingActive ? "#205FA9" : "#367BC5"}
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {/* Receipt total line */}
+          <path
+            d="M10 24.5h12"
+            stroke="#739BC7"
+            strokeWidth="1"
+            strokeLinecap="round"
+          />
+
+          {/* White paper edge reflection */}
+          <path
+            d="M8.2 6.5v18"
+            stroke="#FFFFFF"
+            strokeWidth="1"
+            strokeLinecap="round"
+          />
+        </svg>
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {button.label}
+        </span>
+      </button>
+    );
+  }
+  // END: Premium Sapphire Accounting Button
+  // START: Premium Sapphire Scientific Button
+  if (button.label === "Scientific") {
+    const isScientificActive = !!button.active;
+
+    return (
+      <button
+        type="button"
+        onClick={button.onClick}
+        title={button.label}
+        aria-label={button.label}
+        aria-pressed={isScientificActive}
+        className={[
+          "group relative flex h-8 w-8 shrink-0 items-center justify-center",
+          "rounded-md border",
+          "transition-[background-color,border-color,box-shadow,transform] duration-150",
+          "focus-visible:outline-none focus-visible:ring-2",
+          "focus-visible:ring-[#3675A7]/40",
+          "active:translate-y-px",
+          "motion-reduce:transition-none",
+          isScientificActive
+            ? "border-[#3675A7] bg-[#E8F3FF] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(54,117,167,0.12)] hover:bg-[#DCEEFF]"
+            : "border-[#B9C8D8] bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(25,63,108,0.12)] hover:border-[#7B9EC3] hover:bg-[#EFF6FF] hover:shadow-md",
+        ].join(" ")}
+      >
+        <svg
+          width="27"
+          height="27"
+          viewBox="0 0 32 32"
+          fill="none"
+          aria-hidden="true"
+        >
+          {/* Sapphire lowercase x */}
+          <path
+            d="
+              M5 12h4.5l3.3 4.8 3.3-4.8h4.5
+              l-5.5 7.3 5.8 7.7h-4.6
+              l-3.5-5.1L9.2 27H4.6
+              l5.9-7.7L5 12Z
+            "
+            fill={isScientificActive ? "#205FA9" : "#286BC0"}
+            stroke="#193F6C"
+            strokeWidth="0.8"
+            strokeLinejoin="round"
+          />
+
+          {/* Ice-blue highlights on x */}
+          <path
+            d="M6.5 13h2.3l3.4 4.9M17 13h2"
+            stroke="#A8D5FF"
+            strokeWidth="0.75"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {/* Navy outline of superscript 2 */}
+          <path
+            d="
+              M21 6.7
+              C21.3 4.8 22.6 3.8 24.5 3.8
+              C26.7 3.8 28 5 28 6.8
+              C28 8.2 27.1 9.2 25.6 10.3
+              L21.2 13.7H28
+            "
+            stroke="#193F6C"
+            strokeWidth="3.3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {/* Sapphire superscript 2 */}
+          <path
+            d="
+              M21 6.7
+              C21.3 4.8 22.6 3.8 24.5 3.8
+              C26.7 3.8 28 5 28 6.8
+              C28 8.2 27.1 9.2 25.6 10.3
+              L21.2 13.7H28
+            "
+            stroke={isScientificActive ? "#205FA9" : "#367BC5"}
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {/* Chrome-like reflection on superscript */}
+          <path
+            d="M21.5 5.9c.6-1.1 1.6-1.6 3-1.6"
+            stroke="#B5DDFF"
+            strokeWidth="0.65"
+            strokeLinecap="round"
+          />
+        </svg>
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {button.label}
+        </span>
+      </button>
+    );
+  }
+  // END: Premium Sapphire Scientific Button
+  // START: Premium Sapphire Date Button
+
+  if (
+    button.label === "Date" ||
+    button.label === "Date & Time Manager"
+  ) {
+    const isDateActive = !!button.active;
+
+    return (
+      <button
+        type="button"
+        onClick={button.onClick}
+        title={button.label}
+        aria-label={button.label}
+        aria-pressed={isDateActive}
+        className={[
+          "group relative flex h-8 w-8 shrink-0 items-center justify-center",
+          "rounded-md border",
+          "transition-[background-color,border-color,box-shadow,transform] duration-150",
+          "focus-visible:outline-none focus-visible:ring-2",
+          "focus-visible:ring-[#3675A7]/40",
+          "active:translate-y-px",
+          "motion-reduce:transition-none",
+          isDateActive
+            ? "border-[#3675A7] bg-[#E8F3FF] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(54,117,167,0.12)] hover:bg-[#DCEEFF]"
+            : "border-[#B9C8D8] bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(25,63,108,0.12)] hover:border-[#7B9EC3] hover:bg-[#EFF6FF] hover:shadow-md",
+        ].join(" ")}
+      >
+        <svg
+          width="27"
+          height="27"
+          viewBox="0 0 32 32"
+          fill="none"
+          aria-hidden="true"
+        >
+          {/* Chrome calendar frame */}
+          <rect
+            x="4"
+            y="6"
+            width="24"
+            height="23"
+            rx="2.5"
+            fill="#DCE8F3"
+            stroke="#526A83"
+            strokeWidth="1.1"
+          />
+
+          {/* White calendar page */}
+          <path
+            d="
+              M5.5 13h21v13.5
+              a1 1 0 0 1-1 1h-19
+              a1 1 0 0 1-1-1V13Z
+            "
+            fill="#F7FBFF"
+          />
+
+          {/* Sapphire header */}
+          <path
+            d="
+              M6.5 6.7h19
+              a1.8 1.8 0 0 1 1.8 1.8V12H4.7V8.5
+              a1.8 1.8 0 0 1 1.8-1.8Z
+            "
+            fill={isDateActive ? "#205FA9" : "#286BC0"}
+          />
+
+          {/* Ice-blue header reflection */}
+          <path
+            d="M6.5 7.7h19"
+            stroke="#A8D5FF"
+            strokeWidth="0.8"
+            strokeLinecap="round"
+          />
+
+          {/* Titanium binding rings */}
+          <path
+            d="M10 3.5v5M22 3.5v5"
+            stroke="#526A83"
+            strokeWidth="3.2"
+            strokeLinecap="round"
+          />
+
+          <path
+            d="M9.6 3.8v4M21.6 3.8v4"
+            stroke="#EAF2F9"
+            strokeWidth="1"
+            strokeLinecap="round"
+          />
+
+          {/* Sapphire date grid */}
+          <g fill="#367BC5">
+            <rect x="8" y="15" width="3" height="3" rx="0.6" />
+            <rect x="14.5" y="15" width="3" height="3" rx="0.6" />
+            <rect x="21" y="15" width="3" height="3" rx="0.6" />
+
+            <rect x="8" y="21" width="3" height="3" rx="0.6" />
+            <rect x="21" y="21" width="3" height="3" rx="0.6" />
+          </g>
+
+          {/* Highlighted date */}
+          <rect
+            x="13.5"
+            y="20"
+            width="5"
+            height="5"
+            rx="1"
+            fill="#205FA9"
+            stroke="#193F6C"
+            strokeWidth="0.6"
+          />
+
+          <path
+            d="m14.7 22.5 0.9 0.9 1.8-2"
+            stroke="#FFFFFF"
+            strokeWidth="0.9"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {/* Lower frame reflection */}
+          <path
+            d="M6.5 28h19"
+            stroke="#FFFFFF"
+            strokeWidth="0.7"
+            strokeLinecap="round"
+          />
+        </svg>
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {button.label}
+        </span>
+      </button>
+    );
+  }
+  // END: Premium Sapphire Date Button
+  // START: Premium Sapphire Number Button
+  if (button.label === "Number") {
+    const isNumberActive = !!button.active;
+
+    return (
+      <button
+        type="button"
+        onClick={button.onClick}
+        title={button.label}
+        aria-label={button.label}
+        aria-pressed={isNumberActive}
+        className={[
+          "group relative flex h-8 w-8 shrink-0 items-center justify-center",
+          "rounded-md border",
+          "transition-[background-color,border-color,box-shadow,transform] duration-150",
+          "focus-visible:outline-none focus-visible:ring-2",
+          "focus-visible:ring-[#3675A7]/40",
+          "active:translate-y-px",
+          "motion-reduce:transition-none",
+          isNumberActive
+            ? "border-[#3675A7] bg-[#E8F3FF] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(54,117,167,0.12)] hover:bg-[#DCEEFF]"
+            : "border-[#B9C8D8] bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(25,63,108,0.12)] hover:border-[#7B9EC3] hover:bg-[#EFF6FF] hover:shadow-md",
+        ].join(" ")}
+      >
+        <svg
+          width="27"
+          height="27"
+          viewBox="0 0 32 32"
+          fill="none"
+          aria-hidden="true"
+        >
+          {/* Sapphire zero: upper left */}
+          <rect
+            x="6"
+            y="4.5"
+            width="7"
+            height="9"
+            rx="3.2"
+            stroke="#193F6C"
+            strokeWidth="3"
+          />
+
+          <rect
+            x="6"
+            y="4.5"
+            width="7"
+            height="9"
+            rx="3.2"
+            stroke={isNumberActive ? "#205FA9" : "#286BC0"}
+            strokeWidth="1.8"
+          />
+
+          {/* Sapphire one: upper right */}
+          <path
+            d="m20 6 3-1.5v9M20 13.5h6"
+            stroke="#193F6C"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          <path
+            d="m20 6 3-1.5v9M20 13.5h6"
+            stroke={isNumberActive ? "#205FA9" : "#286BC0"}
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {/* Sapphire one: lower left */}
+          <path
+            d="m6 20 3-1.5v9M6 27.5h6"
+            stroke="#193F6C"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          <path
+            d="m6 20 3-1.5v9M6 27.5h6"
+            stroke={isNumberActive ? "#205FA9" : "#286BC0"}
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {/* Sapphire zero: lower right */}
+          <rect
+            x="19"
+            y="18.5"
+            width="7"
+            height="9"
+            rx="3.2"
+            stroke="#193F6C"
+            strokeWidth="3"
+          />
+
+          <rect
+            x="19"
+            y="18.5"
+            width="7"
+            height="9"
+            rx="3.2"
+            stroke={isNumberActive ? "#205FA9" : "#286BC0"}
+            strokeWidth="1.8"
+          />
+
+          {/* Ice-blue edge reflections */}
+          <path
+            d="
+              M6 8V7.7a3.2 3.2 0 0 1 3.2-3.2
+              M20.3 5.8l2.1-1
+              M6.3 19.8l2.1-1
+              M19 22v-.3a3.2 3.2 0 0 1 3.2-3.2
+            "
+            stroke="#B5DDFF"
+            strokeWidth="0.65"
+            strokeLinecap="round"
+          />
+        </svg>
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {button.label}
+        </span>
+      </button>
+    );
+  }
+  // END: Premium Sapphire Number Button
+  // START: Premium Sapphire Align Bottom Button
+  // START: Premium Sapphire Percentage Button
+  if (button.label === "Percentage") {
+    const isPercentageActive = !!button.active;
+
+    return (
+      <button
+        type="button"
+        onClick={button.onClick}
+        title={button.label}
+        aria-label={button.label}
+        aria-pressed={isPercentageActive}
+        className={[
+          "group relative flex h-8 w-8 shrink-0 items-center justify-center",
+          "rounded-md border",
+          "transition-[background-color,border-color,box-shadow,transform] duration-150",
+          "focus-visible:outline-none focus-visible:ring-2",
+          "focus-visible:ring-[#3675A7]/40",
+          "active:translate-y-px",
+          "motion-reduce:transition-none",
+          isPercentageActive
+            ? "border-[#3675A7] bg-[#E8F3FF] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(54,117,167,0.12)] hover:bg-[#DCEEFF]"
+            : "border-[#B9C8D8] bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(25,63,108,0.12)] hover:border-[#7B9EC3] hover:bg-[#EFF6FF] hover:shadow-md",
+        ].join(" ")}
+      >
+        <svg
+          width="27"
+          height="27"
+          viewBox="0 0 32 32"
+          fill="none"
+          aria-hidden="true"
+        >
+          {/* Navy outline of the diagonal slash */}
+          <path
+            d="M9 26 23 6"
+            stroke="#193F6C"
+            strokeWidth="4.4"
+            strokeLinecap="round"
+          />
+
+          {/* Sapphire slash */}
+          <path
+            d="M9 26 23 6"
+            stroke={isPercentageActive ? "#205FA9" : "#286BC0"}
+            strokeWidth="3"
+            strokeLinecap="round"
+          />
+
+          {/* Ice-blue slash reflection */}
+          <path
+            d="m9.1 24.9 12.8-18.3"
+            stroke="#A8D5FF"
+            strokeWidth="0.7"
+            strokeLinecap="round"
+          />
+
+          {/* Upper and lower sapphire rings */}
+          <g
+            stroke={isPercentageActive ? "#205FA9" : "#286BC0"}
+            strokeWidth="3"
+          >
+            <circle cx="9" cy="9" r="3.8" />
+            <circle cx="23" cy="23" r="3.8" />
+          </g>
+
+          {/* Fine navy outer edges */}
+          <g stroke="#193F6C" strokeWidth="0.65">
+            <circle cx="9" cy="9" r="5.3" />
+            <circle cx="23" cy="23" r="5.3" />
+          </g>
+
+          {/* Chrome-like ring reflections */}
+          <path
+            d="
+              M5.5 8a3.7 3.7 0 0 1 5-2.4
+              M19.5 22a3.7 3.7 0 0 1 5-2.4
+            "
+            stroke="#B5DDFF"
+            strokeWidth="0.8"
+            strokeLinecap="round"
+          />
+        </svg>
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {button.label}
+        </span>
+      </button>
+    );
+  }
+  // END: Premium Sapphire Percentage Button
+  if (button.label === "Align Bottom") {
+    const isAlignBottomActive = !!button.active;
+
+    return (
+      <button
+        type="button"
+        onClick={button.onClick}
+        title={button.label}
+        aria-label={button.label}
+        aria-pressed={isAlignBottomActive}
+        className={[
+          "group relative flex h-8 w-8 shrink-0 items-center justify-center",
+          "rounded-md border",
+          "transition-[background-color,border-color,box-shadow,transform] duration-150",
+          "focus-visible:outline-none focus-visible:ring-2",
+          "focus-visible:ring-[#3675A7]/40",
+          "active:translate-y-px",
+          "motion-reduce:transition-none",
+          isAlignBottomActive
+            ? "border-[#3675A7] bg-[#E8F3FF] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(54,117,167,0.12)] hover:bg-[#DCEEFF]"
+            : "border-[#B9C8D8] bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(25,63,108,0.12)] hover:border-[#7B9EC3] hover:bg-[#EFF6FF] hover:shadow-md",
+        ].join(" ")}
+      >
+        <svg
+          width="27"
+          height="27"
+          viewBox="0 0 32 32"
+          fill="none"
+          aria-hidden="true"
+        >
+          {/* Titanium bottom-alignment guide */}
+          <path
+            d="M5 27h22"
+            stroke="#526A83"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          />
+
+          <path
+            d="M5.5 26.4h21"
+            stroke="#DCE8F3"
+            strokeWidth="0.7"
+            strokeLinecap="round"
+          />
+
+          {/* Sapphire text positioned near the bottom */}
+          <g
+            fill={isAlignBottomActive ? "#205FA9" : "#286BC0"}
+            stroke="#193F6C"
+            strokeWidth="0.65"
+          >
+            <rect x="7" y="9" width="18" height="3" rx="0.8" />
+            <rect x="10" y="14.5" width="12" height="3" rx="0.8" />
+            <rect x="7" y="20" width="18" height="3" rx="0.8" />
+          </g>
+
+          {/* Ice-blue upper-edge reflections */}
+          <path
+            d="
+              M8 9.9h16
+              M11 15.4h10
+              M8 20.9h16
+            "
+            stroke="#A8D5FF"
+            strokeWidth="0.7"
+            strokeLinecap="round"
+          />
+        </svg>
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {button.label}
+        </span>
+      </button>
+    );
+  }
+  // END: Premium Sapphire Align Bottom Button
+  // START: Premium Sapphire Vertical Center Button
+  if (button.label === "Align Center Vertically") {
+    const isVerticalCenterActive = !!button.active;
+
+    return (
+      <button
+        type="button"
+        onClick={button.onClick}
+        title={button.label}
+        aria-label={button.label}
+        aria-pressed={isVerticalCenterActive}
+        className={[
+          "group relative flex h-8 w-8 shrink-0 items-center justify-center",
+          "rounded-md border",
+          "transition-[background-color,border-color,box-shadow,transform] duration-150",
+          "focus-visible:outline-none focus-visible:ring-2",
+          "focus-visible:ring-[#3675A7]/40",
+          "active:translate-y-px",
+          "motion-reduce:transition-none",
+          isVerticalCenterActive
+            ? "border-[#3675A7] bg-[#E8F3FF] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(54,117,167,0.12)] hover:bg-[#DCEEFF]"
+            : "border-[#B9C8D8] bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(25,63,108,0.12)] hover:border-[#7B9EC3] hover:bg-[#EFF6FF] hover:shadow-md",
+        ].join(" ")}
+      >
+        <svg
+          width="27"
+          height="27"
+          viewBox="0 0 32 32"
+          fill="none"
+          aria-hidden="true"
+        >
+          {/* Titanium top and bottom guides */}
+          <path
+            d="M5 4.5h22M5 27.5h22"
+            stroke="#A9BACB"
+            strokeWidth="1"
+            strokeLinecap="round"
+          />
+
+          <path
+            d="M5.5 3.9h21M5.5 26.9h21"
+            stroke="#FFFFFF"
+            strokeWidth="0.7"
+            strokeLinecap="round"
+          />
+
+          {/* Sapphire text centered vertically */}
+          <g
+            fill={isVerticalCenterActive ? "#205FA9" : "#286BC0"}
+            stroke="#193F6C"
+            strokeWidth="0.65"
+          >
+            <rect x="7" y="9" width="18" height="3" rx="0.8" />
+            <rect x="10" y="14.5" width="12" height="3" rx="0.8" />
+            <rect x="7" y="20" width="18" height="3" rx="0.8" />
+          </g>
+
+          {/* Ice-blue upper-edge reflections */}
+          <path
+            d="
+              M8 9.9h16
+              M11 15.4h10
+              M8 20.9h16
+            "
+            stroke="#A8D5FF"
+            strokeWidth="0.7"
+            strokeLinecap="round"
+          />
+        </svg>
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {button.label}
+        </span>
+      </button>
+    );
+  }
+  // END: Premium Sapphire Vertical Center Button
+  // START: Premium Sapphire Align Top Button
+  if (button.label === "Align Top") {
+    const isAlignTopActive = !!button.active;
+
+    return (
+      <button
+        type="button"
+        onClick={button.onClick}
+        title={button.label}
+        aria-label={button.label}
+        aria-pressed={isAlignTopActive}
+        className={[
+          "group relative flex h-8 w-8 shrink-0 items-center justify-center",
+          "rounded-md border",
+          "transition-[background-color,border-color,box-shadow,transform] duration-150",
+          "focus-visible:outline-none focus-visible:ring-2",
+          "focus-visible:ring-[#3675A7]/40",
+          "active:translate-y-px",
+          "motion-reduce:transition-none",
+          isAlignTopActive
+            ? "border-[#3675A7] bg-[#E8F3FF] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(54,117,167,0.12)] hover:bg-[#DCEEFF]"
+            : "border-[#B9C8D8] bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(25,63,108,0.12)] hover:border-[#7B9EC3] hover:bg-[#EFF6FF] hover:shadow-md",
+        ].join(" ")}
+      >
+        <svg
+          width="27"
+          height="27"
+          viewBox="0 0 32 32"
+          fill="none"
+          aria-hidden="true"
+        >
+          {/* Titanium top-alignment guide */}
+          <path
+            d="M5 5h22"
+            stroke="#526A83"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          />
+
+          <path
+            d="M5.5 4.4h21"
+            stroke="#DCE8F3"
+            strokeWidth="0.7"
+            strokeLinecap="round"
+          />
+
+          {/* Sapphire text positioned near the top */}
+          <g
+            fill={isAlignTopActive ? "#205FA9" : "#286BC0"}
+            stroke="#193F6C"
+            strokeWidth="0.65"
+          >
+            <rect x="7" y="9" width="18" height="3" rx="0.8" />
+            <rect x="10" y="14.5" width="12" height="3" rx="0.8" />
+            <rect x="7" y="20" width="18" height="3" rx="0.8" />
+          </g>
+
+          {/* Ice-blue upper-edge reflections */}
+          <path
+            d="
+              M8 9.9h16
+              M11 15.4h10
+              M8 20.9h16
+            "
+            stroke="#A8D5FF"
+            strokeWidth="0.7"
+            strokeLinecap="round"
+          />
+        </svg>
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {button.label}
+        </span>
+      </button>
+    );
+  }
+  // END: Premium Sapphire Align Top Button
+  // START: Premium Sapphire Wrap Text Button
+  if (button.label === "Wrap Text") {
+    const isWrapTextActive = !!button.active;
+
+    return (
+      <button
+        type="button"
+        onClick={button.onClick}
+        title={button.label}
+        aria-label={button.label}
+        aria-pressed={isWrapTextActive}
+        className={[
+          "group relative flex h-8 w-8 shrink-0 items-center justify-center",
+          "rounded-md border",
+          "transition-[background-color,border-color,box-shadow,transform] duration-150",
+          "focus-visible:outline-none focus-visible:ring-2",
+          "focus-visible:ring-[#3675A7]/40",
+          "active:translate-y-px",
+          "motion-reduce:transition-none",
+          isWrapTextActive
+            ? "border-[#3675A7] bg-[#E8F3FF] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(54,117,167,0.12)] hover:bg-[#DCEEFF]"
+            : "border-[#B9C8D8] bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(25,63,108,0.12)] hover:border-[#7B9EC3] hover:bg-[#EFF6FF] hover:shadow-md",
+        ].join(" ")}
+      >
+        <svg
+          width="27"
+          height="27"
+          viewBox="0 0 32 32"
+          fill="none"
+          aria-hidden="true"
+        >
+          {/* Sapphire text lines */}
+          <g
+            fill={isWrapTextActive ? "#205FA9" : "#286BC0"}
+            stroke="#193F6C"
+            strokeWidth="0.65"
+          >
+            <rect x="5" y="6" width="22" height="3" rx="0.8" />
+            <rect x="5" y="13" width="14" height="3" rx="0.8" />
+            <rect x="5" y="24" width="9" height="3" rx="0.8" />
+          </g>
+
+          {/* Ice-blue line reflections */}
+          <path
+            d="M6 6.9h20M6 13.9h12M6 24.9h7"
+            stroke="#A8D5FF"
+            strokeWidth="0.7"
+            strokeLinecap="round"
+          />
+
+          {/* Navy outline of the return arrow */}
+          <path
+            d="M23 14.5h1a5 5 0 0 1 0 10h-5.5"
+            stroke="#193F6C"
+            strokeWidth="3.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {/* Sapphire return arrow */}
+          <path
+            d="M23 14.5h1a5 5 0 0 1 0 10h-5.5"
+            stroke="#367BC5"
+            strokeWidth="2.1"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {/* Left-pointing arrowhead */}
+          <path
+            d="m21.5 21.5-3 3 3 3"
+            stroke="#193F6C"
+            strokeWidth="3.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          <path
+            d="m21.5 21.5-3 3 3 3"
+            stroke="#367BC5"
+            strokeWidth="2.1"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {/* Chrome-like reflection on the bend */}
+          <path
+            d="M24 13.9a5.6 5.6 0 0 1 4.7 2.6"
+            stroke="#B5DDFF"
+            strokeWidth="0.7"
+            strokeLinecap="round"
+          />
+        </svg>
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {button.label}
+        </span>
+      </button>
+    );
+  }
+  // END: Premium Sapphire Wrap Text Button
+  // START: Premium Sapphire Underline Button
+  // START: Premium Sapphire Justified Button
+  if (button.label === "Justified") {
+    const isJustifiedActive = !!button.active;
+
+    return (
+      <button
+        type="button"
+        onClick={button.onClick}
+        title={button.label}
+        aria-label={button.label}
+        aria-pressed={isJustifiedActive}
+        className={[
+          "group relative flex h-8 w-8 shrink-0 items-center justify-center",
+          "rounded-md border",
+          "transition-[background-color,border-color,box-shadow,transform] duration-150",
+          "focus-visible:outline-none focus-visible:ring-2",
+          "focus-visible:ring-[#3675A7]/40",
+          "active:translate-y-px",
+          "motion-reduce:transition-none",
+          isJustifiedActive
+            ? "border-[#3675A7] bg-[#E8F3FF] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(54,117,167,0.12)] hover:bg-[#DCEEFF]"
+            : "border-[#B9C8D8] bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(25,63,108,0.12)] hover:border-[#7B9EC3] hover:bg-[#EFF6FF] hover:shadow-md",
+        ].join(" ")}
+      >
+        <svg
+          width="27"
+          height="27"
+          viewBox="0 0 32 32"
+          fill="none"
+          aria-hidden="true"
+        >
+          {/* Sapphire lines with equal left and right edges */}
+          <g
+            fill={isJustifiedActive ? "#205FA9" : "#286BC0"}
+            stroke="#193F6C"
+            strokeWidth="0.65"
+          >
+            <rect x="6" y="6" width="20" height="3" rx="0.8" />
+            <rect x="6" y="12" width="20" height="3" rx="0.8" />
+            <rect x="6" y="18" width="20" height="3" rx="0.8" />
+            <rect x="6" y="24" width="20" height="3" rx="0.8" />
+          </g>
+
+          {/* Ice-blue upper-edge reflections */}
+          <path
+            d="
+              M7 6.9h18
+              M7 12.9h18
+              M7 18.9h18
+              M7 24.9h18
+            "
+            stroke="#A8D5FF"
+            strokeWidth="0.7"
+            strokeLinecap="round"
+          />
+        </svg>
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {button.label}
+        </span>
+      </button>
+    );
+  }
+  // END: Premium Sapphire Justified Button
+  // START: Premium Sapphire Align Right Button
+  if (button.label === "Align Right") {
+    const isAlignRightActive = !!button.active;
+
+    return (
+      <button
+        type="button"
+        onClick={button.onClick}
+        title={button.label}
+        aria-label={button.label}
+        aria-pressed={isAlignRightActive}
+        className={[
+          "group relative flex h-8 w-8 shrink-0 items-center justify-center",
+          "rounded-md border",
+          "transition-[background-color,border-color,box-shadow,transform] duration-150",
+          "focus-visible:outline-none focus-visible:ring-2",
+          "focus-visible:ring-[#3675A7]/40",
+          "active:translate-y-px",
+          "motion-reduce:transition-none",
+          isAlignRightActive
+            ? "border-[#3675A7] bg-[#E8F3FF] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(54,117,167,0.12)] hover:bg-[#DCEEFF]"
+            : "border-[#B9C8D8] bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(25,63,108,0.12)] hover:border-[#7B9EC3] hover:bg-[#EFF6FF] hover:shadow-md",
+        ].join(" ")}
+      >
+        <svg
+          width="27"
+          height="27"
+          viewBox="0 0 32 32"
+          fill="none"
+          aria-hidden="true"
+        >
+          {/* Titanium right-alignment guide */}
+          <path
+            d="M27.5 5v22"
+            stroke="#A9BACB"
+            strokeWidth="1"
+            strokeLinecap="round"
+          />
+
+          <path
+            d="M26.6 5v22"
+            stroke="#FFFFFF"
+            strokeWidth="0.7"
+            strokeLinecap="round"
+          />
+
+          {/* Sapphire text lines, all aligned right */}
+          <g
+            fill={isAlignRightActive ? "#205FA9" : "#286BC0"}
+            stroke="#193F6C"
+            strokeWidth="0.65"
+          >
+            <rect x="4" y="6" width="20" height="3" rx="0.8" />
+            <rect x="10.5" y="12" width="13.5" height="3" rx="0.8" />
+            <rect x="4" y="18" width="20" height="3" rx="0.8" />
+            <rect x="10.5" y="24" width="13.5" height="3" rx="0.8" />
+          </g>
+
+          {/* Ice-blue upper-edge reflections */}
+          <path
+            d="
+              M5 6.9h18
+              M11.5 12.9h11.5
+              M5 18.9h18
+              M11.5 24.9h11.5
+            "
+            stroke="#A8D5FF"
+            strokeWidth="0.7"
+            strokeLinecap="round"
+          />
+        </svg>
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {button.label}
+        </span>
+      </button>
+    );
+  }
+  // END: Premium Sapphire Align Right Button
+  // START: Premium Sapphire Align Center Button
+  if (button.label === "Align Center") {
+    const isAlignCenterActive = !!button.active;
+
+    return (
+      <button
+        type="button"
+        onClick={button.onClick}
+        title={button.label}
+        aria-label={button.label}
+        aria-pressed={isAlignCenterActive}
+        className={[
+          "group relative flex h-8 w-8 shrink-0 items-center justify-center",
+          "rounded-md border",
+          "transition-[background-color,border-color,box-shadow,transform] duration-150",
+          "focus-visible:outline-none focus-visible:ring-2",
+          "focus-visible:ring-[#3675A7]/40",
+          "active:translate-y-px",
+          "motion-reduce:transition-none",
+          isAlignCenterActive
+            ? "border-[#3675A7] bg-[#E8F3FF] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(54,117,167,0.12)] hover:bg-[#DCEEFF]"
+            : "border-[#B9C8D8] bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(25,63,108,0.12)] hover:border-[#7B9EC3] hover:bg-[#EFF6FF] hover:shadow-md",
+        ].join(" ")}
+      >
+        <svg
+          width="27"
+          height="27"
+          viewBox="0 0 32 32"
+          fill="none"
+          aria-hidden="true"
+        >
+          {/* Sapphire text lines, all centered */}
+          <g
+            fill={isAlignCenterActive ? "#205FA9" : "#286BC0"}
+            stroke="#193F6C"
+            strokeWidth="0.65"
+          >
+            <rect x="6" y="6" width="20" height="3" rx="0.8" />
+            <rect x="9.25" y="12" width="13.5" height="3" rx="0.8" />
+            <rect x="6" y="18" width="20" height="3" rx="0.8" />
+            <rect x="9.25" y="24" width="13.5" height="3" rx="0.8" />
+          </g>
+
+          {/* Ice-blue upper-edge reflections */}
+          <path
+            d="
+              M7 6.9h18
+              M10.25 12.9h11.5
+              M7 18.9h18
+              M10.25 24.9h11.5
+            "
+            stroke="#A8D5FF"
+            strokeWidth="0.7"
+            strokeLinecap="round"
+          />
+        </svg>
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {button.label}
+        </span>
+      </button>
+    );
+  }
+  // END: Premium Sapphire Align Center Button
+  // START: Premium Sapphire Align Left Button
+  if (button.label === "Align Left") {
+    const isAlignLeftActive = !!button.active;
+
+    return (
+      <button
+        type="button"
+        onClick={button.onClick}
+        title={button.label}
+        aria-label={button.label}
+        aria-pressed={isAlignLeftActive}
+        className={[
+          "group relative flex h-8 w-8 shrink-0 items-center justify-center",
+          "rounded-md border",
+          "transition-[background-color,border-color,box-shadow,transform] duration-150",
+          "focus-visible:outline-none focus-visible:ring-2",
+          "focus-visible:ring-[#3675A7]/40",
+          "active:translate-y-px",
+          "motion-reduce:transition-none",
+          isAlignLeftActive
+            ? "border-[#3675A7] bg-[#E8F3FF] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(54,117,167,0.12)] hover:bg-[#DCEEFF]"
+            : "border-[#B9C8D8] bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(25,63,108,0.12)] hover:border-[#7B9EC3] hover:bg-[#EFF6FF] hover:shadow-md",
+        ].join(" ")}
+      >
+        <svg
+          width="27"
+          height="27"
+          viewBox="0 0 32 32"
+          fill="none"
+          aria-hidden="true"
+        >
+          {/* Titanium left-alignment guide */}
+          <path
+            d="M4.5 5v22"
+            stroke="#A9BACB"
+            strokeWidth="1"
+            strokeLinecap="round"
+          />
+
+          <path
+            d="M5.4 5v22"
+            stroke="#FFFFFF"
+            strokeWidth="0.7"
+            strokeLinecap="round"
+          />
+
+          {/* Sapphire text lines, all aligned left */}
+          <g
+            fill={isAlignLeftActive ? "#205FA9" : "#286BC0"}
+            stroke="#193F6C"
+            strokeWidth="0.65"
+          >
+            <rect x="8" y="6" width="20" height="3" rx="0.8" />
+            <rect x="8" y="12" width="13.5" height="3" rx="0.8" />
+            <rect x="8" y="18" width="20" height="3" rx="0.8" />
+            <rect x="8" y="24" width="13.5" height="3" rx="0.8" />
+          </g>
+
+          {/* Ice-blue upper-edge reflections */}
+          <path
+            d="
+              M9 6.9h18
+              M9 12.9h11.5
+              M9 18.9h18
+              M9 24.9h11.5
+            "
+            stroke="#A8D5FF"
+            strokeWidth="0.7"
+            strokeLinecap="round"
+          />
+        </svg>
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {button.label}
+        </span>
+      </button>
+    );
+  }
+  // END: Premium Sapphire Align Left Button
+  if (button.label === "Underline") {
+    const isUnderlineActive = !!button.active;
+
+    return (
+      <button
+        type="button"
+        onClick={button.onClick}
+        title={button.label}
+        aria-label={button.label}
+        aria-pressed={isUnderlineActive}
+        className={[
+          "group relative flex h-8 w-8 shrink-0 items-center justify-center",
+          "rounded-md border",
+          "transition-[background-color,border-color,box-shadow,transform] duration-150",
+          "focus-visible:outline-none focus-visible:ring-2",
+          "focus-visible:ring-[#3675A7]/40",
+          "active:translate-y-px",
+          "motion-reduce:transition-none",
+          isUnderlineActive
+            ? "border-[#3675A7] bg-[#E8F3FF] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(54,117,167,0.12)] hover:bg-[#DCEEFF]"
+            : "border-[#B9C8D8] bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(25,63,108,0.12)] hover:border-[#7B9EC3] hover:bg-[#EFF6FF] hover:shadow-md",
+        ].join(" ")}
+      >
+        <svg
+          width="25"
+          height="27"
+          viewBox="0 0 32 32"
+          fill="none"
+          aria-hidden="true"
+        >
+          {/* Sapphire U silhouette */}
+          <path
+            d="
+              M7 5H12V16
+              C12 19.2 13.3 21 16 21
+              C18.7 21 20 19.2 20 16
+              V5H25V16
+              C25 22 21.8 25 16 25
+              C10.2 25 7 22 7 16
+              V5Z
+            "
+            fill={isUnderlineActive ? "#174D91" : "#286BC0"}
+            stroke="#193F6C"
+            strokeWidth="0.85"
+            strokeLinejoin="round"
+          />
+
+          {/* Upper-edge chrome highlights */}
+          <path
+            d="M8.2 6.3h2.6M21.2 6.3h2.6"
+            stroke="#B5DDFF"
+            strokeWidth="0.9"
+            strokeLinecap="round"
+          />
+
+          {/* Soft reflection along the left curve */}
+          <path
+            d="M8.3 8.2V16c0 4.4 2.1 7 6.1 7.6"
+            stroke="#8FC5FF"
+            strokeWidth="0.85"
+            strokeLinecap="round"
+          />
+
+          {/* Subtle right-side reflection */}
+          <path
+            d="M21.3 9v6.8c0 2.6-0.7 4.5-2.1 5.7"
+            stroke="#74ACE5"
+            strokeWidth="0.75"
+            strokeLinecap="round"
+          />
+
+          {/* Separate underline */}
+          <rect
+            x="6.5"
+            y="28"
+            width="19"
+            height="2.3"
+            rx="0.8"
+            fill="#193F6C"
+          />
+
+          <path
+            d="M7.5 28.6h17"
+            stroke="#8FC5FF"
+            strokeWidth="0.6"
+            strokeLinecap="round"
+          />
+        </svg>
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {button.label}
+        </span>
+      </button>
+    );
+  }
+  // END: Premium Sapphire Underline Button
+  // START: Premium Sapphire Italic Button
+  if (button.label === "Italic") {
+    const isItalicActive = !!button.active;
+
+    return (
+      <button
+        type="button"
+        onClick={button.onClick}
+        title={button.label}
+        aria-label={button.label}
+        aria-pressed={isItalicActive}
+        className={[
+          "group relative flex h-8 w-8 shrink-0 items-center justify-center",
+          "rounded-md border",
+          "transition-[background-color,border-color,box-shadow,transform] duration-150",
+          "focus-visible:outline-none focus-visible:ring-2",
+          "focus-visible:ring-[#3675A7]/40",
+          "active:translate-y-px",
+          "motion-reduce:transition-none",
+          isItalicActive
+            ? "border-[#3675A7] bg-[#E8F3FF] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(54,117,167,0.12)] hover:bg-[#DCEEFF]"
+            : "border-[#B9C8D8] bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(25,63,108,0.12)] hover:border-[#7B9EC3] hover:bg-[#EFF6FF] hover:shadow-md",
+        ].join(" ")}
+      >
+        <svg
+          width="25"
+          height="27"
+          viewBox="0 0 32 32"
+          fill="none"
+          aria-hidden="true"
+        >
+          {/* Slanted sapphire I with balanced upper/lower serifs */}
+          <path
+            d="
+              M13 5H26L25 9H21L17 23H21L20 27H7L8 23H12
+              L16 9H12L13 5Z
+            "
+            fill={isItalicActive ? "#174D91" : "#286BC0"}
+            stroke="#193F6C"
+            strokeWidth="0.85"
+            strokeLinejoin="round"
+          />
+
+          {/* Ice-blue upper-edge reflection */}
+          <path
+            d="M14 6.3h10.3"
+            stroke="#B5DDFF"
+            strokeWidth="0.95"
+            strokeLinecap="round"
+          />
+
+          {/* Subtle highlight along the slanted stem */}
+          <path
+            d="m17.1 10.5-3.2 11.2"
+            stroke="#8FC5FF"
+            strokeWidth="0.85"
+            strokeLinecap="round"
+          />
+
+          {/* Lower serif highlight */}
+          <path
+            d="M9 24.3h10.4"
+            stroke="#8FC5FF"
+            strokeWidth="0.8"
+            strokeLinecap="round"
+          />
+        </svg>
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {button.label}
+        </span>
+      </button>
+    );
+  }
+  // END: Premium Sapphire Italic Button
+  // START: Premium Sapphire Bold Button
+  if (button.label === "Bold") {
+    const isBoldActive = !!button.active;
+
+    return (
+      <button
+        type="button"
+        onClick={button.onClick}
+        title={button.label}
+        aria-label={button.label}
+        aria-pressed={isBoldActive}
+        className={[
+          "group relative flex h-8 w-8 shrink-0 items-center justify-center",
+          "rounded-md border",
+          "transition-[background-color,border-color,box-shadow,transform] duration-150",
+          "focus-visible:outline-none focus-visible:ring-2",
+          "focus-visible:ring-[#3675A7]/40",
+          "active:translate-y-px",
+          "motion-reduce:transition-none",
+          isBoldActive
+            ? "border-[#3675A7] bg-[#E8F3FF] shadow-[inset_0_1px_0_rgba(255,255,255,0.9),inset_0_0_0_1px_rgba(54,117,167,0.12)] hover:bg-[#DCEEFF]"
+            : "border-[#B9C8D8] bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(25,63,108,0.12)] hover:border-[#7B9EC3] hover:bg-[#EFF6FF] hover:shadow-md",
+        ].join(" ")}
+      >
+        <svg
+          width="25"
+          height="27"
+          viewBox="0 0 32 32"
+          fill="none"
+          aria-hidden="true"
+        >
+          {/* Bold B silhouette with open counters */}
+          <path
+            fillRule="evenodd"
+            clipRule="evenodd"
+            d="
+              M9 5h8.1
+              C22.3 5 25 7.2 25 11
+              C25 13.2 23.9 14.8 22 15.6
+              C24.5 16.4 26 18.2 26 20.8
+              C26 25 22.8 27 17.7 27H9V5Z
+
+              M14 9v5h3
+              C19.1 14 20.2 13.2 20.2 11.5
+              C20.2 9.8 19.1 9 17 9H14Z
+
+              M14 18v5h3.6
+              C19.9 23 21 22.2 21 20.5
+              C21 18.8 19.9 18 17.6 18H14Z
+            "
+            fill={isBoldActive ? "#174D91" : "#286BC0"}
+            stroke="#193F6C"
+            strokeWidth="0.8"
+            strokeLinejoin="round"
+          />
+
+          {/* Ice-blue upper-edge reflection */}
+          <path
+            d="M10.4 6.3h6.5c3.5 0 5.7 1.2 6.5 3.2"
+            stroke="#9BCBFF"
+            strokeWidth="0.9"
+            strokeLinecap="round"
+          />
+
+          {/* Subtle chrome-blue stem highlight */}
+          <path
+            d="M10.4 8v16.7"
+            stroke="#74ACE5"
+            strokeWidth="0.75"
+            strokeLinecap="round"
+          />
+
+          {/* Lower bowl reflection */}
+          <path
+            d="M22.6 18.6c1 1.5 0.7 3.6-0.6 4.9"
+            stroke="#74ACE5"
+            strokeWidth="0.8"
+            strokeLinecap="round"
+          />
+        </svg>
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {button.label}
+        </span>
+      </button>
+    );
+  }
+  // END: Premium Sapphire Bold Button
+  // START: Sapphire Chrome Refresh
+  if (button.label === "Refresh") {
+    return (
+      <button
+        type="button"
+        onClick={button.onClick}
+        title={button.label}
+        aria-label={button.label}
+        className={`${sapphireToolbarClass(false)} overflow-visible`}
+        style={{
+          backgroundImage:
+            "linear-gradient(180deg, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0) 65%)",
+          boxShadow:
+            "inset 0 1px 0 rgba(255,255,255,0.95), 0 1px 2px rgba(25,63,108,0.12)",
+        }}
+      >
+        <svg
+          width="27"
+          height="28"
+          viewBox="0 0 32 32"
+          fill="none"
+          aria-hidden="true"
+        >
+          {/* Upper sapphire arrow */}
+          <path
+            d="M6.4 13A10 10 0 0 1 23.5 9.4"
+            stroke="#193F6C"
+            strokeWidth="4.4"
+            strokeLinecap="round"
+          />
+
+          <path
+            d="M6.4 12.5A10 10 0 0 1 23.5 8.9"
+            stroke="#286BC0"
+            strokeWidth="3"
+            strokeLinecap="round"
+          />
+
+          <path
+            d="M7 11.4A9 9 0 0 1 19.4 6.5"
+            stroke="#A8D5FF"
+            strokeWidth="1"
+            strokeLinecap="round"
+          />
+
+          <path
+            d="m20 10 7.4 1.4L26 4"
+            fill="#286BC0"
+            stroke="#193F6C"
+            strokeWidth="1"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          <path
+            d="m22 9.8 4.2 0.8-0.8-4.2"
+            stroke="#8FC5FF"
+            strokeWidth="0.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {/* Lower sapphire arrow */}
+          <path
+            d="M25.6 19A10 10 0 0 1 8.5 22.6"
+            stroke="#193F6C"
+            strokeWidth="4.4"
+            strokeLinecap="round"
+          />
+
+          <path
+            d="M25.6 18.5A10 10 0 0 1 8.5 22.1"
+            stroke="#286BC0"
+            strokeWidth="3"
+            strokeLinecap="round"
+          />
+
+          <path
+            d="M24.8 20.1A9 9 0 0 1 12.6 25.4"
+            stroke="#8FC5FF"
+            strokeWidth="0.9"
+            strokeLinecap="round"
+          />
+
+          <path
+            d="m12 22-7.4-1.4L6 28"
+            fill="#286BC0"
+            stroke="#193F6C"
+            strokeWidth="1"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          <path
+            d="m10 22.2-4.2-0.8 0.8 4.2"
+            stroke="#A8D5FF"
+            strokeWidth="0.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {button.label}
+        </span>
+      </button>
+    );
+  }
+  // END: Sapphire Chrome Refresh
+  // START: Sapphire Predictive Analytics
+  if (button.label === "Predictive Analytics") {
+    return (
+      <button
+        type="button"
+        onClick={button.onClick}
+        title={button.label}
+        aria-label={button.label}
+        aria-pressed={!!button.active}
+        className={sapphireToolbarClass(!!button.active)}
+      >
+        <svg
+          width="27"
+          height="28"
+          viewBox="0 0 32 32"
+          fill="none"
+          aria-hidden="true"
+        >
+          {/* Silver-blue chart axes */}
+          <path
+            d="M4 5v23h25"
+            stroke="#7D93AA"
+            strokeWidth="1.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {/* Sapphire chart columns */}
+          <rect
+            x="7"
+            y="20"
+            width="4.5"
+            height="6"
+            rx="0.8"
+            fill="#8DBCEB"
+            stroke="#4D86BF"
+            strokeWidth="0.6"
+          />
+
+          <rect
+            x="14"
+            y="16"
+            width="4.5"
+            height="10"
+            rx="0.8"
+            fill="#4389D2"
+            stroke="#205FA9"
+            strokeWidth="0.6"
+          />
+
+          <rect
+            x="21"
+            y="12"
+            width="4.5"
+            height="14"
+            rx="0.8"
+            fill="#205FA9"
+            stroke="#193F6C"
+            strokeWidth="0.6"
+          />
+
+          {/* Fine column highlights */}
+          <path
+            d="M8 21h2.4M15 17h2.4M22 13h2.4"
+            stroke="#D3EBFF"
+            strokeWidth="0.8"
+            strokeLinecap="round"
+          />
+
+          {/* White separation beneath the trend */}
+          <path
+            d="m6 17 7-6 5 2"
+            stroke="#FFFFFF"
+            strokeWidth="4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {/* Observed trend */}
+          <path
+            d="m6 17 7-6 5 2"
+            stroke="#193F6C"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {/* Dotted forecast */}
+          <path
+            d="m18 13 9-8"
+            stroke="#286BC0"
+            strokeWidth="2"
+            strokeDasharray="1.4 2.5"
+            strokeLinecap="round"
+          />
+
+          {/* Forecast arrowhead */}
+          <path
+            d="M22 5h5v5"
+            stroke="#205FA9"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {/* Restrained champagne-gold endpoint */}
+          <circle
+            cx="27"
+            cy="5"
+            r="1.6"
+            fill="#E4AF4D"
+            stroke="#9A6825"
+            strokeWidth="0.6"
+          />
+
+          <circle
+            cx="26.6"
+            cy="4.6"
+            r="0.45"
+            fill="#FFF4D5"
+          />
+        </svg>
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {button.label}
+        </span>
+      </button>
+    );
+  }
+  // END: Sapphire Predictive Analytics
+  // START: Sapphire Remaining Toolbar Buttons
+  if (
+    [
+      "Undo",
+      "Redo",
+      "Find and Replace",
+      "Spelling",
+      "Toggle Grid Lines",
+      "Insert Rows",
+      "Insert Columns",
+      "Delete Rows",
+      "Delete Columns",
+      "Sort Ascending",
+      "Sort Descending",
+      "AutoFilter",
+      "Insert Image",
+      "Insert Chart",
+      "Insert Pivot Table",
+      "Insert Hyperlink",
+      "Insert Comment",
+      "Show Draw Functions",
+      "Freeze Rows and Columns",
+      "Split Window",
+    ].includes(button.label) ||
+    button.label.startsWith("Text Direction")
+  ) {
+    return (
+      <button
+        type="button"
+        onClick={button.onClick}
+        title={button.label}
+        aria-label={button.label}
+        aria-pressed={
+          button.kind === "toggle" ? !!button.active : undefined
+        }
+        className={sapphireToolbarClass(!!button.active)}
+      >
+        <SapphireToolbarIcon label={button.label} />
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {button.label}
+        </span>
+      </button>
+    );
+  }
+  // END: Sapphire Remaining Toolbar Buttons
+
+  // START: Premium Sapphire Five Toolbar Buttons
+  if (
+    button.label === "Copy" ||
+    button.label === "Paste" ||
+    button.label === "Merge Cells" ||
+    button.label === "Unmerge Cells" ||
+    button.label === "Clone Formatting"
+  ) {
+    const isCloneFormatting = button.label === "Clone Formatting";
+    const isSelected = isCloneFormatting && !!button.active;
+
+    // Each button gets its own SVG gradient IDs.
+    const gradientPrefix =
+      `alx-premium-${button.label.toLowerCase().replace(/\s+/g, "-")}`;
+
+    const blueGradientId = `${gradientPrefix}-blue`;
+    const paperGradientId = `${gradientPrefix}-paper`;
+    const metalGradientId = `${gradientPrefix}-metal`;
+    const goldGradientId = `${gradientPrefix}-gold`;
+
+    return (
+      <button
+        type="button"
+        onClick={button.onClick}
+        title={button.label}
+        aria-label={button.label}
+        aria-pressed={
+          isCloneFormatting ? !!button.active : undefined
+        }
+        className={`group relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md border shadow-sm transition-[background-color,border-color,box-shadow,transform] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3675A7]/40 active:translate-y-px active:shadow-none motion-reduce:transition-none ${isSelected
+          ? "border-[#3675A7] bg-[#E8F3FF] shadow-[inset_0_0_0_1px_rgba(54,117,167,0.15)] hover:bg-[#DCEEFF]"
+          : "border-[#B9C8D8] bg-white hover:border-[#7B9EC3] hover:bg-[#EFF6FF] hover:shadow-md active:bg-[#E2EDF8]"
+          }`}
+      >
+        <svg
+          width="27"
+          height="28"
+          viewBox="0 0 32 32"
+          fill="none"
+          aria-hidden="true"
+        >
+          <defs>
+            <linearGradient
+              id={blueGradientId}
+              x1="0%"
+              y1="0%"
+              x2="0%"
+              y2="100%"
+            >
+              <stop offset="0%" stopColor="#4A97EB" />
+              <stop offset="45%" stopColor="#286BC0" />
+              <stop offset="100%" stopColor="#123E80" />
+            </linearGradient>
+
+            <linearGradient
+              id={paperGradientId}
+              x1="0%"
+              y1="0%"
+              x2="0%"
+              y2="100%"
+            >
+              <stop offset="0%" stopColor="#FFFFFF" />
+              <stop offset="55%" stopColor="#F1F8FF" />
+              <stop offset="100%" stopColor="#BCD8F5" />
+            </linearGradient>
+
+            <linearGradient
+              id={metalGradientId}
+              x1="0%"
+              y1="0%"
+              x2="100%"
+              y2="100%"
+            >
+              <stop offset="0%" stopColor="#ACBDCD" />
+              <stop offset="38%" stopColor="#F3F7FB" />
+              <stop offset="65%" stopColor="#C0CEDB" />
+              <stop offset="100%" stopColor="#75899F" />
+            </linearGradient>
+
+            <linearGradient
+              id={goldGradientId}
+              x1="0%"
+              y1="0%"
+              x2="0%"
+              y2="100%"
+            >
+              <stop offset="0%" stopColor="#FFE0A0" />
+              <stop offset="45%" stopColor="#E1AA48" />
+              <stop offset="100%" stopColor="#A86B20" />
+            </linearGradient>
+          </defs>
+
+          {button.label === "Copy" && (
+            <>
+              {/* Rear document */}
+              <rect
+                x="5"
+                y="3"
+                width="16"
+                height="21"
+                rx="1.7"
+                fill={`url(#${paperGradientId})`}
+                stroke="#194E8C"
+                strokeWidth="1.2"
+              />
+
+              <path
+                d="M7 5h12"
+                stroke="#FFFFFF"
+                strokeWidth="1"
+                strokeLinecap="round"
+              />
+
+              {/* Front document */}
+              <rect
+                x="11"
+                y="9"
+                width="16"
+                height="21"
+                rx="1.7"
+                fill={`url(#${paperGradientId})`}
+                stroke="#194E8C"
+                strokeWidth="1.2"
+              />
+
+              {/* Sapphire document header */}
+              <path
+                d="M12 10h14v4H12z"
+                fill={`url(#${blueGradientId})`}
+              />
+
+              <path
+                d="M13.5 10.8h11"
+                stroke="#A8D5FF"
+                strokeWidth="0.7"
+                strokeLinecap="round"
+              />
+
+              {/* Document text */}
+              <path
+                d="M14.5 18h9M14.5 21.5h9M14.5 25h6.5"
+                stroke="#58789E"
+                strokeWidth="1.1"
+                strokeLinecap="round"
+              />
+            </>
+          )}
+
+          {button.label === "Paste" && (
+            <>
+              {/* Metallic clipboard */}
+              <rect
+                x="6"
+                y="5"
+                width="21"
+                height="25"
+                rx="2.3"
+                fill={`url(#${metalGradientId})`}
+                stroke="#526A83"
+                strokeWidth="1.2"
+              />
+
+              <path
+                d="M8 7h17"
+                stroke="#F4F8FC"
+                strokeWidth="0.9"
+                strokeLinecap="round"
+              />
+
+              {/* White paper */}
+              <rect
+                x="9"
+                y="10"
+                width="15"
+                height="17"
+                rx="0.8"
+                fill="#FFFFFF"
+                stroke="#D7E2EE"
+                strokeWidth="0.7"
+              />
+
+              {/* Sapphire clip */}
+              <rect
+                x="11"
+                y="3"
+                width="11"
+                height="6.5"
+                rx="1.5"
+                fill={`url(#${blueGradientId})`}
+                stroke="#194E8C"
+                strokeWidth="0.9"
+              />
+
+              <path
+                d="M13 4.2h7"
+                stroke="#A8D5FF"
+                strokeWidth="0.8"
+                strokeLinecap="round"
+              />
+
+              {/* Paper text */}
+              <path
+                d="M12 15h9M12 19h9M12 23h6"
+                stroke="#194E8C"
+                strokeWidth="1.1"
+                strokeLinecap="round"
+              />
+            </>
+          )}
+
+          {(button.label === "Merge Cells" ||
+            button.label === "Unmerge Cells") && (
+              <>
+                {/* Spreadsheet panel */}
+                <rect
+                  x="3"
+                  y="5"
+                  width="26"
+                  height="23"
+                  rx="1.5"
+                  fill={`url(#${paperGradientId})`}
+                  stroke="#194E8C"
+                  strokeWidth="1.2"
+                />
+
+                {/* Upper and lower grid rows */}
+                <path
+                  d="M3.5 12.5h25M3.5 20.5h25
+                 M11.5 5.5v7M20.5 5.5v7
+                 M11.5 20.5v7M20.5 20.5v7"
+                  stroke="#6E99C9"
+                  strokeWidth="0.9"
+                />
+
+                <path
+                  d="M5 6.3h22"
+                  stroke="#FFFFFF"
+                  strokeWidth="0.8"
+                  strokeLinecap="round"
+                />
+
+                {button.label === "Merge Cells" ? (
+                  <>
+                    {/* Unified sapphire middle cell */}
+                    <path
+                      d="M3.7 13h24.6v7H3.7z"
+                      fill={`url(#${blueGradientId})`}
+                    />
+
+                    <path
+                      d="M5 13.8h22"
+                      stroke="#88BEF4"
+                      strokeWidth="0.7"
+                      strokeLinecap="round"
+                    />
+
+                    {/* Inward arrows */}
+                    <path
+                      d="M6 16.5h6.5M10 14l2.5 2.5L10 19
+                     M26 16.5h-6.5M22 14l-2.5 2.5L22 19"
+                      stroke="#FFFFFF"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </>
+                ) : (
+                  <>
+                    {/* Clear central separation */}
+                    <path
+                      d="M14.4 5.7h3.2v21.6h-3.2z"
+                      fill="#FFFFFF"
+                    />
+
+                    <path
+                      d="M14.4 5.7v21.6M17.6 5.7v21.6"
+                      stroke="#194E8C"
+                      strokeWidth="0.9"
+                    />
+
+                    {/* Outward arrows */}
+                    <path
+                      d="M12.5 16.5H6M8.5 14 6 16.5 8.5 19
+                     M19.5 16.5H26M23.5 14l2.5 2.5-2.5 2.5"
+                      stroke="#1555A0"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </>
+                )}
+              </>
+            )}
+
+          {button.label === "Clone Formatting" && (
+            <>
+              {/* Sapphire brush handle */}
+              <path
+                d="m15 16 9-11a2.5 2.5 0 0 1 3.8 3.2L19 19"
+                fill={`url(#${blueGradientId})`}
+                stroke="#123B70"
+                strokeWidth="1.1"
+                strokeLinejoin="round"
+              />
+
+              <path
+                d="m18.1 14.1 7.2-8.3"
+                stroke="#A8D5FF"
+                strokeWidth="1"
+                strokeLinecap="round"
+              />
+
+              {/* Silver ferrule */}
+              <path
+                d="m12.5 15 7 5-4 5-7-5 4-5Z"
+                fill={`url(#${metalGradientId})`}
+                stroke="#63758C"
+                strokeWidth="1"
+                strokeLinejoin="round"
+              />
+
+              <path
+                d="m12.5 16.6 5.4 3.9"
+                stroke="#F3F7FB"
+                strokeWidth="0.9"
+                strokeLinecap="round"
+              />
+
+              {/* Champagne-gold bristles */}
+              <path
+                d="m8.5 20 7 5
+                 c-1.2 3.4-4.2 5-9.8 4.5
+                 1.3-1.1 0.5-2.4 1.1-4.1
+                 0.4-1.4 1-3.2 1.7-5.4Z"
+                fill={`url(#${goldGradientId})`}
+                stroke="#9A6825"
+                strokeWidth="1"
+                strokeLinejoin="round"
+              />
+
+              {/* Fine bristle highlights */}
+              <path
+                d="m9.2 23.1-1.1 4.6
+                 M11.2 24.3l-1 3.8
+                 M13.2 25.5l-1.1 2.5"
+                stroke="#FCE0A4"
+                strokeWidth="0.85"
+                strokeLinecap="round"
+              />
+            </>
+          )}
+        </svg>
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {button.label}
+        </span>
+      </button>
+    );
+  }
+  // END: Premium Sapphire Five Toolbar Buttons
+  // START: White Sapphire Print Preview + Titanium Cut
+  if (
+    button.label === "Toggle Print Preview" ||
+    button.label === "Cut"
+  ) {
+    const isPreviewButton = button.label === "Toggle Print Preview";
+    const isPreviewActive = isPreviewButton && !!button.active;
+
+    return (
+      <button
+        type="button"
+        onClick={button.onClick}
+        title={button.label}
+        aria-label={button.label}
+        aria-pressed={
+          isPreviewButton ? !!button.active : undefined
+        }
+        className={`group relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md border shadow-sm transition-[background-color,border-color,box-shadow,transform] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3675A7]/40 active:translate-y-px active:shadow-none motion-reduce:transition-none ${isPreviewActive
+          ? "border-[#3675A7] bg-[#E8F3FF] shadow-[inset_0_0_0_1px_rgba(54,117,167,0.15)] hover:bg-[#DCEEFF]"
+          : "border-[#C9D1DA] bg-white hover:border-[#8CA8C2] hover:bg-[#EFF6FF] hover:shadow-md active:bg-[#E2EDF8]"
+          }`}
+      >
+        {isPreviewButton ? (
+          <svg
+            width="27"
+            height="28"
+            viewBox="0 0 32 32"
+            fill="none"
+            aria-hidden="true"
+          >
+            {/* White document */}
+            <path
+              d="M6 3h13l5 5v20H6V3Z"
+              fill="#FFFFFF"
+              stroke="#63788C"
+              strokeWidth="1.2"
+              strokeLinejoin="round"
+            />
+
+            {/* Folded corner */}
+            <path
+              d="M19 3v5h5"
+              fill="#E8EEF4"
+              stroke="#63788C"
+              strokeWidth="1.1"
+              strokeLinejoin="round"
+            />
+
+            {/* Document lines */}
+            <path
+              d="M9 11h8M9 14.5h8M9 18h5"
+              stroke="#8CA0B3"
+              strokeWidth="1.1"
+              strokeLinecap="round"
+            />
+
+            {/* Dark sapphire handle */}
+            <path
+              d="m22.8 23.3 5.7 5.7"
+              stroke="#24384F"
+              strokeWidth="4.2"
+              strokeLinecap="round"
+            />
+
+            {/* Handle highlight */}
+            <path
+              d="m23.7 23.6 4.5 4.5"
+              stroke="#526F90"
+              strokeWidth="1"
+              strokeLinecap="round"
+            />
+
+            {/* Lens frame */}
+            <circle
+              cx="19"
+              cy="19.5"
+              r="6.6"
+              fill="#B6E2FA"
+              stroke="#275B8E"
+              strokeWidth="1.8"
+            />
+
+            {/* Ice-blue glass */}
+            <circle
+              cx="18.7"
+              cy="19.2"
+              r="5.15"
+              fill="#D5F0FF"
+            />
+
+            {/* Subtle lower glass tint */}
+            <path
+              d="M14.4 21.1a5 5 0 0 0 9.1-0.2"
+              stroke="#96CEEF"
+              strokeWidth="0.8"
+              strokeLinecap="round"
+            />
+
+            {/* Glossy reflection */}
+            <path
+              d="M15.8 18.3a3.7 3.7 0 0 1 3.1-2.3"
+              stroke="#FFFFFF"
+              strokeWidth="1.7"
+              strokeLinecap="round"
+            />
+
+            <circle
+              cx="15.5"
+              cy="20.1"
+              r="0.55"
+              fill="#FFFFFF"
+              opacity="0.9"
+            />
+          </svg>
+        ) : (
+          <svg
+            width="27"
+            height="28"
+            viewBox="0 0 32 32"
+            fill="none"
+            aria-hidden="true"
+          >
+            {/* Titanium right blade */}
+            <path
+              d="M14.8 17.2 26.5 3.5 22.1 15.2 17.2 20Z"
+              fill="#98AABB"
+              stroke="#52687E"
+              strokeWidth="1"
+              strokeLinejoin="round"
+            />
+
+            {/* Silver left blade */}
+            <path
+              d="M17.2 17.2 5.5 3.5 9.9 15.2 14.8 20Z"
+              fill="#DFE7EF"
+              stroke="#52687E"
+              strokeWidth="1"
+              strokeLinejoin="round"
+            />
+
+            {/* Metallic blade highlights */}
+            <path
+              d="m7.6 6.8 7.3 9"
+              stroke="#FFFFFF"
+              strokeWidth="1.1"
+              strokeLinecap="round"
+            />
+
+            <path
+              d="m24.5 6.9-7.2 8.7"
+              stroke="#D8E4EF"
+              strokeWidth="0.8"
+              strokeLinecap="round"
+            />
+
+            {/* Navy handle arms */}
+            <path
+              d="m15 18-5.2 6.2M17 18l5.2 6.2"
+              stroke="#234B73"
+              strokeWidth="3.3"
+              strokeLinecap="round"
+            />
+
+            {/* Left handle */}
+            <ellipse
+              cx="8.1"
+              cy="25"
+              rx="4.2"
+              ry="4.5"
+              fill="#FFFFFF"
+              stroke="#234B73"
+              strokeWidth="2.9"
+              transform="rotate(25 8.1 25)"
+            />
+
+            {/* Right handle */}
+            <ellipse
+              cx="23.9"
+              cy="25"
+              rx="4.2"
+              ry="4.5"
+              fill="#FFFFFF"
+              stroke="#234B73"
+              strokeWidth="2.9"
+              transform="rotate(-25 23.9 25)"
+            />
+
+            {/* Handle highlights */}
+            <path
+              d="M5.1 23.3a3.2 3.2 0 0 1 2.1-1.7M22 21.8a3.2 3.2 0 0 1 2.6 0.2"
+              stroke="#759BC0"
+              strokeWidth="0.9"
+              strokeLinecap="round"
+            />
+
+            {/* Central metal pivot */}
+            <circle
+              cx="16"
+              cy="17.8"
+              r="1.65"
+              fill="#DCE6EF"
+              stroke="#52687E"
+              strokeWidth="0.8"
+            />
+
+            <circle
+              cx="15.6"
+              cy="17.35"
+              r="0.5"
+              fill="#FFFFFF"
+            />
+          </svg>
+        )}
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {button.label}
+        </span>
+      </button>
+    );
+  }
+  // END: White Sapphire Print Preview + Titanium Cut
+  if (button.label === "Print") {
+    return (
+      <button
+        type="button"
+        onClick={button.onClick}
+        title={button.label}
+        aria-label={button.label}
+        className="group relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[#CCD3DA] bg-white shadow-sm transition-[background-color,border-color,box-shadow,transform] duration-150 hover:border-[#94A3B8] hover:bg-[#EFF6FF] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#64748B]/40 active:translate-y-px active:bg-[#E2E8F0] active:shadow-none motion-reduce:transition-none"
+      >
+        <svg
+          width="27"
+          height="28"
+          viewBox="0 0 32 32"
+          fill="none"
+          aria-hidden="true"
+        >
+          {/* Upper white paper */}
+          <path
+            d="M9 3.5h14v10H9z"
+            fill="#FFFFFF"
+            stroke="#647585"
+            strokeWidth="1.15"
+            strokeLinejoin="round"
+          />
+
+          <path
+            d="M10 4.5h12"
+            stroke="#F1F5F9"
+            strokeWidth="1"
+          />
+
+          {/* Black printer body */}
+          <rect
+            x="3"
+            y="10"
+            width="26"
+            height="14"
+            rx="2.6"
+            fill="#20252C"
+            stroke="#10151B"
+            strokeWidth="1.2"
+          />
+
+          {/* Metallic upper highlights */}
+          <path
+            d="M5.5 11.8h21"
+            stroke="#65707C"
+            strokeWidth="1.1"
+            strokeLinecap="round"
+          />
+
+          <path
+            d="M5.5 13.2h21"
+            stroke="#353E49"
+            strokeWidth="0.8"
+            strokeLinecap="round"
+          />
+
+          {/* Subtle lower-body highlight */}
+          <path
+            d="M4.5 21.5h23"
+            stroke="#303944"
+            strokeWidth="0.8"
+            strokeLinecap="round"
+          />
+
+          {/* Glossy green light: soft outer glow */}
+          <circle
+            cx="24"
+            cy="16"
+            r="3.1"
+            fill="#39FF77"
+            opacity="0.06"
+          />
+
+          <circle
+            cx="24"
+            cy="16"
+            r="2.5"
+            fill="#39FF77"
+            opacity="0.11"
+          />
+
+          <circle
+            cx="24"
+            cy="16"
+            r="1.95"
+            fill="#39FF77"
+            opacity="0.2"
+          />
+
+          {/* Bright green lamp */}
+          <circle
+            cx="24"
+            cy="16"
+            r="1.3"
+            fill="#35FF70"
+            stroke="#9AFFBB"
+            strokeWidth="0.4"
+          />
+
+          {/* Glossy white reflection */}
+          <circle
+            cx="23.65"
+            cy="15.6"
+            r="0.52"
+            fill="#E7FFEF"
+          />
+
+          <circle
+            cx="23.5"
+            cy="15.45"
+            r="0.22"
+            fill="#FFFFFF"
+          />
+
+          {/* Paper outlet */}
+          <rect
+            x="7"
+            y="19"
+            width="18"
+            height="3"
+            rx="0.8"
+            fill="#080C10"
+          />
+
+          {/* Lower printed paper */}
+          <path
+            d="M9 20.5h14v9H9z"
+            fill="#FFFFFF"
+            stroke="#647585"
+            strokeWidth="1.1"
+            strokeLinejoin="round"
+          />
+
+          <path
+            d="M10 21.5h12"
+            stroke="#E2E8F0"
+            strokeWidth="0.7"
+          />
+
+          {/* Printed lines */}
+          <path
+            d="M12 23.5h8M12 25.5h8M12 27.5h6"
+            stroke="#647585"
+            strokeWidth="0.9"
+            strokeLinecap="round"
+          />
+        </svg>
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {button.label}
+        </span>
+      </button>
+    );
+  }
+  if (button.label === "Export CSV") {
+    return (
+      <button
+        type="button"
+        onClick={button.onClick}
+        title={button.label}
+        aria-label={button.label}
+        className="group relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[#91BAA0] bg-[#E6F4EB] shadow-sm transition-[background-color,border-color,box-shadow,transform] duration-150 hover:border-[#389462] hover:bg-[#D5EDDF] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#168848]/40 active:translate-y-px active:bg-[#C6E5D2] active:shadow-none motion-reduce:transition-none"
+      >
+        <svg
+          width="26"
+          height="28"
+          viewBox="0 0 30 32"
+          fill="none"
+          aria-hidden="true"
+        >
+          {/* White document */}
+          <path
+            d="M6 2h11l5 5v21H6V2Z"
+            fill="#FFFFFF"
+            stroke="#168848"
+            strokeWidth="1.15"
+            strokeLinejoin="round"
+          />
+
+          {/* Folded corner */}
+          <path
+            d="M17 2v5h5"
+            fill="#E5EEE9"
+            stroke="#168848"
+            strokeWidth="1.15"
+            strokeLinejoin="round"
+          />
+
+          {/* Spreadsheet grid */}
+          <path
+            d="M9 10h10v7H9zM9 13.5h10M14 10v7"
+            stroke="#65A780"
+            strokeWidth="0.9"
+            strokeLinejoin="round"
+          />
+
+          {/* CSV badge */}
+          <rect
+            x="2"
+            y="20"
+            width="23"
+            height="10"
+            rx="2"
+            fill="#087F46"
+            stroke="#066D3C"
+            strokeWidth="0.7"
+          />
+
+          <path
+            d="M4.5 21h18"
+            stroke="#46AD78"
+            strokeWidth="0.7"
+            strokeLinecap="round"
+          />
+
+          <text
+            x="13.5"
+            y="27.2"
+            textAnchor="middle"
+            fill="#FFFFFF"
+            fontFamily="Arial, sans-serif"
+            fontSize="7.7"
+            fontWeight="700"
+            letterSpacing="0.4"
+          >
+            CSV
+          </text>
+
+          {/* Export arrow badge */}
+          <rect
+            x="19"
+            y="10"
+            width="10"
+            height="11"
+            rx="2.5"
+            fill="#087F46"
+            stroke="#E6F4EB"
+            strokeWidth="1"
+          />
+
+          <path
+            d="M24 12.5v5M22 15.5l2 2 2-2"
+            stroke="#FFFFFF"
+            strokeWidth="1.3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {button.label}
+        </span>
+      </button>
+    );
+  }
+  if (button.label === "Export Directly as PDF") {
+    return (
+      <button
+        type="button"
+        onClick={button.onClick}
+        title={button.label}
+        aria-label={button.label}
+        className="group relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[#CDD3D9] bg-white shadow-sm transition-[background-color,border-color,box-shadow,transform] duration-150 hover:border-[#83B5D9] hover:bg-[#F0F7FD] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2385C7]/40 active:translate-y-px active:bg-[#E1EDF7] active:shadow-none motion-reduce:transition-none"
+      >
+        <svg
+          width="25"
+          height="27"
+          viewBox="0 0 28 30"
+          fill="none"
+          aria-hidden="true"
+        >
+          {/* Document shadow */}
+          <path
+            d="M7 3h10l5 5v19H7V3Z"
+            fill="#E8ECF0"
+          />
+
+          {/* White document */}
+          <path
+            d="M6 2h10l5 5v19H6V2Z"
+            fill="#FFFFFF"
+            stroke="#697885"
+            strokeWidth="1.1"
+            strokeLinejoin="round"
+          />
+
+          {/* Folded corner */}
+          <path
+            d="M16 2v5h5"
+            fill="#E9EFF4"
+            stroke="#697885"
+            strokeWidth="1.1"
+            strokeLinejoin="round"
+          />
+
+          {/* Document lines */}
+          <path
+            d="M9 11h9M9 14h7"
+            stroke="#CBD4DC"
+            strokeWidth="1.2"
+            strokeLinecap="round"
+          />
+
+          {/* Red PDF badge */}
+          <rect
+            x="2"
+            y="17"
+            width="23"
+            height="10"
+            rx="2"
+            fill="#D93645"
+            stroke="#BE2938"
+            strokeWidth="0.7"
+          />
+
+          {/* Subtle badge highlight */}
+          <path
+            d="M4.5 18h18"
+            stroke="#F1737E"
+            strokeWidth="0.7"
+            strokeLinecap="round"
+          />
+
+          <text
+            x="13.5"
+            y="24.2"
+            textAnchor="middle"
+            fill="#FFFFFF"
+            fontFamily="Arial, sans-serif"
+            fontSize="7.7"
+            fontWeight="700"
+            letterSpacing="0.5"
+          >
+            PDF
+          </text>
+        </svg>
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          {button.label}
+        </span>
+      </button>
+    );
+  }
   return (
     <button
       type="button"
@@ -15949,7 +21877,580 @@ function SpreadsheetToolbarSplitButton({
   onClose: () => void;
 }) {
   const Icon = button.icon;
+
   const items = button.dropdownItems || [];
+  if (button.label === "New Document") {
+    const documentColors: Record<string, string> = {
+      "Text Document": "#1687E8",
+      Spreadsheet: "#159447",
+      Presentation: "#F07826",
+      Drawing: "#DFA600",
+      Formula: "#E74747",
+      Database: "#B53FD1",
+      "HTML Document": "#079BC6",
+      "XML Form Document": "#1595CF",
+      Labels: "#1687E8",
+      "Business Cards": "#1687E8",
+      "Master Document": "#505050",
+      "Templates...": "#697586",
+    };
+
+    return (
+      <div
+        className="relative flex items-stretch"
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopPropagation();
+            onClose();
+          }
+        }}
+      >
+        <button
+          type="button"
+          title="New Spreadsheet"
+          aria-label="New Spreadsheet"
+          onClick={button.onClick}
+          className="flex h-8 w-8 items-center justify-center rounded-l-sm border focus-visible:outline-2 focus-visible:outline-[#2385C7]"
+          style={{
+            color: "#159447",
+            borderColor: open ? "#78B5DC" : "#CDD6D0",
+            background: open
+              ? "#DCEFFC"
+              : "linear-gradient(180deg, #FFFFFF 0%, #F3F7F4 100%)",
+            boxShadow: "inset 0 1px 0 #FFFFFF",
+          }}
+        >
+          <Icons.FileSpreadsheet size={21} />
+        </button>
+
+        <button
+          type="button"
+          title="New Document"
+          aria-label="New document options"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onClick={onToggle}
+          className="flex h-8 w-3.5 items-center justify-center rounded-r-sm border border-l-0 focus-visible:outline-2 focus-visible:outline-[#2385C7]"
+          style={{
+            color: "#263746",
+            borderColor: open ? "#78B5DC" : "#CDD6D0",
+            background: open ? "#BFDFF5" : "#EDF3EF",
+          }}
+        >
+          <Icons.ChevronDown size={10} />
+        </button>
+
+        {open && (
+          <>
+            <div
+              className="fixed inset-0 z-9990"
+              aria-hidden="true"
+              onClick={onClose}
+            />
+
+            <div
+              role="menu"
+              aria-label="New Document"
+              className="absolute left-0 top-full z-9991 mt-px w-252px max-w-[calc(100vw-16px)] overflow-hidden rounded-sm border py-1"
+              style={{
+                background: "#FAFAFA",
+                borderColor: "#AEB6BD",
+                boxShadow:
+                  "2px 3px 7px rgba(0,0,0,0.22), inset 0 1px 0 #FFFFFF",
+                color: "#17212B",
+                fontFamily: '"Segoe UI", Arial, sans-serif',
+              }}
+            >
+              {items.map((item, index) => {
+                if (item.isDivider) {
+                  return (
+                    <div
+                      key={`divider-${index}`}
+                      className="my-1 ml-8 mr-1 h-px"
+                      style={{ background: "#DADFE3" }}
+                    />
+                  );
+                }
+
+                const color = documentColors[item.label] || "#697586";
+
+                return (
+                  <button
+                    key={`${item.label}-${index}`}
+                    type="button"
+                    role="menuitem"
+                    disabled={item.disabled}
+                    onClick={() => {
+                      onClose();
+                      item.onClick?.();
+                    }}
+                    className="group flex min-h-6 w-full items-center gap-2 px-2 py-1 text-left text-[13px] hover:bg-[#DDEFFC] focus-visible:bg-[#DDEFFC] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="flex w-4 shrink-0 items-center justify-center"
+                      style={{ color }}
+                    >
+                      {item.label === "Spreadsheet" ? (
+                        <Icons.FileSpreadsheet size={16} />
+                      ) : item.label === "HTML Document" ? (
+                        <Icons.Globe size={16} />
+                      ) : (
+                        <svg
+                          width="16"
+                          height="18"
+                          viewBox="0 0 16 18"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.15"
+                        >
+                          <path
+                            d="M3 1.5h6l4 4v11H3z"
+                            fill="#FFFFFF"
+                          />
+                          <path d="M9 1.5v4h4" />
+                          <path d="M5 8h6M5 10.5h6M5 13h4" />
+                        </svg>
+                      )}
+                    </span>
+
+                    <span className="min-w-0 flex-1 whitespace-nowrap">
+                      {item.label}
+                    </span>
+
+                    {item.shortcut && (
+                      <span
+                        className="ml-2 shrink-0 text-[12px]"
+                        style={{ color: "#425466" }}
+                      >
+                        {item.shortcut}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  if (button.label === "Open") {
+    return (
+      <div
+        className="relative flex items-stretch"
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopPropagation();
+            onClose();
+          }
+        }}
+      >
+        <style>{`
+        .alx-open-recent {
+          counter-reset: alx-recent-file;
+        }
+
+        .alx-open-recent > div > div:first-child {
+          display: none;
+        }
+
+        .alx-open-recent button {
+          counter-increment: alx-recent-file;
+          min-height: 24px;
+          padding: 4px 10px !important;
+          gap: 8px;
+          color: #17212B !important;
+          font-size: 13px;
+          font-weight: 400;
+        }
+
+        .alx-open-recent button:hover {
+          background: #DDEFFC !important;
+        }
+
+        .alx-open-recent button:focus-visible {
+          outline: 2px solid #2385C7;
+          outline-offset: -2px;
+          background: #DDEFFC !important;
+        }
+
+        .alx-open-recent button > svg {
+          width: 16px;
+          height: 16px;
+          color: #159447 !important;
+        }
+
+        .alx-open-recent button > span::before {
+          content: counter(alx-recent-file) ". ";
+        }
+      `}</style>
+
+        <button
+          type="button"
+          title="Open"
+          aria-label="Open file"
+          onClick={button.onClick}
+          className="flex h-8 w-8 items-center justify-center rounded-l-sm border focus-visible:outline-2 focus-visible:outline-[#2385C7]"
+          style={{
+            borderColor: open ? "#78B5DC" : "#CDD6D0",
+            background: open
+              ? "#DCEFFC"
+              : "linear-gradient(180deg, #FFFFFF 0%, #F3F7F4 100%)",
+            boxShadow: "inset 0 1px 0 #FFFFFF",
+          }}
+        >
+          <svg
+            width="23"
+            height="22"
+            viewBox="0 0 24 22"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path
+              d="M2 17.5V4.5h7l2 2h10v11"
+              fill="#FFE0A3"
+              stroke="#EA8B18"
+              strokeWidth="1.2"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M2 18.5 5.5 9H23l-3.5 9.5H2Z"
+              fill="#FFD18A"
+              stroke="#E98916"
+              strokeWidth="1.2"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M6 10.5h15"
+              stroke="#FFF4D9"
+              strokeWidth="1.2"
+            />
+          </svg>
+        </button>
+
+        <button
+          type="button"
+          title="Recent files and open options"
+          aria-label="Open file options"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onClick={onToggle}
+          className="flex h-8 w-3.5 items-center justify-center rounded-r-sm border border-l-0 focus-visible:outline-2 focus-visible:outline-[#2385C7]"
+          style={{
+            color: "#263746",
+            borderColor: open ? "#78B5DC" : "#CDD6D0",
+            background: open ? "#BFDFF5" : "#EDF3EF",
+          }}
+        >
+          <Icons.ChevronDown size={10} />
+        </button>
+
+        {open && (
+          <>
+            <div
+              className="fixed inset-0 z-9990"
+              aria-hidden="true"
+              onClick={onClose}
+            />
+
+            <div
+              role="menu"
+              aria-label="Open file options"
+              className="absolute left-0 top-full z-9991 mt-px w-72 max-w-[calc(100vw-16px)] overflow-hidden rounded-sm border py-1"
+              style={{
+                background: "#FAFAFA",
+                borderColor: "#AEB6BD",
+                boxShadow:
+                  "2px 3px 7px rgba(0,0,0,0.22), inset 0 1px 0 #FFFFFF",
+                color: "#17212B",
+                fontFamily: '"Segoe UI", Arial, sans-serif',
+              }}
+            >
+              {button.dropdownExtra && (
+                <div
+                  className="alx-open-recent max-h-60 overflow-y-auto"
+                  onClick={(e) => {
+                    if (
+                      e.target instanceof window.Element &&
+                      e.target.closest("button")
+                    ) {
+                      onClose();
+                    }
+                  }}
+                >
+                  {button.dropdownExtra()}
+                </div>
+              )}
+
+              {items.map((item, index) => {
+                if (item.isDivider) {
+                  return (
+                    <div
+                      key={`open-divider-${index}`}
+                      className="my-1 ml-8 mr-1 h-px"
+                      style={{ background: "#DADFE3" }}
+                    />
+                  );
+                }
+
+                const isTemplate = item.label === "Edit Template...";
+                const isRemote = item.label === "Open Remote File...";
+
+                return (
+                  <button
+                    key={`${item.label}-${index}`}
+                    type="button"
+                    role={
+                      item.checked !== undefined
+                        ? "menuitemcheckbox"
+                        : "menuitem"
+                    }
+                    aria-checked={
+                      item.checked !== undefined
+                        ? item.checked
+                        : undefined
+                    }
+                    disabled={item.disabled}
+                    onClick={() => {
+                      onClose();
+                      item.onClick?.();
+                    }}
+                    className="flex min-h-6 w-full items-center gap-2 px-2 py-1 text-left text-[13px] hover:bg-[#DDEFFC] focus-visible:bg-[#DDEFFC] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm"
+                      style={{
+                        color: item.checked ? "#126BAD" : "#E98916",
+                        background: item.checked ? "#BFDFF5" : "transparent",
+                      }}
+                    >
+                      {item.checked ? (
+                        <Icons.Check size={16} />
+                      ) : isTemplate ? (
+                        <Icons.FileText size={16} />
+                      ) : isRemote ? (
+                        <Icons.FolderOpen size={17} />
+                      ) : null}
+                    </span>
+
+                    <span className="min-w-0 flex-1 whitespace-nowrap">
+                      {item.label}
+                    </span>
+
+                    {item.shortcut && (
+                      <span
+                        className="ml-2 shrink-0 text-[12px]"
+                        style={{ color: "#425466" }}
+                      >
+                        {item.shortcut}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  if (button.label === "Save") {
+    return (
+      <div
+        className="relative flex items-stretch"
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopPropagation();
+            onClose();
+          }
+        }}
+      >
+        <button
+          type="button"
+          title="Save"
+          aria-label="Save workbook"
+          onClick={button.onClick}
+          className="flex h-8 w-8 items-center justify-center rounded-l-sm border focus-visible:outline-2 focus-visible:outline-[#2385C7]"
+          style={{
+            color: "#B53FD1",
+            borderColor: open ? "#78B5DC" : "#CDD6D0",
+            background: open
+              ? "#DCEFFC"
+              : "linear-gradient(180deg, #FFFFFF 0%, #F3F7F4 100%)",
+            boxShadow: "inset 0 1px 0 #FFFFFF",
+          }}
+        >
+          <svg
+            width="22"
+            height="22"
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path
+              d="M3 2.5h15l3 3V21H3V2.5Z"
+              fill="#F0D6F7"
+              stroke="#A536C1"
+              strokeWidth="1.3"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M7 2.5h9v7H7z"
+              fill="#FFFFFF"
+              stroke="#A536C1"
+              strokeWidth="1.2"
+            />
+            <path d="M13.5 4v4" stroke="#A536C1" strokeWidth="2" />
+            <path
+              d="M6.5 13h11v8h-11z"
+              fill="#FFFFFF"
+              stroke="#A536C1"
+              strokeWidth="1.2"
+            />
+            <path
+              d="M8.5 16h7M8.5 18.5h7"
+              stroke="#C884D9"
+              strokeWidth="1"
+            />
+          </svg>
+        </button>
+
+        <button
+          type="button"
+          title="Save options"
+          aria-label="Save options"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onClick={onToggle}
+          className="flex h-8 w-3.5 items-center justify-center rounded-r-sm border border-l-0 focus-visible:outline-2 focus-visible:outline-[#2385C7]"
+          style={{
+            color: "#263746",
+            borderColor: open ? "#78B5DC" : "#CDD6D0",
+            background: open ? "#BFDFF5" : "#EDF3EF",
+          }}
+        >
+          <Icons.ChevronDown size={10} />
+        </button>
+
+        {open && (
+          <>
+            <div
+              className="fixed inset-0 z-9990"
+              aria-hidden="true"
+              onClick={onClose}
+            />
+
+            <div
+              role="menu"
+              aria-label="Save options"
+              className="absolute left-0 top-full z-9991 mt-px w-68 max-w-[calc(100vw-16px)] overflow-hidden rounded-sm border py-1"
+              style={{
+                background: "#FAFAFA",
+                borderColor: "#AEB6BD",
+                boxShadow:
+                  "2px 3px 7px rgba(0,0,0,0.22), inset 0 1px 0 #FFFFFF",
+                color: "#17212B",
+                fontFamily: '"Segoe UI", Arial, sans-serif',
+              }}
+            >
+              {items.map((item, index) => {
+                const isRemote = item.label === "Save Remote File...";
+
+                if (item.isDivider) {
+                  return (
+                    <div
+                      key={`save-divider-${index}`}
+                      className="my-1 ml-8 mr-1 h-px"
+                      style={{ background: "#DADFE3" }}
+                    />
+                  );
+                }
+
+                return (
+                  <div key={`${item.label}-${index}`}>
+                    {isRemote && index > 0 && !items[index - 1].isDivider && (
+                      <div
+                        className="my-1 ml-8 mr-1 h-px"
+                        style={{ background: "#DADFE3" }}
+                      />
+                    )}
+
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={item.disabled}
+                      onClick={() => {
+                        onClose();
+                        item.onClick?.();
+                      }}
+                      className="flex min-h-6 w-full items-center gap-2 px-2 py-1 text-left text-[13px] hover:bg-[#DDEFFC] focus-visible:bg-[#DDEFFC] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="relative flex h-4 w-4 shrink-0 items-center justify-center"
+                        style={{
+                          color:
+                            item.label === "Export..."
+                              ? "#168CB5"
+                              : item.label === "Save as Template..."
+                                ? "#555555"
+                                : "#B53FD1",
+                        }}
+                      >
+                        {item.label === "Export..." ? (
+                          <Icons.FileDown size={16} />
+                        ) : (
+                          <Icons.Save size={16} />
+                        )}
+
+                        {item.label === "Save As..." && (
+                          <svg
+                            className="absolute -bottom-0.5 -right-0.5"
+                            width="10"
+                            height="10"
+                            viewBox="0 0 12 12"
+                            fill="none"
+                          >
+                            <path
+                              d="m3 8 5-5 2 2-5 5-3 1 1-3Z"
+                              fill="#DFF8FF"
+                              stroke="#168CB5"
+                              strokeWidth="1"
+                            />
+                          </svg>
+                        )}
+                      </span>
+
+                      <span className="min-w-0 flex-1 whitespace-nowrap">
+                        {item.label}
+                      </span>
+
+                      {item.shortcut && (
+                        <span
+                          className="ml-2 shrink-0 text-[12px]"
+                          style={{ color: "#425466" }}
+                        >
+                          {item.shortcut}
+                        </span>
+                      )}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="relative flex items-stretch">
       <button
@@ -16119,22 +22620,192 @@ function AdvancedColorDropdown({
   return (
     <div className="relative" ref={wrapRef}>
       <div className="flex items-stretch">
+
         <button
           type="button"
           onClick={() => commitColor(value)}
           title={label}
           aria-label={label}
-          className="group relative flex h-8 w-8 items-center justify-center rounded-l-md border border-transparent text-[#323130] transition-all hover:border-[#C8C6C4] hover:bg-white hover:text-[#106EBE] hover:shadow-md"
+          className={
+            label === "Font Color"
+              ? [
+                "group relative flex h-8 w-8 shrink-0 items-center justify-center",
+                "rounded-l-md border border-r-0",
+                "transition-[background-color,border-color,box-shadow,transform] duration-150",
+                "focus-visible:outline-none focus-visible:ring-2",
+                "focus-visible:ring-[#3675A7]/40",
+                "active:translate-y-px motion-reduce:transition-none",
+                open
+                  ? "border-[#3675A7] bg-[#E8F3FF] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"
+                  : "border-[#B9C8D8] bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(25,63,108,0.12)] hover:border-[#7B9EC3] hover:bg-[#EFF6FF]",
+              ].join(" ")
+              : label === "Border Color"
+                ? `${sapphireToolbarClass(false)} rounded-r-none border-r-0`
+                : "group relative flex h-8 w-8 items-center justify-center rounded-l-md border border-transparent text-[#323130] transition-all hover:border-[#C8C6C4] hover:bg-white hover:text-[#106EBE] hover:shadow-md"
+          }
         >
-          <Icon size={17} />
+          {label === "Font Color" ? (
+            <svg
+              width="27"
+              height="27"
+              viewBox="0 0 32 32"
+              fill="none"
+              aria-hidden="true"
+            >
+              {/* Sapphire capital A */}
+              <path
+                fillRule="evenodd"
+                clipRule="evenodd"
+                d="
+                  M3.5 23 9.2 5h4.5l5.7 18h-4.2l-1.1-4.1H8.7L7.6 23H3.5Z
+                  M9.7 15.3h3.4l-1.7-6.1-1.7 6.1Z
+                "
+                fill="#286BC0"
+                stroke="#193F6C"
+                strokeWidth="0.6"
+                strokeLinejoin="round"
+              />
+
+              {/* Ice-blue edge highlight */}
+              <path
+                d="M9.9 6.3h2.5M7.4 17l2.3-7.3"
+                stroke="#A8D5FF"
+                strokeWidth="0.75"
+                strokeLinecap="round"
+              />
+
+              {/* Sapphire lowercase a */}
+              <path
+                d="
+                  M21 13.2
+                  C22.1 12.3 23.3 12 24.8 12
+                  C27.7 12 29 13.5 29 16.2
+                  V23H26.2V21.8
+                  C25.4 22.8 24.4 23.3 23 23.3
+                  C20.9 23.3 19.6 22 19.6 20
+                  C19.6 17.7 21.3 16.5 24.4 16.5
+                  H26V16.1
+                  C26 15 25.4 14.5 24.2 14.5
+                  C23.2 14.5 22.4 14.8 21.5 15.4
+                "
+                fill="#286BC0"
+                stroke="#193F6C"
+                strokeWidth="0.6"
+                strokeLinejoin="round"
+              />
+
+              {/* Lowercase counter */}
+              <path
+                d="
+                  M26 18.5h-1.4
+                  C23.2 18.5 22.6 18.9 22.6 19.7
+                  C22.6 20.4 23.1 20.8 23.9 20.8
+                  C25.2 20.8 26 20 26 18.8V18.5Z
+                "
+                fill={open ? "#E8F3FF" : "#FFFFFF"}
+              />
+
+              <path
+                d="M22.2 13.5c1.5-0.7 3.2-0.7 4.4 0"
+                stroke="#A8D5FF"
+                strokeWidth="0.7"
+                strokeLinecap="round"
+              />
+            </svg>
+          ) : label === "Background Color" ? (
+            <svg
+              width="27"
+              height="27"
+              viewBox="0 0 32 32"
+              fill="none"
+              aria-hidden="true"
+            >
+              {/* Chrome bucket body */}
+              <path
+                d="M7 11 15 4l12 12-8 8a3 3 0 0 1-4.2 0L7 16.2a3.7 3.7 0 0 1 0-5.2Z"
+                fill="#DCE8F3"
+                stroke="#193F6C"
+                strokeWidth="1.2"
+                strokeLinejoin="round"
+              />
+
+              {/* White metallic reflection */}
+              <path
+                d="m8.2 12.1 6.7-6 9.6 9.6"
+                stroke="#FFFFFF"
+                strokeWidth="1.3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+
+              {/* Sapphire paint inside the tilted bucket */}
+              <path
+                d="M7.8 15.7h17.5L18.2 23a1.9 1.9 0 0 1-2.6 0l-7.8-7.3Z"
+                fill="#286BC0"
+                stroke="#205FA9"
+                strokeWidth="0.8"
+                strokeLinejoin="round"
+              />
+
+              {/* Ice-blue paint reflection */}
+              <path
+                d="M9.7 17h12.7"
+                stroke="#9BCBFF"
+                strokeWidth="1"
+                strokeLinecap="round"
+              />
+
+              {/* Titanium handle */}
+              <path
+                d="M9.3 12.2 5.5 8.4a3.4 3.4 0 0 1 4.8-4.8l5.4 5.4"
+                stroke="#526A83"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+              />
+
+              <path
+                d="M8.6 10.4 6.3 8.1a2.1 2.1 0 0 1 3-3"
+                stroke="#F3F7FB"
+                strokeWidth="0.8"
+                strokeLinecap="round"
+              />
+
+              {/* Sapphire paint drop */}
+              <path
+                d="M27.3 18.5s-3 3.5-3 5.2a3 3 0 0 0 6 0c0-1.7-3-5.2-3-5.2Z"
+                fill="#286BC0"
+                stroke="#193F6C"
+                strokeWidth="0.85"
+                strokeLinejoin="round"
+              />
+
+              <path
+                d="M26.1 22.8c-.5.8-.4 1.5.1 1.9"
+                stroke="#B5DDFF"
+                strokeWidth="0.8"
+                strokeLinecap="round"
+              />
+            </svg>
+          ) : label === "Border Color" ? (
+            <SapphireToolbarIcon label="Border Color" />
+          ) : (
+            <Icon size={17} />
+          )}
+
           <span
             className="absolute bottom-1 h-0.75 w-5 rounded-full"
-            style={value === "transparent" ? { ...checkerBg, backgroundSize: "4px 4px" } : { backgroundColor: value }}
+            style={
+              value === "transparent"
+                ? { ...checkerBg, backgroundSize: "4px 4px" }
+                : { backgroundColor: value }
+            }
           />
-          <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block">
+
+          <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
             {label}
           </span>
         </button>
+
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
@@ -16142,11 +22813,30 @@ function AdvancedColorDropdown({
           aria-label={`${label} — More options`}
           aria-haspopup="menu"
           aria-expanded={open}
-          className={`flex h-8 w-4 items-center justify-center rounded-r-md border transition-all ${open ? "border-[#106EBE] bg-[#E5F1FB] text-[#106EBE]" : "border-transparent text-[#605E5C] hover:border-[#C8C6C4] hover:bg-white hover:text-[#106EBE]"
-            }`}
+          className={
+            label === "Font Color" ||
+              label === "Background Color" ||
+              label === "Border Color"
+              ? [
+                "flex h-8 w-4 shrink-0 items-center justify-center",
+                "rounded-r-md border shadow-sm",
+                "transition-colors duration-150",
+                "focus-visible:outline-none focus-visible:ring-2",
+                "focus-visible:ring-[#3675A7]/40",
+                "motion-reduce:transition-none",
+                open
+                  ? "border-[#3675A7] bg-[#E8F3FF] text-[#205FA9]"
+                  : "border-[#B9C8D8] bg-white text-[#205FA9] hover:border-[#7B9EC3] hover:bg-[#EFF6FF]",
+              ].join(" ")
+              : `flex h-8 w-4 items-center justify-center rounded-r-md border transition-all ${open
+                ? "border-[#106EBE] bg-[#E5F1FB] text-[#106EBE]"
+                : "border-transparent text-[#605E5C] hover:border-[#C8C6C4] hover:bg-white hover:text-[#106EBE]"
+              }`
+          }
         >
           <Icons.ChevronDown size={12} />
         </button>
+
       </div>
 
       {open && (
@@ -16689,10 +23379,13 @@ function SpecialCharactersQuickButton({
         aria-label="Insert Special Character"
         aria-haspopup="menu"
         aria-expanded={open}
-        className={`group relative flex h-8 w-8 items-center justify-center rounded-md border text-[#323130] shadow-sm transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-[#106EBE]/30 ${open ? "border-[#106EBE] bg-[#E5F1FB] text-[#106EBE]" : "border-transparent hover:border-[#C8C6C4] hover:bg-white hover:text-[#106EBE] hover:shadow-md"
-          }`}
+        className={sapphireToolbarClass(open)}
       >
-        <Icons.Omega size={17} />
+        <SapphireToolbarIcon label="Insert Special Character" />
+
+        <span className="pointer-events-none absolute left-1/2 top-full z-9999 mt-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md bg-[#201F1E] px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block group-focus-visible:block">
+          Insert Special Character
+        </span>
       </button>
 
       {open && (

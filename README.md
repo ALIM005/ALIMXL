@@ -38,6 +38,7 @@ ALIMXL
 │  ├─ AlimxlHome.tsx
 │  ├─ MyFiles.tsx
 │  ├─ OfflineSetup.tsx
+│  ├─ PdfTableImport.tsx
 │  ├─ print
 │  │  ├─ LivePrintPreview.tsx
 │  │  ├─ PageSetupDialog.tsx
@@ -67,8 +68,11 @@ ALIMXL
 │  ├─ built-in-templates.ts
 │  ├─ chart-geometry.d.mts
 │  ├─ chart-geometry.mjs
+│  ├─ copy-pdf-assets.mjs
 │  ├─ currency.ts
+│  ├─ date-time-engine.ts
 │  ├─ device-files.ts
+│  ├─ extra-functions.mjs
 │  ├─ formula-core.mjs
 │  ├─ local-workbooks.ts
 │  ├─ print-borders.ts
@@ -99,6 +103,12 @@ ALIMXL
 │  │  ├─ icon-192.png
 │  │  ├─ icon-512.png
 │  │  └─ icon-maskable-512.png
+│  ├─ pdf-import
+│  │  ├─ asset-manifest.json
+│  │  ├─ cmaps
+│  │  ├─ pdf.worker.min.mjs
+│  │  ├─ standard_fonts
+│  │  └─ wasm
 │  └─ sw.js
 ├─ README.md
 ├─ tests

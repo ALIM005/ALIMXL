@@ -66,7 +66,7 @@ export default function RecoveryDrafts({workbook,enabled,onRecovered}:Props) {
     catch(cause){setError(message(cause));}
     finally{lock.current=false;setBusy(false);}
   }
-  return <details className="fixed bottom-24 right-3 z-40 max-w-sm rounded border border-gray-300 bg-white p-2 text-xs text-black shadow">
+ return <details className="fixed bottom-3 left-1/2 -translate-x-1/2 z-40 max-w-sm rounded border border-gray-300 bg-white p-2 text-xs text-black shadow">
     <summary className="cursor-pointer">{status}{error?" — সমস্যা আছে":""}</summary>
     <p className="my-2">প্রতি ৫ সেকেন্ডে বদলানো workbook-এর recovery draft রাখার চেষ্টা হয়। এটি মূল Save বা বাইরের backup নয়। অসম্পন্ন সেল টাইপিং অন্তর্ভুক্ত নয়।</p>
     {error&&<p role="alert" className="my-2 text-red-700">{error}</p>}

@@ -1,1116 +1,1477 @@
-> CURRENT READER NOTE — Documentation revision 1.2, 2026-11-23 (UTC+06:00).
-> Read the final “Revision 1.2” section first for current overrides. Earlier sections
-> are historical: the old 14-warning and unknown-recovery-cause statements are not
-> the current conclusion. No new software release or automated run is claimed.
+ALIM XL — Completed Manual & Practical Test Results
+ডকুমেন্ট সংস্করণ: 1.8
+আপডেট: 26 November 2026
+অ্যাপ্লিকেশন: ALIM XL 4.0.0
+পরীক্ষার পরিবেশ: Browser / localhost:3000
 
-ALIMXL 4.0.0 — Manual & Practical Test Ledger
-Ledger revision: 1.1 (documentation review; NOT a new software release)
-Last reviewed: 2026-11-20 21:32 UTC+06:00
-Execution evidence cutoff: user report 2026-11-20 21:22; latest execution screenshot approximately21:09
-Application version: ALIMXL4.0.0, stated in earlier conversation
-Environment: browser localhost:3000,Windows UI visible
-Code revision / build hash: NOT RECORDED
-Release verdict: NOT ESTABLISHED
-Purpose: permanent AI handoff, manual/practical regression evidence and unresolved work.
+এই পেজের উদ্দেশ্য
+শুধু সম্পন্ন ও সফল manual/practical পরীক্ষার ফল সংরক্ষণ।
 
-1. ভবিষ্যৎ AI-এর জন্য বাধ্যতামূলক নির্দেশনা
-Do not restart completed basic selection,ordinary lookup,banking,results or Save/Restore without concrete new risk/code change. User has spent days testing.
+প্রতিটি PASS সংশ্লিষ্ট নির্দিষ্ট input, action ও expected result-এর জন্য প্রযোজ্য।
+এটি পুরো সফটওয়্যারের সব পরিস্থিতিতে 100% নির্ভুলতার সার্টিফিকেট নয়।
 
-Save/Restore: user says completed five days earlier. Respect that; do not invent exact coverage.
+এই পেজে pending, incomplete, prepared-only বা inconclusive পরীক্ষা completed test হিসেবে রাখা হয়নি।
 
-Only ten Payroll records observed correct. Full150 independent audit NOT completed.
+কোনো completed test-এর সীমা বোঝাতে scope clarification থাকতে পারে।
+সেগুলো পৃথক completed test নয়।
 
-Distinguish screenshot/user confirmation/earlier summary/prepared/not executed. No upgrade of evidence by inference.
-
-Negative-test FAIL/CHECK/BLOCKED can mean successful detection. Prepared formulas or Python expected values are NOT app execution.
-
-Limited25 earlier VLOOKUP unit tests do not prove current full build,all functions,or release readiness.
-
-Prefer minimal reviewed patches with backup/diff. Latest source must be supplied/verified before a current-code audit. No whole page.tsx replacement without need.
-
-User prefers copyable on-screen input. Never place illustrative cell-position prose in a copyable data block. Earlier user pasted such prose due to ambiguous guidance.
-
-Wrong sheet/range/selection is not automatically an application bug. Isolate reproduction.
-
-This file does not embed screenshots; preserve actual evidence separately. Chat IDs are not durable filesystem evidence paths.
-
-Some pre-summary history is unavailable. This is all identifiable coverage in the supplied summary/visible continuation, NOT proof that every historical test has been recovered.
-
-No new ALIMXL test was executed during revision1.1; new entries make previously described observations explicit.
-
-2. Status definitions
-Status	Meaning
-PASS_OBSERVED	Relevant actual outputs directly visible, limited to stated assertions.
-PASS_USER	User confirmed success; separate screenshots for every assertion unavailable.
-PASS_RECORDED	Earlier summary records pass; raw evidence not retained here.
-COMPLETED_USER_REPORTED	Completed per user, precise criteria/logs unavailable.
-RECORDED / PARTIAL	Activity occurred, acceptance coverage incomplete.
-PREPARED	Fixture/formulas/expected data created, not full app execution.
-UNVERIFIED / NOT_VERIFIED	Final evidence absent.
-NOT_EXECUTED	Intended scenario, not run/confirmed.
-BLOCKED_SETUP	Invalid/incomplete run because sheet/range/input setup wrong.
-INCONCLUSIVE	Observation exists, cause not isolated.
-ISSUE_USER_REPORTED / ISSUE_OBSERVED	Open concern, not diagnosed root cause.
-3. Scenario register
-GEN-01 — Basic selection/paste
-Status: PARTIAL
-
-Evidence, result and limitation: Earlier summary: exercised; detailed ranges and acceptance unavailable.
-
-GEN-02 — SEQUENCE spill
-Status: PASS_RECORDED
-
-Evidence, result and limitation: =SEQUENCE(3) displayed1,2,3 in J1:J3. Collision/resize not proven.
-
-GEN-03 — Manual workbook / JSON backup created
-Status: RECORDED
-
-Evidence, result and limitation: ALIMXL-Manual-Test-01 and JSON backup created. Creation does not prove restore.
-
-GEN-04 — Save/Restore
-Status: COMPLETED_USER_REPORTED
-
-Evidence, result and limitation: At20:21 user said already tested five days earlier. Exact criteria and logs unavailable; do not repeat by default.
-
-SALE-01 — Sales/Report baseline
-Status: PASS_RECORDED
-
-Evidence, result and limitation: Earlier summary:16 sales rows, cross-sheet SUM/SUMIF,reconciliation,14 initial PASS checks. Full individual check definitions unavailable.
-
-SALE-02 — Sales source mutation
-Status: PASS_RECORDED
-
-Evidence, result and limitation: Sales!D2 10->100; report B2=261,B4=21587 expected. Other values not retained.
-
-SALE-03 — Sales Undo
-Status: PASS_RECORDED
-
-Evidence, result and limitation: Undo returned report to prior values and all PASS; scope is that edit, not all history operations.
-
-SALE-04 — Sales row insertion
-Status: UNVERIFIED
-
-Evidence, result and limitation: Earlier insertion attempt/plan recorded; final output absent. Not PASS.
-
-LOOK-01 — Targeted VLOOKUP unit tests
-Status: PASS_RECORDED
-
-Evidence, result and limitation: Earlier assistant-reported25 limited tests passed. No current commit hash/raw logs/full regression proof.
-
-LOOK-02 — Browser normal / absolute VLOOKUP
-Status: PASS_RECORDED
-
-Evidence, result and limitation: Both returned Rahim in earlier summary; only stated examples.
-
-LOOK-03 — Lookup source propagation
-Status: PASS_RECORDED
-
-Evidence, result and limitation: Staff!B2 Rahim->Rahim SOURCE reached WorkLog!H2,B8,B9.
-
-LOOK-04 — Local / cross-sheet isolation
-Status: PASS_USER
-
-Evidence, result and limitation: Earlier user A for success confirmation; exact formula matrix not retained.
-
-BUILD-01 — Complete TypeScript / production build
-Status: NOT_VERIFIED
-
-Evidence, result and limitation: No completed full check/build evidence; no release-readiness verdict.
-
-BANK-01 — Bank baseline
-Status: PASS_OBSERVED
-
-Evidence, result and limitation: BankAudit screenshot: CASH105500,BANK62800,total168300,10 matched,zero balance differences,overallPASS. Five sheets:Accounts/Ledger/Statement/Reconcile/BankAudit.
-
-BANK-02 — Offsetting bank errors
-Status: PASS_OBSERVED
-
-Evidence, result and limitation: Statement!C2 8000->8100,C5 12000->11900; BANK62800,difference0,matched8,overallFAIL. Negative test succeeded.
-
-BANK-03 — Mismatch detail / recovery
-Status: PASS_USER
-
-Evidence, result and limitation: User17:07 successful after combined instructions: BANK|T001 +100,BANK|R002 -100; restore matched10/overallPASS. Detailed screenshot not retained.
-
-BANK-04 — Fill reconciliation formulas down
-Status: PASS_OBSERVED
-
-Evidence, result and limitation: NEW explicit subscenario: initial only row2 gave matched1; filling A2:G2 through row11 led to10 MATCH. Earlier summary + baseline screenshot. Evidence overlaps BANK-01; not general multi-column fill certification.
-
-RES-01 — Ten-student baseline
-Status: PASS_OBSERVED
-
-Evidence, result and limitation: Screenshot20:10: all displayed totals/averages/statuses/grades/ranks match custom fixture;7PASS,2FAIL,1ABSENT.
-
-RES-02 — High total but subject failure
-Status: PASS_OBSERVED
-
-Evidence, result and limitation: Ayesha100,100,100,100,32=>432,86.4,failed1,FAIL,F,no rank.
-
-RES-03 — Exact pass boundary
-Status: PASS_OBSERVED
-
-Evidence, result and limitation: Salma five33s=>165,33,PASS,D,rank7.
-
-RES-04 — Absence
-Status: PASS_OBSERVED
-
-Evidence, result and limitation: Hasan70,65,AB,80,75=>absent1;ABSENT total/result/grade;blank average;no rank. AB survives lookup.
-
-RES-05 — Tied rank / exclusion
-Status: PASS_OBSERVED
-
-Evidence, result and limitation: Rahim/Karim/Rafi400 rank1;Mitu395 rank4;FAIL/ABSENT excluded. Competition ranking.
-
-RES-06 — Source mutation / rerank
-Status: PASS_OBSERVED
-
-Evidence, result and limitation: Screenshot20:14: Marks!G4 32->33;Ayesha433,86.6,failed0,PASS,A+,rank1;Rahim/Karim/Rafi2,Mitu5,Tania6,Imran7,Salma8. No-refresh was requested but screenshot cannot establish no refresh occurred.
-
-RES-07 — Result recovery
-Status: PASS_USER
-
-Evidence, result and limitation: User20:20 all correct confirmation after restoreG4=32 and auditD2:D16 allPASS request. No final audit screenshot.
-
-RES-08 — Mark101 blocks publication
-Status: PASS_USER
-
-Evidence, result and limitation: User20:20 all correct confirmation after Marks!E9 79->101 request;expected L9CHECK,H9/M9/N9BLOCKED,O9dash;Tania4,Imran5,Salma6. No separate screenshot. Final restoration79 not visually proven.
-
-RES-09 — Other input validation edges
-Status: NOT_EXECUTED
-
-Evidence, result and limitation: Blank,unknown text,negative and duplicate IDs intended; not individually run. >100 case belongs RES-08, not an unexecuted case.
-
-UI-01 — Range selection / horizontal fill
-Status: INCONCLUSIVE
-
-Evidence, result and limitation: Repeated screenshots: only B then C filled; horizontal fill replaced original formulas and caused#N/A. Interaction/app cause not isolated.
-
-UI-02 — Undo erroneous horizontal fill
-Status: PASS_OBSERVED
-
-Evidence, result and limitation: Screenshots20:04->20:06 restored five80s,total400,average80,PASS,A+,rank1.
-
-UI-03 — Results TSV paste
-Status: PASS_OBSERVED
-
-Evidence, result and limitation: C3:O11 direct paste filled9rows*13columns with expected outputs screenshot20:10; not all clipboard types.
-
-UI-04 — Sheet rename — displayed identity
-Status: PASS_OBSERVED
-
-Evidence, result and limitation: NEW: screenshots20:57->21:03 show Payroll renamed PayrollTemp and prior PayrollAudit renamed Payroll, with respective contents retained visibly. No proof of reference rewriting, collisions,undo or third planned rename; PayrollTemp remains.
-
-UI-05 — Payroll multi-row formula paste
-Status: PASS_OBSERVED
-
-Evidence, result and limitation: NEW explicit interaction subscenario: header+10records*20columns visible correctly in sheet later namedPayroll. Original destination wasPayrollAudit; wrong destination does not negate the observed paste/calculation. Overlaps PAY-02; no independent150-row paste proof.
-
-PAY-01 — 150-worker fixture
-Status: PREPARED
-
-Evidence, result and limitation: 150Employees,150Attendance,180Adjustments,5departments,shuffled sources,repeated names/distinct IDs. Full source ranges not independently verified after paste.
-
-PAY-02 — First ten Payroll records
-Status: PASS_OBSERVED
-
-Evidence, result and limitation: Screenshots through21:09: E001-E010 lookup/input/calculated values match; earlier screenshot all10OK/READY. Not150records.
-
-PAY-03 — Multiple adjustment aggregation
-Status: PASS_OBSERVED
-
-Evidence, result and limitation: E005bonus125+1125=1250;E010900+125=1025,visible. Sample only,not all180records audited.
-
-PAY-04 — E011-E020 setup
-Status: BLOCKED_SETUP
-
-Evidence, result and limitation: Wrong sheet/A1 instead ofPayroll!A12; later illustrative text pastedA12:A16. No valid first20 result; no confirmed engine defect.
-
-PAY-05 — Full150 independent audit
-Status: NOT_EXECUTED
-
-Evidence, result and limitation: Prepared expected grand total3991346.39;150individual checks required. Not reached.
-
-PAY-06 — Offsetting same-department salaries
-Status: NOT_EXECUTED
-
-Evidence, result and limitation: Employees!E70 1675->1775;E12 2550->2450;grand/Admin unchanged,two individualFAIL. Must establish baseline first.
-
-PAY-07 — Duplicate/missing Employee ID
-Status: NOT_EXECUTED
-
-Evidence, result and limitation: Employees!A59 E002->E001;both employeesCHECK/BLOCKED expected. Not run.
-
-PAY-08 — Impossible attendance
-Status: NOT_EXECUTED
-
-Evidence, result and limitation: Attendance!C111 23->27 versus26days;E003BLOCKED expected. Not run.
-
-PAY-09 — Half-cent OT rounding mutation
-Status: NOT_EXECUTED
-
-Evidence, result and limitation: Employees!F70 92.5->92.55;OT138.83/net19848.64 expected. Not run. Ordinary baseline decimal rounding was visible.
-
-PAY-10 — Negative net HOLD
-Status: NOT_EXECUTED
-
-Evidence, result and limitation: Formula branch designed;no actual negative-net run.
-
-PERF-01 — Large session slow
-Status: ISSUE_USER_REPORTED
-
-Evidence, result and limitation: User21:22 reported sheet/session large and slow. No timings/profile/cause; do not attribute to150 Payroll records since those were not completed.
-
-PERSIST-01 — Recovery warning
-Status: ISSUE_OBSERVED
-
-Evidence, result and limitation: Repeated UI Recovery: সেভ হয়নি — সমস্যা আছে. Cause/impact unresolved; does not automatically invalidate earlier reported Save/Restore completion.
-
-4. Counts and overlap
-Total register entries: 43 (previous40 +3explicit observational subscenarios). No new product tests executed. BANK-04 overlaps BANK-01;UI-05 overlaps PAY-02. Entries are not mutually independent atomic tests. Earlier14Sales assertions and25unit tests are nested evidence. No product pass percentage should be calculated from these counts.
-
-Status	Entries
-BLOCKED_SETUP	1
-COMPLETED_USER_REPORTED	1
-INCONCLUSIVE	1
-ISSUE_OBSERVED	1
-ISSUE_USER_REPORTED	1
-NOT_EXECUTED	7
-NOT_VERIFIED	1
-PARTIAL	1
-PASS_OBSERVED	15
-PASS_RECORDED	7
-PASS_USER	4
-PREPARED	1
-RECORDED	1
-UNVERIFIED	1
-5. Bank baseline detailed assertions
-Observed BankAudit baseline checks: Ledger CASH105500;Ledger BANK62800;Statement CASH105500;Statement BANK62800;CASH balance difference0;BANK difference0;totalLedger168300;Ledger transaction count10;Statement count10;matchedLedger10;Statement-only0;unknownLedger account0;unknownStatement account0;T001transferOK;T002transferOK;overallPASS. These are fixture assertions nested within BANK-01, not independent feature certification. No injected unknown account,Statement-only,duplicate-bank-key or broken-transfer case was executed in this record.
-
-For BANK-02, edited Statement!C2 R002/BANK8000->8100 and C5 T001/BANK12000->11900. Net cancellation is deliberate. Reconcile expected BANK|T001 difference+100 and BANK|R002 difference-100;details/recovery user-confirmed,Audit matched8/overallFAIL screenshot-observed.
-
-6. Exact Results fixture and policy
-Custom policy,NOT official board rules:5subjects100each,each>=33required;AB=>ABSENT;one failed subject overrides high average;rank PASS students by total with ties1,1,1,4. Average thresholds80A+,70A,60A-,50B,40C,33D;FAIL=>F;invalid=>BLOCKED.
-
-Sheets:Marks,Results,ResultAudit. Results columns:A ID;BName;C:Gsubjects;HTotal;IAverage;Jfailed;Kabsent;Lvalidation;Mresult;Ngrade;Orank.
-
-ID	Name	Bangla	English	Math	Science	ICT	Total	Average	Result	Grade	Rank
-S001	Rahim	80	80	80	80	80	400	80	PASS	A+	1
-S002	Karim	90	80	70	80	80	400	80	PASS	A+	1
-S003	Ayesha	100	100	100	100	32	432	86.4	FAIL	F	-
-S004	Salma	33	33	33	33	33	165	33	PASS	D	7
-S005	Hasan	70	65	AB	80	75	ABSENT	blank	ABSENT	ABSENT	-
-S006	Nadia	70	60	50	40	30	250	50	FAIL	F	-
-S007	Rafi	100	90	80	70	60	400	80	PASS	A+	1
-S008	Mitu	79	79	79	79	79	395	79	PASS	A	4
-S009	Imran	40	40	40	40	40	200	40	PASS	C	6
-S010	Tania	60	60	60	60	60	300	60	PASS	A-	5
-Baseline:10valid,7PASS,2FAIL,1ABSENT,0BLOCKED,3joint first;AuditD2:D16allPASS expected and later user-confirmed recovery. No retained direct final Audit allPASS screenshot.
-
-Extra observed assertions already contained in RES-01:grade79=>A,60=>A-,40=>C;average50 with failed subject stillF;all ten validationOK;blank absent average;dash rank for excluded students. These do not prove every grade threshold:50/B,70/A transition,decimal boundaries and numeric-vs-text inputs remain untested individually.
-
-Static baseline expected Audit values must NOT be edited to make mutations pass. Undo/recovery should restore baseline. Marks!G4=32 and Marks!E9=79 are baseline;final state after user's all-correct statement not separately screenshot-proven.
-
-7. Payroll reproducible fixture (prepared, not full150 execution)
-Fictional rules,NOT legal tax/payroll compliance. For i=1..150:
-
-text
-ID = E + three-digit i
-Name = Worker + three-digit (((i-1) mod75)+1)
-Department = [Admin,Sales,Factory,IT,Support][(i-1) mod5]
-Basic = 18000 + (i mod23) * 725
-Allowance = 1500 + (i mod7) * 175
-OT rate = 85 + (i mod9) * 7.5
-Workdays = 26
-Paid leave = i mod3
-Absent = i mod5
-Present = 26 - Paid leave - Absent
-OT hours = (i mod11) * 1.5
-Primary Bonus = (i mod6) * 225
-Primary Advance = (i mod8) * 150
-Primary Fine = (i mod4) * 45
-Every fifth i: append extra adjustment (ID,125,0,0)
-150Employees,150Attendance,180Adjustments. Reproduction: Python random.Random(4000),construct all lists in ascending i,extra adjustment immediately after primary,shuffleEmployees thenAttendance thenAdjustments using same RNG sequentially. Payroll ascending ID. Same names distinct IDs (E001/E076) are prepared but a visually inspected same-name pair across full Payroll was NOT established.
-
-text
-Absent = Workdays - Present - Paid leave
-Gross = ROUND(Basic + Allowance,2)
-Absence deduction = ROUND(Basic / Workdays * Absent,2)
-OT pay = ROUND(OT rate * OT hours,2)
-Bonus/Advance/Fine = SUMIF over all matching adjustment rows
-Net = ROUND(Gross - Absence deduction + OT pay + Bonus - Advance - Fine,2)
-Independent expected values: Python Decimal ROUND_HALF_UP at corresponding steps,not app formula results.
-
-Payroll A:T:A ID;BName;CDepartment;DBasic;EAllowance;FOT rate;GWorkdays;HPresent;IPaid leave;JOT hours;KAbsent;LGross;MAbsence deduction;NOT pay;OBonus;PAdvance;QFine;RNet;SValidation;TPayment status.
-
-Validation:one ID match each Employees/Attendance/Payroll;COUNT(D:J)=7;MIN(D:J)>=0;Workdays>0;Present+Paid leave<=Workdays. Invalid=>CHECK/payBLOCKED. Valid negative net=>HOLD;otherwiseREADY. It does NOT comprehensively validate adjustment signs/types,orphan adjustments,integer day constraints,overtime caps or law. Fixed ranges Employees2:151,Attendance2:151,Adjustments2:181,Payroll2:151 do NOT cover new rows beyond their bounds.
-
-Independent first-ten expected net (also observed displayed)
-ID	Net
-E001	19848.56
-E002	20163.85
-E003	20445.87
-E004	20874.62
-E005	25373.75
-E006	24220.38
-E007	23283.75
-E008	24918.85
-E009	24229.42
-E010	29297.50
-Other observed samples: E001gross20400,deduction720.19,OT138.75;E003deduction2327.88;E005absent0/deduction0;E010deduction0;E005bonus1250,E010bonus1025. Sample ROUND/SUMIF paths only,not arbitrary rounding/error semantics.
-
-Full150 expected summary — NOT achieved app output
-Metric	Expected
-Individual PASS	150
-Valid	150
-READY	150
-Grand net	3991346.39
-Admin	828890.58
-Sales	801303.28
-Factory	759829.64
-IT	735660.39
-Support	865662.50
-Prepared PayrollAudit:row1headers;rows2:151ID/independentExpected/Actual/Difference/Audit;row152blank;row153summaryHeaders;B154individualPASS;B155valid;B156READY;B157total;rows158:162department totals in above order;B163overall. Not validly populated/verified in app.
-
-Prepared mutations,none executed
-Test	Edit	Expected	Restore
-Same-department cancellation	Employees!E70(E001)1675->1775 and E12(E006)2550->2450	E001net19948.56,E006net24120.38;grand/Admin unchanged;148individualPASS;overallFAIL	E70=1675,E12=2550
-Duplicate/missing	Employees!A59 E002->E001	Both CHECK/BLOCKED,valid148	A59=E002
-Impossible attendance	Attendance!C111(E003)23->27	Payroll!S4CHECK,R4/T4BLOCKED	C111=23
-Half-cent rounding	Employees!F70(E001)92.5->92.55	Payroll!N2=138.83,R2=19848.64;grand3991346.47;149individualPASS	F70=92.5
-Cell addresses assume original shuffle retained. Establish baseline first,one mutation at a time,restore baseline;do not alter independent expected Audit values.
-
-8. Current workbook handoff — unresolved state,not instructions to paste
-Latest screenshot about21:09;latest test-session report21:22:
-
-Tabs Employees,Attendance,Adjustments,PayrollTemp,Payroll.
-
-Payroll row1header;rows2:11E001..E010 correct.
-
-PayrollTemp rows1:10E011..E020 but formulas reference rows12:21=>CHECK/BLOCKED. Not valid first20 evidence.
-
-Prior PayrollAudit renamedPayroll;valid separate audit not present in last screenshot.
-
-Payroll!A12:A16 contains illustrative text,not actual employee rows:row12 text Payroll!A11 = E010;row13 Payroll!A12 = E011;row14 Payroll!A13 = E012;row15 ellipsis;row16 Payroll!A21 = E020.
-
-Assistant asked for oneUndo and actual TSV paste atPayroll!A12;NO later evidence cleanup occurred. Treat as potentially still contaminated.
-
-No evidence E021-E150 pasted;do not assert first20/150 complete.
-
-User stopped due to slowness;do not auto-dump remaining formula rows.
-
-Do not copy/cut wrong-position formula cells and assume reference offsets preserved. Reinspect original formulas and intended destination before repair.
-
-9. Coverage still missing — BACKLOG,not completed history
-These are explicit evidence gaps,not a claim that the product is broken and not a request to repeat all tests now.
-
-Area	Missing coverage / current boundary
-Build	Full current TypeScript check,production build,source revision identification.
-Payroll	150independent rows,department/grand audit,the four planned mutations,negativeHOLD;missing IDs in each source;duplicate Payroll IDs;missing/invalid adjustment data;orphan adjustment controls;full same-name-ID isolation.
-Structure	Sales insertion final outcome;column insertion;deleting referenced rows/columns;sheet rename reference rewriting;sheet delete/undo;rename collision. Display rename UI-04 is not reference rewriting proof.
-Sorting/filtering	Row integrity with sort/filter;lookup after source reorder beyond prepared shuffle;rank and totals under filtering. No retained execution evidence.
-Formula edges	Circular references,division by zero,error propagation,IFERROR fallback semantics,unknown functions;dynamic spill collision/resize;invalid cross-sheet references.
-Academic validation	Blank/text/negative/duplicate IDs;numeric text/coercion;all grade transition boundaries.101 scenario user-confirmed only.
-Clipboard / history	Controlled multi-column selection/fill reproduction;relative/mixed/absolute reference translation on copy/cut;Redo,multi-step Undo,cross-sheet history. Two specific Undo paths passed,not all.
-Performance	Measured paste/recalc/interaction times,formula/cell count,device/browser/profile. Distinguish conversation-page slowness from spreadsheet runtime.
-Persistence warning	Diagnose displayed recovery warning. Earlier Save/Restore user completion respected;do not automatically rerun whole persistence suite.
-Version traceability	Commit/build hash,evidence artifact filenames,raw limited-test logs unavailable.
-10. Functions actually exercised — avoid blanket certification
-Observed integrated outputs provide evidence of these paths within fixtures:
-
-VLOOKUP:normal/absolute/cross-sheet examples and changed-source examples.
-
-SUM/SUMIF:Sales summary,bank balances,and sampled multiple Payroll adjustments.
-
-COUNTIF:bank matched count,Results subject/status counts;COUNTIFS:PASS-only competition ranking.
-
-IF/AND/COUNT/MIN/MAX:valid Results/Payroll rows and user-confirmed101 validation path.
-
-ISNUMBER:Results numeric total vsABSENT branch.
-
-IFERROR:Payroll successful lookup path;missing-lookup fallback itself not independently isolated.
-
-ROUND:sample baseline salary/deduction outputs;half-cent mutation NOT executed.
-
-SEQUENCE:simple3-row spill from earlier summary only.
-
-None of the above certifies every argument mode,error case,data type or function implementation. Visible static expected data are not proof of a function being called unless corresponding formula evidence/workflow exists.
-
-11. Open issues and next-work discipline
-Source state/performance:inspect CURRENT app/page.tsx and relevant evaluator/store modules only if user requests code review;do not assume old uploaded source current.
-
-Profile before guessing slowdown root cause. User wording may refer to sheet or long conversation;timings/cell counts absent.
-
-Recovery warning remains unresolved;successful earlier Save/Restore report does not diagnose its cause.
-
-Distinguish incomplete setup from confirmed bugs. #N/A after horizontal fill came with wrong lookup reference;no demonstrated recurrence of old VLOOKUP defect.
-
-IFERROR can hide missing setup as blank;inspect source IDs and destination before engine diagnosis.
-
-Preserve ledger in main project;assistant generated file but did not commit/write into user's actual repository.
-
-Suggested placement docs/testing/ALIMXL_4.0.0_MANUAL_PRACTICAL_TEST_LEDGER.md;README should point AI to it. Not proof of actual save.
-
-Preserve original entries/evidence classifications after code changes. Future targeted regressions must record new revision.
-
-12. Append-only test template
-Test ID/date/current source revision:
-
-Hypothesis/risk and why retest needed:
-
-Exact preconditions/source/destination cells:
-
-Exact mutation/formula (distinguish input from explanation):
-
-Independently calculated expected result:
-
-Actual result:
-
-Real evidence artifact filename / committed project-relative location:
-
-Status and scope:
-
-Restore/Undo verification:
-
-Timings if measured:
-
-Limitations/next action:
-
-13. Revision1.1 changelog and review boundary
-Retained all40original scenario IDs;addedBANK-04,UI-04,UI-05(43entries total),all describing already recorded observations,not fresh tests.
-
-Expanded bank baseline subassertions,Results grade/status subassertions,Payroll zero-deduction/rounding samples without inflating them into independent successes.
-
-Added function-level evidence boundary and explicit unexecuted backlog.
-
-Corrected pasted-format ambiguity:Bonus=(i mod6)225;Advance=(i mod8)150. Multiplication signs are literal inside code block.
-
-Corrected RES-09 to exclude >100 from unexecuted claims because RES-08already user-confirmed that case.
-
-Clarified rename display vs formula reference rewriting and partial two-step rename vs planned third step.
-
-No new code audit/build/app execution. No unseen historical screenshots inspected;old unavailable history remains unknown.
-
-Review sources: supplied conversation summary,user-pasted v1.0ledger,visible prior conversation/screenshots. Original screenshot filenames/commit paths not invented.
-
-14. বাংলা সারসংক্ষেপ
-ব্যাংকিং ও দশ-শিক্ষার্থীর নির্দিষ্ট baseline/mutation সফল;কিছু recovery/validation ব্যবহারকারীর নিশ্চিতকরণে পাস।আগেরSales/VLOOKUPপাস summary-নির্ভর।Save/Restoreআগেই হয়েছে বলে ব্যবহারকারী জানিয়েছেন।Payrollপ্রথমদশজনই দৃশ্যমানভাবে সঠিক;১৫০জনেরauditহয়নি।Rename-এরদৃশ্যমানদুইধাপ,bankfillএবংPayrollpasteএবারআলাদানথিভুক্ত,কিন্তুনতুনপরীক্ষানয়।Setupপেস্টভুল,selection/fillবিভ্রান্তি,recoverywarningএবংslowdownকারণনির্ণীতapplicationbugহিসেবেদেখাবেননা।সবfeatureবাproductionreadinessপাসবলেননি।
-
-============================================================
-ALIMXL 4.0.0 — অতিরিক্ত কাজ ও পরীক্ষার হ্যান্ডঅফ নোট
-রিপোর্টের তারিখ: ২০২৬-১১-২১
-আলোচনার সময়সীমা: রাত ১:১১ পর্যন্ত, UTC+06:00
-ধরন: পুরোনো তদন্ত রিপোর্টের সংযোজন; নতুন software release নয়।
-============================================================
-
-১. এই নোটের উদ্দেশ্য
-------------------------------------------------------------
-নতুন XLSX কাজ, automated verification এবং বাস্তবে করা manual
-পরীক্ষাগুলোর অগ্রগতি নথিভুক্ত করা, যাতে পরবর্তী AI বুঝতে পারে
-কোন অংশ সম্পন্ন এবং কোন অংশ এখনও বাকি।
+Automated test, lint, typecheck ও build-এর ফল পৃথক technical report-এর বিষয়।
 
 প্রমাণের ধরন:
-- Terminal log: ব্যবহারকারীর চালানো command-এর দেওয়া output।
-- Screenshot: ব্রাউজারে দৃশ্যমান ফল।
-- User confirmation: ব্যবহারকারীর সরাসরি নিশ্চিতকরণ।
-- Prepared: নমুনা বা নির্দেশনা তৈরি হয়েছে, পরীক্ষা সম্পন্ন নয়।
 
-Assistant নিজে ব্যবহারকারীর repository-তে command চালায়নি।
-Exact commit/build hash নথিভুক্ত হয়নি।
+Screenshot: দৃশ্যমান ফল যাচাই করা হয়েছে।
 
+User confirmation: ব্যবহারকারী পরীক্ষা করে সফলতা নিশ্চিত করেছেন।
 
-২. নতুন XLSX ইম্পোর্ট/এক্সপোর্ট কাজ
-অবস্থা: CHANGE REPORTED + সংশ্লিষ্ট পরীক্ষার ফল পাওয়া গেছে।
-------------------------------------------------------------
-আলোচনায় ExcelJS-ভিত্তিক XLSX import/export যুক্ত করার কাজ
-করা হয়েছে।
+Recorded history: আগের পরীক্ষার সংরক্ষিত সারাংশে সফলতা নথিভুক্ত আছে।
 
-সংশ্লিষ্ট ফাইল:
-- lib/xlsx-format-io.mjs
-- tests/xlsx-round-trip.test.mjs
+নতুন keyboard পরীক্ষার কিছু ফল ব্যবহারকারী সম্মিলিতভাবে সফল বলেছেন।
+সেগুলোর জন্য আলাদা screenshot বা অতিরিক্ত বিস্তারিত input/output পাওয়া গেছে বলে দাবি করা হয়নি।
 
-পরবর্তী প্রমাণ:
-- নির্দিষ্ট XLSX automated test পাস।
-- পূর্ণ discovered Node test run পাস।
-- TypeScript/build সফল।
-- ব্রাউজারে colourful XLSX টাইমশিট খুলেছে।
-
-সীমা:
-সর্বশেষ edited source, dependency lockfile ও সম্পূর্ণ diff
-পুনরায় audit করা হয়নি। সব Excel feature সমর্থিত বলা যাবে না।
-
-
-৩. নির্দিষ্ট XLSX automated test
-অবস্থা: PASS — ব্যবহারকারীর terminal log অনুযায়ী।
-------------------------------------------------------------
-Command:
-node --test tests/xlsx-round-trip.test.mjs
-
-ফল:
-- Tests: 3
-- Pass: 3
-- Fail: 0
-- Cancelled: 0
-- Skipped: 0
-
-পাস করা test:
-1. XLSX export creates a valid Excel workbook blob.
-2. XLSX round-trip preserves core formatting.
-3. XLSX import rejects an invalid workbook.
-
-সীমা:
-শুধু test-এ বাস্তবে থাকা assertions পাস হয়েছে।
-সব formatting, সব invalid file অথবা manual browser
-export–reimport সম্পূর্ণ যাচাই হয়েছে—এমন নয়।
-
-
-৪. পূর্ণ discovered Node test run
-অবস্থা: PASS — ব্যবহারকারীর terminal log অনুযায়ী।
-------------------------------------------------------------
-Command:
-node --test
-
-ফল:
-- Tests: 154
-- Pass: 154
-- Fail: 0
-- Cancelled: 0
-- Skipped: 0
-- Todo: 0
-- Reported duration: 3211.3424 ms
-
-দেখানো test group-এর মধ্যে ছিল:
-- Chart geometry ও chart data handling।
-- Formula functions ও localisation।
-- Cross-sheet references/dependencies।
-- Recovery draft identity ও storage rules।
-- Backup/workbook validation।
-- XLSX round-trip।
-
-গুরুত্বপূর্ণ:
-উপরের ৩টি XLSX test এই ১৫৪টির মধ্যেই আছে।
-১৫৭টি আলাদা test হিসেবে গণনা করবেন না।
-
-সীমা:
-এই পূর্ণ run পরবর্তী lint-related source পরিবর্তনের আগে হয়েছে।
-সর্বশেষ lint পরিবর্তনের পরে আবার পূর্ণ test run-এর প্রমাণ নেই।
-১৫৪টি test পাস মানে ১৫৪টি feature সম্পূর্ণ certified নয়।
-
-
-৫. TypeScript check
-অবস্থা: PASS — ব্যবহারকারীর terminal log অনুযায়ী।
-------------------------------------------------------------
-Command:
-npm run typecheck
-
-দেখানো run-এ:
-tsc --noEmit কোনো প্রদর্শিত TypeScript diagnostic ছাড়া শেষ হয়েছে।
-
-পরবর্তী latest production build-এর TypeScript stage-ও সফল।
-
-সীমা:
-Type checking সফল হওয়া runtime behaviour-এর পূর্ণ প্রমাণ নয়।
-Exact source revision/hash নেই।
-
-
-৬. Production build
-অবস্থা: PASS — ব্যবহারকারীর terminal log অনুযায়ী।
-------------------------------------------------------------
-Command:
-npm run build
-
-একাধিক সফল run দেওয়া হয়েছে।
-
-সর্বশেষ দেওয়া output-এ:
-- Package: alimxl@4.0.0
-- Next.js 16.4.5 / Turbopack
-- Compiled successfully
-- TypeScript stage finished
-- Page-data collection successful
-- Static page generation: 19/19
-- Final page optimisation successful
-
-সীমা:
-Build সফল মানে সব manual feature, security, persistence বা
-production readiness যাচাই হয়েছে—এমন নয়।
-
-
-৭. Lint error সংশোধন
-অবস্থা: সর্বশেষ run-এ ০ error; ১৪ warning অবশিষ্ট।
-------------------------------------------------------------
-Command:
-npm run lint
-
-অগ্রগতি:
-- প্রথম run: 6 errors, 14 warnings।
-- পরবর্তী run: 1 error, 14 warnings।
-- সর্বশেষ run: 0 errors, 14 warnings।
-
-আলোচনায় নির্দেশিত সংশোধন:
-- app/page.tsx-এর পাঁচটি explicit any assertion
-  পরিবর্তন/বাদ দেওয়া।
-- setSpillRanges update queueMicrotask-এ নেওয়া।
-- setSpillCalculationStatus update queueMicrotask-এ নেওয়া।
-
-পরবর্তী ফল:
-- Typecheck/build পাসের log পাওয়া গেছে।
-- সর্বশেষ lint-এ error শূন্য।
-
-অবশিষ্ট warning:
-সবগুলো প্রদর্শিত warning:
-@typescript-eslint/no-unused-vars
-
-আরও একটি পৃথক Babel note:
-app/page.tsx 500 KB-এর বেশি হওয়ায় code-generator styling
-deoptimisation-এর বার্তা এসেছে।
-
-সীমা:
-- সর্বশেষ source/diff পুনরায় inspect করা হয়নি।
-- Type assertion runtime validation নয়।
-- queueMicrotask দিয়ে lint পাস হওয়া spill logic অপরিবর্তিত
-  থাকার প্রমাণ নয়।
-- Post-edit spill recalculation/collision/resize/disable
-  behaviour আলাদাভাবে যাচাই হয়নি।
-- ১৪টি warning-কে যাচাই ছাড়া “harmless” বলা যাবে না।
-
-
-৮. রঙিন ১৫০ জনের Weekly Timesheet নমুনা
-অবস্থা: PREPARED — ফাইল তৈরি হয়েছে।
-------------------------------------------------------------
-তৈরি ফাইল:
-ALIMXL_Colorful_150_Employee_Timesheet.xlsx
-
-Sheet:
-Weekly Timesheet
-
-নমুনার বিবরণ:
-- 150 fictional employee records।
-- 21–27 November 2026।
-- Employee ID, নাম ও বিভাগ।
-- সাত দিনের কাজের ঘণ্টা।
-- Total Hours, OT Hours, Rate/Hour।
-- Regular Pay, OT Pay, Total Pay।
-- শেষে total row।
-
-বিন্যাস:
-- A:Q পর্যন্ত কলাম।
-- 1:3 নম্বর সারিতে title/instructions।
-- 4 নম্বর সারিতে header।
-- 5:154 নম্বর সারিতে employee records।
-- 155 নম্বর সারিতে totals।
-
-প্রস্তুত formatting:
-- রঙিন header।
-- দৈনিক ঘণ্টায় নীল।
-- শুক্রবারে গোলাপি।
-- মোট/ওভারটাইম ঘণ্টায় বেগুনি।
-- Rate-এ হলুদ।
-- বেতনের কলামে সবুজ।
-- Borders, merged title, column widths, row heights।
-- Freeze-pane configuration।
-
-নমুনা হিসাব:
-- সপ্তাহে 48 ঘণ্টার বেশি হলে OT।
-- OT rate: সাধারণ hourly rate-এর 1.5 গুণ।
-
-এগুলো কাল্পনিক sample policy; আইনগত payroll compliance নয়।
-
-বিশেষ সতর্কতা:
-এটি আগের Employees/Attendance/Adjustments/Payroll fixture নয়।
-দুটি পৃথক পরীক্ষার নমুনা।
-
-
-৯. রঙিন XLSX import-এর manual পরীক্ষা
-অবস্থা: PASS OBSERVED — শুধু দৃশ্যমান অংশের জন্য।
-------------------------------------------------------------
-ব্যবহারকারী তৈরি XLSX ফাইল ALIM XL-এ খুলেছেন এবং
-স্ক্রিনশট দিয়েছেন।
-
-দৃশ্যমান ফল:
-- Weekly Timesheet sheet name এসেছে।
-- Title ও instruction rows দেখা গেছে।
-- ডেটা আলাদা আলাদা কলামে বসেছে।
-- Teal header ও সাদা লেখা এসেছে।
-- নীল, গোলাপি, বেগুনি, হলুদ ও সবুজ cell fills দেখা গেছে।
-- Borders ও differentiated column widths দেখা গেছে।
-
-প্রথম কর্মীর প্রদর্শিত হিসাব:
-- Name: Alim Uddin
-- Total Hours: 52
-- OT Hours: 4
-- Rate/Hour: 120
-- Regular Pay: 5760
-- OT Pay: 720
-- Total Pay: 6480
-
-সীমা:
-- পুরো 150 জনের সব record audit হয়নি।
-- শেষের total row audit হয়নি।
-- এডিটের পর formula recalculation প্রমাণিত হয়নি।
-- Scrolling করে freeze panes পরীক্ষা হয়নি।
-- Exact RGB/width/height equality মাপা হয়নি।
-
-
-১০. এক শিট থেকে অন্য শিটে রঙসহ কপি-পেস্ট
-অবস্থা: PASS OBSERVED + USER CONFIRMED।
-------------------------------------------------------------
-এটি এই manual session-এর নিশ্চিত সফল কালার পরীক্ষা।
+1. Row Insert / Delete এবং Undo / Redo
+STRUCT-01 — Row Insert
+Status: PASS
+Evidence: Recorded history / user-confirmed results
 
 কাজ:
-ব্যবহারকারী Weekly Timesheet-এর নির্বাচিত অংশ কপি করে
-একই workbook-এর Sheet 2-এ পেস্ট করেছেন।
+Row 3 insert করে New Product / 50 যোগ করা।
 
-স্ক্রিনশটে:
-- Header প্রথম সারিতে।
-- 14 জন কর্মীর selected data পরের সারিগুলোতে।
-- ডেটা আলাদা কলামে বসেছে।
-- Header-এর teal background ও সাদা লেখা বজায় আছে।
-- Daily hours-এর নীল fill বজায় আছে।
-- Friday-এর গোলাপি fill বজায় আছে।
-- Total/OT hours-এর বেগুনি fill বজায় আছে।
-- Rate-এর হলুদ fill বজায় আছে।
-- Payment-এর সবুজ fill বজায় আছে।
-- দৃশ্যমান borders বজায় আছে।
-
-ব্যবহারকারীর স্পষ্ট নিশ্চিতকরণ:
-যতটুকু কপি করেছেন, ঠিক ততটুকু দ্বিতীয় শিটে পেস্ট করেছেন।
-পরীক্ষার উদ্দেশ্য ছিল colour testing।
-ব্যবহারকারীর মতে colour testing সফল।
-
-গ্রহণযোগ্য সিদ্ধান্ত:
-Selected-range, same-workbook, cross-sheet colour copy/paste:
-PASS।
-
-গুরুত্বপূর্ণ ব্যাখ্যা:
-Sheet 2-এ title বা অবশিষ্ট employee rows না থাকা data loss নয়।
-সেগুলো ব্যবহারকারী কপি করেননি।
-
-এই নির্দিষ্ট সফল colour-copy test অকারণে আবার করাবেন না।
-
-সীমা:
-এটি XLSX export–reimport test নয়।
-এটি cross-workbook/external clipboard test নয়।
-Formula-reference translation, conditional formatting,
-merged-cell copying বা সব paste mode-এর প্রমাণ নয়।
-
-
-১১. প্রস্তাব করা হয়েছিল, কিন্তু সম্পন্ন হওয়ার প্রমাণ নেই
-অবস্থা: NOT CONFIRMED EXECUTED।
-------------------------------------------------------------
-ক. Original Weekly Timesheet-এ E5-এর 8 বদলে 10 করা।
-
-প্রত্যাশিত:
-- L5 = 54
-- M5 = 6
-- O5 = 5760
-- P5 = 1080
-- Q5 = 6840
-
-এই পরিবর্তনের confirmed result পাওয়া যায়নি।
-
-খ. Sheet 2-এ প্রথম কর্মীর E2-এর 8 বদলে 10 করা।
-এটিও প্রস্তাবিত ছিল; confirmed execution নেই।
-
-গ. পরিবর্তিত workbook XLSX হিসেবে export করে আবার import।
-Confirmed manual execution নেই।
-
-ঘ. Export–reimport-এর পরে রঙ, borders ও formulas তুলনা।
-Confirmed result নেই।
-
-ঙ. পুরো 150 জনের হিসাব এবং final totals audit।
-সম্পন্ন হয়নি।
-
-চ. Freeze panes-এর scrolling behaviour পরীক্ষা।
-সম্পন্ন হওয়ার প্রমাণ নেই।
-
-এসবকে PASS বা completed লিখবেন না।
-
-
-১২. এখনও দৃশ্যমান উদ্বেগ
-------------------------------------------------------------
-Recovery warning:
-পরবর্তী timesheet screenshot-গুলোতেও দেখা গেছে:
-“Recovery: সেভ হয়নি — সমস্যা আছে”
-
-অবস্থা:
-কারণ ও প্রভাব নির্ণীত নয়।
-
-এটি আগের user-reported Save/Restore completion বাতিল করে না।
-আবার build সফল হয়েছে বলে warning সমাধান হয়েছে—এমনও নয়।
-
-Source traceability:
-বর্তমান exact commit/build hash নেই।
-Final edited source/diff পুনরায় পর্যালোচিত নয়।
-
-
-১৩. পুরোনো Payroll পরীক্ষার সঙ্গে সম্পর্ক
-------------------------------------------------------------
-নতুন colourful Weekly Timesheet এবং পুরোনো 150-worker
-Payroll audit আলাদা কাজ।
-
-নতুন কাজ দিয়ে পুরোনো Payroll-এর:
-- Full 150 independent audit।
-- Department/grand reconciliation।
-- Planned negative mutations।
-- Historical setup cleanup।
-
-এসব সম্পন্ন হয়েছে বলা যাবে না।
-
-পুরোনো Payroll-এর যেসব অংশ incomplete ছিল, নতুন প্রমাণ
-না পাওয়া পর্যন্ত সেগুলো আগের অবস্থাতেই থাকবে।
-
-
-১৪. পরবর্তী AI-এর জন্য কাজের নিয়ম
-------------------------------------------------------------
-- সফল basic colour copy/paste test অকারণে পুনরাবৃত্তি নয়।
-- User-selected partial range-কে missing-data bug বলবেন না।
-- Screenshot, user confirmation, terminal log ও prepared
-  expected result আলাদা রাখবেন।
-- 3 XLSX test ও 154 full-run test double-count করবেন না।
-- Latest edited source-কে post-edit full regression passed
-  বলবেন না; নতুন full run নথিভুক্ত হয়নি।
-- Code review দরকার হলে latest source/diff চাইবেন।
-- পুরো page.tsx অকারণে replace করবেন না।
-- আগের Payroll audit নতুন timesheet দিয়ে সম্পন্ন দেখাবেন না।
-- আগের assistant-এর অতিরিক্ত নিশ্চিত বক্তব্য:
-  “সব feature অক্ষত”, “কোনো runtime সমস্যা হবে না”,
-  “production-ready”—এগুলো audit conclusion নয়।
-
-
-১৫. বর্তমান সারসংক্ষেপ
-------------------------------------------------------------
-সম্পন্ন/প্রমাণিত:
-1. নির্দিষ্ট XLSX automated test: 3/3 PASS।
-2. পূর্ণ discovered Node test: 154/154 PASS,
-   তবে পরবর্তী lint edits-এর আগের run।
-3. TypeScript check: supplied logs-এ PASS।
-4. Production build: supplied logs-এ PASS।
-5. Latest lint: 0 errors, 14 warnings।
-6. 150-person colourful timesheet fixture তৈরি।
-7. Styled XLSX import: visible area PASS।
-8. Selected-range cross-sheet colour copy/paste:
-   screenshot + user confirmation অনুযায়ী PASS।
-
-এখনও বাকি/অপ্রমাণিত:
-1. Latest lint edits-এর পরে full Node test rerun।
-2. Manual XLSX export–reimport comparison।
-3. ঘণ্টা বদলে formula recalculation confirmation।
-4. Full 150-person timesheet audit।
-5. Recovery warning diagnosis।
-6. Current source revision/hash ও final diff verification।
-
-সামগ্রিক release verdict:
-NOT ESTABLISHED।
-
-এই নোট তৈরি মানে ব্যবহারকারীর repository-তে ফাইল save বা
-commit হয়েছে—এমন নয়। ব্যবহারকারী পুরোনো রিপোর্টের নিচে
-সংযোজন হিসেবে সংরক্ষণ করবেন।
-
-===================== নোটের সমাপ্তি =====================
-
----
-# Revision 1.2 — Consolidated handoff / বর্তমান অবস্থার সংযোজন
-
-Documentation date: 2026-11-23, UTC+06:00; conversation cutoff approximately 00:16.
-This is a documentation update, NOT a software release or newly executed app test.
-This section supersedes older CURRENT-STATUS statements where explicitly noted below;
-all older historical observations and their evidence levels are retained above.
-
-## A. Primary record and research scope
-
-Update THIS file for all future manual/practical results:
-`docs/testing/ALIMXL_4.0.0_MANUAL_PRACTICAL_TEST_LEDGER.md`.
-The uploaded ZIP already contains this file: do not create a second competing master ledger.
-Review covered the complete ZIP member inventory, existing documentation/test-result files,
-package scripts, recovery policy, and locations of the proposed rounding call.
-It was NOT a line-by-line audit of all application code, fresh browser execution,
-or a new TypeScript/lint/build/Node test run. ZIP source is an uploaded snapshot,
-not necessarily the user's latest working source. Commit/build hash remains unavailable.
-
-Archive result logs such as UPDATE-TEST-RESULTS.txt and update-docs/TEST-RESULTS.txt
-are historical automated/packaging outputs. Preserve them; do not append manual
-screenshots as if they were fresh automated test output.
-
-## B. Current status overrides
-
-### BUILD-01-UPDATE — Latest local command status
-Status: PASS_USER / precise command outputs not independently re-inspected here.
-User reports the commands had been run about two hours before the earlier discussion
-and that there are now no warnings, skipped tests, or build errors.
-This supersedes the old claim that 14 warnings are necessarily still current.
-Do NOT invent a new test count, elapsed time, exact command list or current commit.
-The historical 154/154 log remains historical and is not a new post-rounding regression run.
-The rounding patch below has not been verified by a fresh full suite in this session.
-
-### PERSIST-01-UPDATE — Recovery limit explained
-Status: CONFIGURED_LIMIT_OBSERVED + DESIGN_CONFIRMED_USER.
-Expanded screenshot explicitly displays:
-“Recovery limit reached (30 drafts). Remove unneeded drafts from Recovery panel.”
-User confirms the 30-draft cap was intentional to avoid unlimited browser accumulation.
-ZIP source lib/recovery-policy.mjs declares MAX_RECOVERY_DRAFTS = 30.
-canWriteRecovery permits an existing key to update even at the cap, but refuses a new
-key when the cap is full. Thus a full store is not proof that every draft update fails.
-Supersedes earlier undiagnosed-warning status for THIS observed warning only.
-Generic main Save failure, data loss or a recovery-engine defect is NOT established.
-User states no important data is present and elects to defer recovery cleanup/testing.
-Delete-then-new-draft success has NOT been observed; do not label it tested PASS.
-Performance benefit of this cap was not benchmarked.
-
-## C. Additional manual/practical records
-
-### BANK-05 — Opening/input balance mutation and dependent range
-Status: PASS_RECORDED (earlier conversation screenshot assessment; original durable evidence path absent).
-Mutation: I2 changed from 5000 to 6000 in the banking fixture.
-Actual: each J2:J11 value increased by 1000; J12:J15 remained unchanged.
-Scope: that dependency/recalculation scenario only. Account separation was implemented
-by formulas, NOT automatic bank-account recognition by the application.
-Exact formula text, sheet name and full source dataset are not retained here.
-
-### ROUND-01 — Calculated decimal discrepancy before proposed change
-Status: ISSUE_RECORDED; targeted reproduction later passes ROUND-02.
-Observed direct formula =ROUND(53.865,2) -> 53.87.
-Observed calculated formula =ROUND(3*19.95*(1-0.1),2) -> 53.86.
-A cell-reference equivalent also displayed 53.86.
-Observed rounded total: 1391.57; expected fixture total: 1391.58.
-Root cause was not proven with runtime intermediate-value instrumentation.
-Excel/LibreOffice execution of the same fixture was NOT independently verified.
-Do not call this a proven universal compatibility failure or final engine-wide fix.
-
-### ROUND-PATCH-01 — Minimal proposed edit and source divergence
-Status: PATCH_PROPOSED + POST-CHANGE_OUTPUT_OBSERVED; exact latest saved diff unverified.
-The supplied paste.txt was previously reviewed for roundHalfAway and cleanNumber.
-Proposed replacement, after backing up the actual source file:
-Before: const result = roundHalfAway(numeric, digits);
-After:  const result = roundHalfAway(cleanNumber(numeric), digits);
-cleanNumber was described in the earlier review as 15-significant-digit normalization.
-Do not infer all near-boundary/high-precision cases are safe.
-Important ZIP finding: BOTH app/page.tsx and lib/formula-core.mjs in the uploaded
-snapshot still contain the uncleaned call. The new cleaned call is absent in these
-locations. This is snapshot divergence, NOT proof the user's current local edit failed.
-Record actual edited file/commit and verify browser versus core evaluator parity
-before treating this as a repository-wide merged fix. No code was modified by this report.
-
-### ROUND-02 — Eight-case screenshot regression
-Status: PASS_OBSERVED for eight displayed Actual/Expected pairs.
-Evidence: latest two rounding-sheet screenshots in this conversation; not embedded
-or assigned invented durable filenames. Selected cell is blank D5, so formula-bar
-contents do not independently establish every B-cell formula.
-The sequence of the discussion links these outputs to the proposed regression set.
-
-| Case | Displayed actual | Displayed expected | Formula evidence boundary |
-|---|---:|---:|---|
-| Direct | 53.87 | 53.87 | Proposed direct ROUND case |
-| Calculated | 53.87 | 53.87 | Proposed calculated ROUND case |
-| Negative calculated | -53.87 | -53.87 | Negative calculated input; exact stored formula not inspected |
-| Below boundary | 53.86 | 53.86 | Exact input literal not retained |
-| Above boundary | 53.87 | 53.87 | Exact input literal not retained |
-| Basic positive half | 3 | 3 | Proposed ROUND(2.5,0) |
-| Basic negative half | -3 | -3 | Proposed ROUND(-2.5,0) |
-| Negative digits | 1300 | 1300 | Proposed ROUND(1250,-2) |
-
-Eight matching pairs are nested assertions in this scenario, not eight independently
-certified features. Positive calculated discrepancy no longer appears in this fixture.
-No global ROUND certification, all-functions pass percentage or release verdict follows.
-
-### ROUND-03 — Original product fixture end-to-end recheck
-Status: NOT_CONFIRMED_EXECUTED.
-Suggested recheck: original F2 = 53.87 and =ROUND(SUM(F2:F7),2) = 1391.58.
-No final screenshot/user confirmation received. Do not mark the original total fixed yet.
-
-### PAY-11 — Large monetary salary-sheet request deferred
-Status: DEFERRED_USER; not an executed test.
-User initially requested a 50-crore-taka salary sheet, then stopped that direction
-and prioritised difficult formula tests. Neither dataset creation nor full salary
-validation is established by this request. Keep old PAY-01 through PAY-10 boundaries.
-
-## D. Current handoff / what not to repeat
-
-- Prioritise difficult formula correctness and unsupported-function discovery.
-- Do not keep treating the known 30-draft cap as an undiagnosed defect.
-- Do not repeat completed colour-copy/basic examples without a concrete new risk.
-- Preserve earlier ten-row Payroll successes; do not promote them to 150 audited rows.
-- Keep Sales, banking reconciliation, Results and colourful Timesheet records above.
-- Preserve user-reported Save/Restore completion without inventing exact coverage.
-- No global numerical product score is a reproducible certification; earlier 70–75/100
-  was an approximate assessment, not a formal benchmark.
-- Latest build report, uploaded ZIP state, pasted source and browser session may differ.
-
-## E. Historical automated evidence reconciliation
-
-Uploaded update-docs/TEST-RESULTS.txt records 49 print tests and 151 other tests;
-its mocked UI section explicitly says realBrowser:false. UPDATE-TEST-RESULTS.txt
-records a separate 24-test chart run. The earlier ledger records a 154-test full run
-including 3 XLSX tests. These are different historical runs/snapshots and overlapping
-suites. NEVER sum 49 + 151 + 24 + 154 into a unique current test count.
-A test title mentioning Excel/LibreOffice is not by itself fresh execution in either app.
-No automated commands were rerun while preparing this documentation.
-
-## F. Future append-only entry template
-
-### TEST-ID — Short title
-- Date/time/timezone:
-- App version / commit / build identifier:
-- Environment: browser/version, OS, device; if unrecorded say UNKNOWN.
-- Evidence level: screenshot / user report / raw log / summary / prepared only.
-- Preconditions: workbook/sheet, exact source and destination ranges:
-- Exact inputs or formulas (copyable block, no explanatory prose mixed in):
-- Mutation:
-- Independently derived expected output:
-- Actual output:
-- Status: PASS_OBSERVED / PASS_USER / FAIL_OBSERVED / INCONCLUSIVE /
-  BLOCKED_SETUP / PREPARED / NOT_EXECUTED / DEFERRED_USER.
-- Evidence artifact: real project-relative filename; UNKNOWN if not saved.
-- Restore/Undo result:
-- Timing, only if measured:
-- Scope/limitations and next action:
-
-Store future real evidence under docs/testing/evidence/ using unique dated names.
-That directory is a recommendation, not a claim that past screenshots were recovered.
-Do not overwrite earlier failures with later passes: append the retest and link IDs.
-Do not recalculate the old 43-entry table as a current feature pass percentage;
-it is explicitly a historical register with nested and overlapping assertions.
-
-## G. Revision 1.2 limits and completion
-
-Retained the entire original ledger and its later XLSX/Timesheet addendum verbatim.
-Added known recent banking, rounding, build-report and recovery-design information.
-All identifiable history in the available ledger/conversation is preserved, but missing
-historical chats, raw logs and screenshots were NOT recovered or invented.
-This delivered document is not yet saved/committed in the user's local repository.
-Release verdict remains NOT ESTABLISHED; this is an evidence/handoff record.
-### BUILD-02 — Latest supplied local verification log
-
-Recorded: 2026-11-23, UTC+06:00
-Evidence: User-pasted terminal output
-Project: C:/ALIMXL
-Branch shown: main
-Package version shown: alimxl@4.0.0
-Commit/build hash: NOT RECORDED
-
-1. npm run typecheck
-   Result: PASS
-   tsc --noEmit completed with no displayed error.
-
-2. npx eslint app/page.tsx
-   Result: PASS for the specified file.
-   No ESLint error/warning diagnostics displayed.
-   Babel emitted a code-generation styling note because
-   app/page.tsx exceeds 500KB.
-
-3. npm run build
-   Result: PASS
-   Next.js 16.4.5 (Turbopack).
-   Compiled successfully in 11.4s.
-   Build TypeScript phase completed.
-   Static page generation completed: 19/19.
-   Final page optimization completed.
-
-Scope and limitations:
-- This is direct supplied terminal evidence, replacing the
-  earlier user-report-only status for these three commands.
-- ESLint was run against app/page.tsx, not the entire project.
-- No automated test-suite command appears in this log.
-- No fresh browser/manual regression is established by this log.
-- Exact source diff and commit are not recorded.
-- No production-readiness or all-features-pass claim is made.
+সফল ফল:
+
+Total = 650
+
+Total formula =SUM(B2:B5)
+
+Product C Reference = 300
+
+Reference formula =B5
+
+STRUCT-02 — Insert করা Row Delete
+Status: PASS
+Evidence: Recorded history / user-confirmed results
+
+কাজ:
+যোগ করা Row 3 delete করা।
+
+সফল ফল:
+
+Total = 600
+
+Total formula =SUM(B2:B4)
+
+Product C Reference = 300
+
+Reference formula =B4
+
+STRUCT-03 — নির্দিষ্ট Row পরিবর্তনের Undo / Redo
+Status: PASS
+Evidence: Recorded history / user confirmation
+
+সফল ফল:
+পরীক্ষিত row insert/delete sequence-এর সংশ্লিষ্ট data,
+calculated value এবং formula reference সঠিকভাবে ফিরে এসেছে।
+
+2. খালি Column Insert / Delete
+STRUCT-04 — Amount-এর আগে Column Insert
+Status: PASS
+Evidence: Screenshot / user confirmation
+
+কাজ:
+B column-এ Insert Columns Before।
+
+সফল ফল:
+
+B column খালি হয়েছে।
+
+Amount-এর data C column-এ গেছে।
+
+C5 = 600
+
+C5 formula =SUM(C2:C4)
+
+C6 = 300
+
+C6 formula =C4
+
+STRUCT-05 — নতুন খালি Column Delete
+Status: PASS
+Evidence: Screenshot for values / user confirmation for formulas
+
+কাজ:
+নতুন যোগ করা খালি B column delete করা।
+
+সফল ফল:
+
+Amount-এর data B column-এ ফিরেছে।
+
+B5 = 600
+
+B5 formula =SUM(B2:B4)
+
+B6 = 300
+
+B6 formula =B4
+
+3. Sheet Reference / Rename / Undo / Redo
+SHEET-01 — সঠিক Sheet Name দিয়ে Reference
+Status: PASS
+Evidence: Screenshot
+
+Sheet:
+Sheet 1
+
+D1 formula:
+='Sheet 1'!B5
+
+সফল ফল:
+D1 = 600
+
+SHEET-02 — Sheet Rename করলে Formula আপডেট
+Status: PASS
+Evidence: Screenshot
+
+কাজ:
+Sheet 1-এর নাম SalesData করা হয়েছে।
+D1-এর formula ম্যানুয়ালি পরিবর্তন করা হয়নি।
+
+সফল ফল:
+
+Sheet name = SalesData
+
+D1 formula =SalesData!B5
+
+D1 value = 600
+
+SHEET-03 — Sheet Rename-এর Undo / Redo
+Status: PASS — User Confirmed
+Evidence: User confirmation; screenshot supports undo name/value
+
+সফল ফল:
+ব্যবহারকারী নির্দিষ্ট rename পরীক্ষায় Undo ও Redo দুটিই
+কাজ করছে বলে নিশ্চিত করেছেন।
+
+Undo screenshot-এ:
+
+Sheet name = Sheet 1
+
+D1 value = 600
+
+4. Source পরিবর্তনের পর Recalculation
+RECALC-01 — Source Value থেকে Dependent Result আপডেট
+Status: PASS
+Evidence: Screenshot
+
+কাজ:
+B4-এর Product C amount 300 থেকে 350 করা হয়েছে।
+
+সফল ফল:
+
+B5 Total = 650
+
+B5 formula =SUM(B2:B4)
+
+B6 Product C Reference = 350
+
+D1 sheet-name reference result = 650
+
+5. Banking Practical Tests
+BANK-01 — Bank Baseline / Reconciliation
+Status: PASS
+Evidence: Screenshot
+
+সফল ফল:
+
+CASH = 105500
+
+BANK = 62800
+
+Total = 168300
+
+Matched transactions = 10
+
+Balance differences = 0
+
+Overall audit = PASS
+
+BANK-02 — মোট অপরিবর্তিত থাকলেও দুটি ভুল শনাক্ত
+Status: PASS — Negative Test
+Evidence: Screenshot
+
+কাজ:
+দুটি transaction amount বিপরীত দিকে 100 করে পরিবর্তন করা।
+
+সফল ফল:
+
+মোট BANK balance = 62800 অপরিবর্তিত।
+
+মোট balance difference = 0।
+
+Matched transactions 10 থেকে 8 হয়েছে।
+
+Audit overall FAIL দেখিয়ে ভুল শনাক্ত করেছে।
+
+নোট:
+এই পরীক্ষায় application-এর ভুল শনাক্ত করাই সফল ফল।
+
+BANK-03 — Mismatch Detail / Recovery
+Status: PASS
+Evidence: User confirmation
+
+সফল ফল:
+
+BANK|T001 difference = +100
+
+BANK|R002 difference = -100
+
+মূল data restore করলে matched count = 10
+
+Overall audit = PASS
+
+BANK-04 — Reconciliation Formula Fill
+Status: PASS
+Evidence: Recorded screenshot assessment
+
+কাজ:
+A2:G2-এর reconciliation formula row 11 পর্যন্ত fill করা।
+
+সফল ফল:
+Matched count = 10।
+
+BANK-05 — Opening/Input Balance পরিবর্তন
+Status: PASS
+Evidence: Recorded history
+
+কাজ:
+I2-এর value 5000 থেকে 6000 করা।
+
+সফল ফল:
+
+J2:J11-এর প্রতিটি value 1000 বেড়েছে।
+
+J12:J15 অপরিবর্তিত থেকেছে।
+
+6. Student Results Practical Tests
+এই fixture-এর নিজস্ব নিয়ম:
+পাঁচ বিষয়ে প্রতিটিতে অন্তত 33 পেতে হবে।
+AB হলে ABSENT।
+এক বিষয়ে ফেল করলে বেশি total থাকলেও FAIL।
+শুধু PASS শিক্ষার্থীদের competition rank দেওয়া হয়েছে।
+
+RES-01 — Ten-Student Baseline
+Status: PASS
+Evidence: Screenshot
+
+সফল ফল:
+
+7 PASS
+
+2 FAIL
+
+1 ABSENT
+
+প্রদর্শিত total, average, result, grade ও rank সঠিক।
+
+RES-02 — বেশি Total হলেও এক বিষয়ে Fail
+Status: PASS
+Evidence: Screenshot
+
+Input:
+100, 100, 100, 100, 32
+
+সফল ফল:
+
+Total = 432
+
+Average = 86.4
+
+Failed subjects = 1
+
+Result = FAIL
+
+Grade = F
+
+Rank দেওয়া হয়নি।
+
+RES-03 — Exact Pass Boundary
+Status: PASS
+Evidence: Screenshot
+
+Input:
+33, 33, 33, 33, 33
+
+সফল ফল:
+
+Total = 165
+
+Average = 33
+
+Result = PASS
+
+Grade = D
+
+Baseline rank = 7
+
+RES-04 — Absence Handling
+Status: PASS
+Evidence: Screenshot
+
+Input:
+70, 65, AB, 80, 75
+
+সফল ফল:
+
+Absent subjects = 1
+
+Total / Result / Grade = ABSENT
+
+Average খালি।
+
+Rank দেওয়া হয়নি।
+
+AB lookup-এর মাধ্যমে ঠিকভাবে এসেছে।
+
+RES-05 — Tied Rank এবং Exclusion
+Status: PASS
+Evidence: Screenshot
+
+সফল ফল:
+
+Rahim, Karim ও Rafi: total 400, rank 1।
+
+Mitu: total 395, rank 4।
+
+FAIL ও ABSENT শিক্ষার্থী rank থেকে বাদ।
+
+RES-06 — Source Mutation / Rerank
+Status: PASS
+Evidence: Screenshot
+
+কাজ:
+Ayesha-এর সংশ্লিষ্ট mark 32 থেকে 33 করা।
+
+সফল ফল:
+
+Total = 433
+
+Average = 86.6
+
+Failed subjects = 0
+
+Result = PASS
+
+Grade = A+
+
+Rank = 1
+
+সংশ্লিষ্ট অন্য শিক্ষার্থীদের rank সঠিকভাবে বদলেছে।
+
+RES-07 — Result Recovery
+Status: PASS
+Evidence: User confirmation
+
+সফল ফল:
+মূল mark restore করার পর আগের result এবং
+নির্ধারিত audit checks সঠিক হয়েছে বলে ব্যবহারকারী নিশ্চিত করেছেন।
+
+RES-08 — Mark 101 হলে Publication Block
+Status: PASS — Negative Test
+Evidence: User confirmation
+
+কাজ:
+নির্দিষ্ট subject mark 79 থেকে 101 করা।
+
+সফল ফল:
+নির্ধারিত validation CHECK / publication BLOCKED এবং
+সংশ্লিষ্ট rank পরিবর্তন সঠিক হয়েছে বলে ব্যবহারকারী নিশ্চিত করেছেন।
+
+7. Sales / Lookup Practical Tests
+SALE-01 — Sales / Report Baseline
+Status: PASS
+Evidence: Recorded history
+
+সফল ফল:
+16 sales row-এর নির্ধারিত cross-sheet SUM / SUMIF,
+reconciliation এবং প্রাথমিক 14টি check সফল হিসেবে নথিভুক্ত।
+
+SALE-02 — Sales Source Mutation
+Status: PASS
+Evidence: Recorded history
+
+কাজ:
+Sales!D2-এর value 10 থেকে 100 করা।
+
+সফল ফল:
+
+Report!B2 = 261
+
+Report!B4 = 21587
+
+SALE-03 — Sales Undo
+Status: PASS
+Evidence: Recorded history
+
+সফল ফল:
+ওই source edit Undo করলে report আগের মানে ফিরেছে
+এবং সংশ্লিষ্ট checks আবার PASS হয়েছে।
+
+LOOK-02 — Normal / Absolute VLOOKUP
+Status: PASS
+Evidence: Recorded history
+
+সফল ফল:
+পরীক্ষিত normal এবং absolute-reference VLOOKUP
+দুটিই প্রত্যাশিত Rahim result দিয়েছে।
+
+LOOK-03 — Lookup Source Propagation
+Status: PASS
+Evidence: Recorded history
+
+কাজ:
+Staff!B2-এর Rahim বদলে Rahim SOURCE করা।
+
+সফল ফল:
+WorkLog!H2, B8 এবং B9-এ পরিবর্তিত নাম পৌঁছেছে।
+
+LOOK-04 — Local / Cross-Sheet Isolation
+Status: PASS
+Evidence: User confirmation recorded in history
+
+সফল ফল:
+পরীক্ষিত local এবং cross-sheet lookup isolation সফল
+বলে ব্যবহারকারী নিশ্চিত করেছেন।
+
+8. নির্দিষ্ট Selection / Paste / Undo Tests
+UI-02 — Erroneous Fill Undo
+Status: PASS
+Evidence: Screenshots
+
+সফল ফল:
+Undo-এর পর পরীক্ষিত record-এ:
+
+পাঁচটি mark = 80
+
+Total = 400
+
+Average = 80
+
+Result = PASS
+
+Grade = A+
+
+Rank = 1
+
+UI-03 — Results TSV Paste
+Status: PASS
+Evidence: Screenshot
+
+সফল ফল:
+C3:O11 range-এ 9 row × 13 column-এর TSV data
+প্রত্যাশিত পৃথক cell-এ বসেছে।
+
+UI-04 — Sheet Rename / Displayed Identity
+Status: PASS
+Evidence: Screenshots
+
+সফল ফল:
+পরীক্ষিত Payroll ও PayrollAudit sheet rename-এর পর
+নতুন tab name এবং নিজ নিজ দৃশ্যমান content বজায় ছিল।
+
+UI-05 — Ten-Record Payroll Formula Paste
+Status: PASS
+Evidence: Screenshot
+
+সফল ফল:
+Header এবং 10 record × 20 column-এর পরীক্ষিত
+paste ও displayed calculation সঠিক ছিল।
+
+9. Payroll — সম্পন্ন নির্দিষ্ট পরীক্ষাগুলো
+PAY-02 — First Ten Payroll Records
+Status: PASS
+Evidence: Screenshots
+
+সফলভাবে যাচাই করা Net Pay:
+
+E001 = 19848.56
+E002 = 20163.85
+E003 = 20445.87
+E004 = 20874.62
+E005 = 25373.75
+E006 = 24220.38
+E007 = 23283.75
+E008 = 24918.85
+E009 = 24229.42
+E010 = 29297.50
+
+পরীক্ষার পরিধি:
+এই দশটি record।
+
+PAY-03 — Multiple Adjustment Aggregation
+Status: PASS
+Evidence: Screenshot
+
+সফল ফল:
+
+E005 bonus: 125 + 1125 = 1250
+
+E010 bonus: 900 + 125 = 1025
+
+10. ROUND — Eight-Case Practical Regression
+ROUND-02
+Status: PASS
+Evidence: Screenshot of matching Actual / Expected pairs
+
+Case Actual Expected
+Direct 53.87 53.87
+Calculated 53.87 53.87
+Negative calculated -53.87 -53.87
+Below boundary 53.86 53.86
+Above boundary 53.87 53.87
+Positive half 3 3
+Negative half -3 -3
+Negative digits 1300 1300
+
+পরীক্ষার পরিধি:
+প্রদর্শিত আটটি Actual / Expected pair।
+
+11. Styled XLSX Import / Colour Copy-Paste
+XLSX-MANUAL-01 — Styled Timesheet Import
+Status: PASS — Observed Area
+Evidence: Screenshot
+
+সফল ফল:
+
+Weekly Timesheet sheet name এসেছে।
+
+Title ও instruction row এসেছে।
+
+Data পৃথক column-এ বসেছে।
+
+Teal header ও সাদা লেখা এসেছে।
+
+নীল, গোলাপি, বেগুনি, হলুদ এবং সবুজ fills দেখা গেছে।
+
+দৃশ্যমান borders ও differentiated column widths এসেছে।
+
+প্রথম কর্মীর যাচাই করা ফল:
+
+Total Hours = 52
+
+OT Hours = 4
+
+Rate/Hour = 120
+
+Regular Pay = 5760
+
+OT Pay = 720
+
+Total Pay = 6480
+
+পরীক্ষার পরিধি:
+স্ক্রিনশটে দৃশ্যমান imported area ও উল্লিখিত হিসাব।
+
+COLOUR-COPY-01 — Selected Cross-Sheet Colour Copy/Paste
+Status: PASS
+Evidence: Screenshot / explicit user confirmation
+
+কাজ:
+Weekly Timesheet-এর নির্বাচিত অংশ একই workbook-এর
+Sheet 2-এ copy/paste করা।
+
+সফল ফল:
+
+নির্বাচিত header ও 14 কর্মীর data পৃথক cell-এ বসেছে।
+
+Header-এর teal background ও white text বজায় ছিল।
+
+সংশ্লিষ্ট নীল, গোলাপি, বেগুনি, হলুদ ও সবুজ fills বজায় ছিল।
+
+দৃশ্যমান borders বজায় ছিল।
+
+যতটুকু select/copy করা হয়েছে, ততটুকুই paste হয়েছে।
+
+12. Other Completed Manual Checks
+GEN-02 — Basic SEQUENCE Spill
+Status: PASS
+Evidence: Recorded history
+
+Formula:
+=SEQUENCE(3)
+
+সফল ফল:
+J1:J3-এ 1, 2, 3 দেখিয়েছে।
+
+GEN-04 — Save / Restore
+Status: COMPLETED — User Reported
+Evidence: User confirmation recorded in history
+
+ব্যবহারকারী পূর্বেই Save / Restore পরীক্ষা সম্পন্ন করেছেন
+বলে নিশ্চিত করেছেন। নির্দিষ্ট assertion-এর অতিরিক্ত বিবরণ
+যোগ বা অনুমান করা হয়নি।
+
+13. Horizontal Formula Fill
+FILL-01 — Horizontal Fill Right / Relative Formula Reference
+Status: PASS — Manual & Practical Completed
+Date: 24 November 2026, 12:40 PM UTC+06:00
+Environment: Browser / localhost:3000
+Evidence: Screenshot + user confirmation
+
+প্রাথমিক data:
+
+H1 = 10
+
+I1 = 20
+
+J1 = 30
+
+H2 formula =H1*2
+
+কাজ:
+H2:J2 select করে Sheet → Fill Right ব্যবহার করা হয়েছে।
+Destination cell-এ formula ম্যানুয়ালি লেখা হয়নি।
+
+সফল ফল:
+
+Cell Value Formula
+H2 20 =H1*2
+I2 40 =I1*2
+J2 60 =J1*2
+
+যাচাই:
+
+তিনটি cell-এর selection সঠিক ছিল।
+
+বাঁ পাশের H2 source থেকে ডান দিকে fill হয়েছে।
+
+Relative column reference H → I → J অনুযায়ী বদলেছে।
+
+তিনটি calculated value প্রত্যাশিত ফলের সঙ্গে মিলেছে।
+
+J2 formula screenshot-এ এবং I2 formula ব্যবহারকারীর
+নিশ্চিতকরণে যাচাই হয়েছে।
+
+পরিধি:
+একটি row-এ single-source formula Fill Right।
+
+14. Keyboard Navigation / Selection
+Date: 24 November 2026
+Environment: Browser / localhost:3000
+
+Evidence:
+এই বিভাগের নতুন record-গুলো ব্যবহারকারীর পরীক্ষার
+সফলতার নিশ্চিতকরণের ভিত্তিতে সংরক্ষিত।
+
+কিছু ফল সম্মিলিতভাবে নিশ্চিত করা হয়েছে।
+আলাদা screenshot বা নতুন বিস্তারিত ফল অনুমান করা হয়নি।
+
+KEY-01 — Ctrl + Down: Data Boundary / Last Row
+Status: PASS — User Confirmed
+Evidence: User confirmation
+
+প্রাথমিক data:
+
+A1 = 1
+
+A2 = 2
+
+A3 = 3
+
+A4:A5 খালি
+
+A6 = 6
+
+কাজ:
+A1 থেকে পর্যায়ক্রমে Ctrl + Down ব্যবহার করা।
+
+সফল ফল:
+
+প্রথমবার A3 selected।
+
+দ্বিতীয়বার A6 selected।
+
+তৃতীয়বার A1000000 selected।
+
+দূরের selected cell অনুযায়ী viewport নিচে গেছে।
+
+পরিধি:
+এই data layout-এ downward boundary navigation এবং
+last-row visibility।
+
+KEY-02 — Ctrl + Home
+Status: PASS — User Confirmed
+Evidence: User confirmation
+
+কাজ:
+দূরের row থেকে Ctrl + Home ব্যবহার করা।
+
+সফল ফল:
+
+A1 selected।
+
+Viewport sheet-এর ওপরের অংশে ফিরে এসেছে।
+
+KEY-03 — Ctrl + End
+Status: PASS — User Confirmed
+Evidence: User confirmation
+
+প্রাথমিক data:
+
+A1:A3 = 1, 2, 3
+
+A6 = 6
+
+B1 = 10
+
+C1 = 20
+
+কাজ:
+AutoSum দিয়ে নতুন data যোগ করার আগের fixture-এ
+Ctrl + End ব্যবহার করা।
+
+সফল ফল:
+C6 selected হয়েছে।
+
+পরিধি:
+এই fixture-এর ব্যবহৃত range-এর শেষ কোণা।
+
+KEY-04 — Tab / Shift + Tab: Non-Editing
+Status: PASS — User Confirmed
+Evidence: User confirmation
+
+কাজ:
+খালি sheet-এ A1-এ একবার click করে Tab,
+তারপর Shift + Tab ব্যবহার করা।
+
+সফল ফল:
+
+Tab: A1 থেকে B1।
+
+Shift + Tab: B1 থেকে A1।
+
+কোনো data লেখা প্রয়োজন হয়নি।
+
+পরিধি:
+Cell edit না করে সাধারণ selection অবস্থায় navigation।
+
+KEY-05 — Shift + Arrow: ছোট Range Selection
+Status: PASS — User Confirmed
+Evidence: User confirmation
+
+কাজ:
+A1 থেকে Shift + Right দুবার ব্যবহার করা।
+
+সফল ফল:
+A1:C1-এর তিনটি cell একসঙ্গে selected হয়েছে।
+
+KEY-06 — সাধারণ Arrow Navigation
+Status: PASS — User Confirmed
+Evidence: User confirmation
+
+কাজ:
+Up / Down / Left / Right ব্যবহার করা।
+
+সফল ফল:
+পরীক্ষিত direction অনুযায়ী পাশের cell-এ selection গেছে।
+
+KEY-07 — Enter / Shift + Enter
+Status: PASS — User Confirmed
+Evidence: User confirmation
+
+দেওয়া পরীক্ষা:
+B2 থেকে Enter, তারপর Shift + Enter ব্যবহার করা।
+
+সফল ফল:
+পরীক্ষাটি সফল বলে ব্যবহারকারী নিশ্চিত করেছেন।
+
+প্রত্যাশিত আচরণ:
+
+B2 থেকে B3।
+
+B3 থেকে আবার B2।
+
+KEY-08 — Editing অবস্থায় Tab
+Status: PASS — User Confirmed
+Evidence: User confirmation
+
+দেওয়া পরীক্ষা:
+B2 edit করে 25 লিখে Tab ব্যবহার করা।
+
+সফল ফল:
+পরীক্ষাটি সফল বলে ব্যবহারকারী নিশ্চিত করেছেন।
+
+প্রত্যাশিত আচরণ:
+
+B2-তে লেখা সংরক্ষণ।
+
+C2-তে selection যাওয়া।
+
+KEY-09 — Editing অবস্থায় Shift + Tab
+Status: PASS — User Confirmed
+Evidence: User confirmation
+
+দেওয়া পরীক্ষা:
+C2 edit করে 30 লিখে Shift + Tab ব্যবহার করা।
+
+সফল ফল:
+পরীক্ষাটি সফল বলে ব্যবহারকারী নিশ্চিত করেছেন।
+
+প্রত্যাশিত আচরণ:
+
+C2-তে লেখা সংরক্ষণ।
+
+B2-তে selection যাওয়া।
+
+পরিধি:
+পরীক্ষিত cell-editor পথে commit এবং বাঁদিকে navigation।
+
+KEY-10 — F2: Cell Edit Mode
+Status: PASS — User Confirmed
+Evidence: User confirmation
+
+কাজ:
+Cell নির্বাচন করে F2 ব্যবহার করা।
+
+সফল ফল:
+বর্তমান cell-এর লেখা edit করা গেছে বলে নিশ্চিত করেছেন।
+
+KEY-11 — Escape: Edit বাতিল
+Status: PASS — User Confirmed
+Evidence: User confirmation
+
+কাজ:
+বিদ্যমান value edit করে পরিবর্তনের পরে Esc ব্যবহার করা।
+
+সফল ফল:
+চলমান পরিবর্তন বাতিল হয়ে আগের value বজায় থেকেছে
+বলে ব্যবহারকারী নিশ্চিত করেছেন।
+
+KEY-12 — বিপরীত ও অনুভূমিক Boundary Navigation
+Status: PASS — User Confirmed
+Evidence: User confirmation
+
+পরীক্ষিত shortcuts:
+
+Ctrl + Up
+
+Ctrl + Left
+
+Ctrl + Right
+
+সফল ফল:
+দেওয়া boundary-navigation পরীক্ষাগুলো সফল বলে
+ব্যবহারকারী নিশ্চিত করেছেন।
+
+পরিধি:
+প্রতিটি direction-এর পৃথক destination address
+আলাদাভাবে নথিভুক্ত হয়নি।
+সব possible data layout-এর দাবি নয়।
+
+KEY-13 — Ctrl + Shift + Arrow
+Status: PASS — User Confirmed
+Evidence: User confirmation
+
+কাজ:
+Boundary পর্যন্ত selection বাড়ানোর পরীক্ষা।
+
+সফল ফল:
+পরীক্ষিত selection extension সফল বলে নিশ্চিত করেছেন।
+
+পরিধি:
+সব data layout বা hidden/merged-cell পরিস্থিতির দাবি নয়।
+
+15. Keyboard Clipboard / Editing / Formatting
+Date: 24 November 2026
+Environment: Browser / localhost:3000
+
+এই বিভাগের ফল ব্যবহারকারীর সম্মিলিত successful-test
+confirmation-এর ভিত্তিতে নথিভুক্ত।
+
+আলাদা বিস্তারিত ফল না থাকলে অতিরিক্ত cell address,
+value বা screenshot verification অনুমান করা হয়নি।
+
+KEY-14 — Keyboard Copy / Paste
+Status: PASS — User Confirmed
+Evidence: User confirmation
+
+Shortcuts:
+
+Ctrl + C
+
+Ctrl + V
+
+সফল ফল:
+পরীক্ষিত Copy/Paste action সফল বলে নিশ্চিত করেছেন।
+
+পরিধি:
+পরীক্ষিত workflow; সব external clipboard format
+বা browser permission পরিস্থিতির দাবি নয়।
+
+KEY-15 — Keyboard Cut / Paste
+Status: PASS — User Confirmed
+Evidence: User confirmation
+
+Shortcuts:
+
+Ctrl + X
+
+Ctrl + V
+
+সফল ফল:
+পরীক্ষিত Cut/Paste action সফল বলে নিশ্চিত করেছেন।
+
+KEY-16 — Keyboard Undo / Redo
+Status: PASS — User Confirmed
+Evidence: User confirmation
+
+Shortcuts:
+
+Ctrl + Z
+
+Ctrl + Y
+
+সফল ফল:
+পরীক্ষিত পরিবর্তন Undo ও Redo করা গেছে বলে
+ব্যবহারকারী নিশ্চিত করেছেন।
+
+পরিধি:
+এই session-এর keyboard tests।
+আগের structural Undo/Redo record-গুলোর পরিপূরক।
+
+KEY-17 — Delete / Backspace
+Status: PASS — User Confirmed
+Evidence: User confirmation
+
+কাজ:
+Selected cell-এর content clear করা।
+
+সফল ফল:
+দেওয়া পরীক্ষাগুলো সফল বলে ব্যবহারকারী নিশ্চিত করেছেন।
+
+পরিধি:
+পরীক্ষিত ছোট selection।
+Whole-sheet clear বা বড় selection coverage নয়।
+
+KEY-18 — Ctrl + F: Find
+Status: PASS — User Confirmed
+Evidence: User confirmation
+
+কাজ:
+Ctrl + F দিয়ে দেওয়া Find পরীক্ষা করা।
+
+সফল ফল:
+পরীক্ষাটি সফল বলে ব্যবহারকারী নিশ্চিত করেছেন।
+
+পরিধি:
+সব search option বা দূরের match-এর viewport
+navigation আলাদাভাবে প্রতিষ্ঠিত নয়।
+
+KEY-19 — Keyboard Formatting
+Status: PASS — User Confirmed
+Evidence: User confirmation
+
+Shortcuts:
+
+Ctrl + B: Bold
+
+Ctrl + I: Italic
+
+Ctrl + U: Underline
+
+সফল ফল:
+দেওয়া formatting পরীক্ষাগুলো সফল বলে নিশ্চিত করেছেন।
+
+পরিধি:
+পরীক্ষিত ছোট selection; whole-sheet formatting নয়।
+
+KEY-20 — Alt + =: AutoSum
+Status: PASS — User Confirmed
+Evidence: User confirmation
+
+প্রাথমিক data:
+
+A1 = 1
+
+A2 = 2
+
+A3 = 3
+
+A4 খালি
+
+কাজ:
+A4 নির্বাচন করে Alt + = ব্যবহার করা।
+
+সফল ফল:
+দেওয়া পরীক্ষাটি সফল বলে ব্যবহারকারী নিশ্চিত করেছেন।
+
+পরীক্ষার প্রত্যাশিত ফল:
+
+A4 = 6
+
+Formula =SUM(A1:A3)
+
+16. Updated Ctrl + A — Whole-Sheet Selection
+SEL-01 — সম্পূর্ণ Logical Sheet Range নির্বাচন
+Status: PASS — User Confirmed
+Date: 24 November 2026
+Environment: Browser / localhost:3000
+Evidence: User confirmation after targeted code change
+
+পরিবর্তন:
+শুধু selectAllCells() function-এর ছোট replacement।
+সম্পূর্ণ page file বা ZIP replacement নয়।
+
+কাজ:
+Update-এর পরে Ctrl + A দিয়ে selection পরীক্ষা।
+
+সফল ফল:
+ব্যবহারকারী সর্বশেষ দেওয়া selection পরীক্ষাটিও
+সফল বলে নিশ্চিত করেছেন।
+
+পরীক্ষার প্রত্যাশিত আচরণ:
+
+প্রথম কয়েকটি row নয়, পুরো logical sheet range নির্বাচন।
+
+আগের active cell অপরিবর্তিত রাখা।
+
+অতিরিক্ত Ctrl-selection পরিষ্কার করা।
+
+পরিধি:
+এই PASS শুধু selection আচরণের জন্য।
+
+এটি দিয়ে নিচের বিষয়গুলো PASS ঘোষণা করা হয়নি:
+
+Whole-sheet Copy/Cut।
+
+Whole-sheet Delete/Clear।
+
+Whole-sheet formatting।
+
+পুরো selection-এর পূর্ণ numeric statistics।
+
+আগের 50,000-cell processing সীমা অপসারণ।
+
+এগুলো পরীক্ষার scope clarification;
+completed test হিসেবে গণনা করা হয়নি।
+
+সংস্করণ 1.6 — সংযোজনের সারাংশ
+আগের সংস্করণ 1.5-এর সব test record বহাল।
+
+FILL-01-এর মূল input, action, ফল ও evidence বহাল।
+
+KEY-01 থেকে KEY-20: 20টি নতুন test record।
+
+SEL-01: 1টি নতুন selection test record।
+
+নতুন সংযোজন: মোট 21টি record।
+
+নতুন keyboard record-গুলোর evidence: User confirmation।
+
+সম্মিলিত confirmation-কে পৃথক screenshot বলা হয়নি।
+
+নতুন automated/lint/typecheck/build PASS যোগ করা হয়নি।
+
+পুরো software-এর সব পরিস্থিতিতে নির্ভুলতার দাবি করা হয়নি।
+
+নোট:
+একটি record-এর মধ্যে একাধিক key, case বা assertion থাকতে পারে।
+তাই record সংখ্যা এবং individual assertion সংখ্যা এক নয়।
+পুরোনো test ID-এর ফাঁক পূরণ করে নতুন পরীক্ষা বানানো হয়নি।
+
+17. Updated Sheet Limits / Last-Cell Calculation
+CAP-01 — Updated Row/Column Limits এবং Last-Cell Calculation
+Status: PASS — Observed
+Evidence: Screenshot assessment recorded in conversation history
+
+পরীক্ষিত logical sheet সীমা:
+
+Rows = 2,000,000
+
+Columns = 100,000
+
+শেষ cell = EQXD2000000
+
+কাজ:
+শেষ cell EQXD2000000-এ পৌঁছে নিচের formula ব্যবহার করা:
+
+=10+20
+
+সফল ফল:
+
+EQXD2000000 cell-এ পৌঁছানো গেছে।
+
+Formula-এর ফল = 30।
+
+পরীক্ষার পরিধি:
+Updated logical sheet-এর শেষ cell-এ পৌঁছানো এবং
+সেখানে সাধারণ arithmetic calculation।
+
+এই পরীক্ষায় নিচের বিষয়গুলো PASS ঘোষণা করা হয়নি:
+
+পুরো sheet data দিয়ে পূর্ণ করা।
+
+পূর্ণ capacity-তে calculation performance।
+
+Whole-sheet Copy/Cut/Delete/Formatting।
+
+সব cell-এর পূর্ণ numeric statistics।
+
+ঐতিহাসিক scope clarification:
+KEY-01-এ A1000000 destination আগের পরীক্ষার সময়কার
+পর্যবেক্ষণ হিসেবে অপরিবর্তিত থাকবে।
+
+বর্তমান updated limit-এ Ctrl + Down দিয়ে
+A2000000-এ পৌঁছানোর পৃথক পরীক্ষা সম্পন্ন হয়েছে
+বলে এই record দাবি করছে না।
+
+18. Five-Person Timesheet Calculation
+CALC-05 — Five-Person Timesheet / Hours and Amount
+Status: PASS — Observed
+Evidence: Screenshot assessment recorded in conversation history
+
+কাজ:
+A1 থেকে পাঁচজনের পরীক্ষিত timesheet data ও হিসাব বসানো।
+
+প্রত্যাশিত ফল:
+
+মোট Hours = 40
+
+মোট Amount = 4,000
+
+সফল ফল:
+
+পাঁচজনের পৃথক Amount সঠিক পাওয়া গেছে।
+
+মোট Hours = 40
+
+মোট Amount = 4,000
+
+পরীক্ষার পরিধি:
+এই পাঁচজনের নির্দিষ্ট timesheet fixture।
+
+Scope clarification:
+এই PASS আগের ৫০ জনের timesheet-এর
+40,000 বনাম 39,100 অমিল সমাধান হয়েছে—এমন প্রমাণ নয়।
+ওই অমিল পৃথক working list-এর বিষয়।
+
+19. Currency Formatting / Formula Result
+Date: 25 November 2026
+Environment: Browser / localhost:3000
+
+CUR-01 — USD Formatting with SUM Formula
+Status: PASS — Observed
+Evidence: Screenshots
+
+পরীক্ষার data:
+
+A1 = Amount
+
+A2 = 100
+
+A3 = 250
+
+A4 formula =SUM(A2:A3)
+
+কাজ:
+A2:A4 select করে US Dollar currency format প্রয়োগ করা।
+
+সফল ফল:
+
+A2 = $100.00
+
+A3 = $250.00
+
+A4 = $350.00
+
+অতিরিক্ত দৃশ্যমান যাচাই:
+
+A2 selected অবস্থায় formula bar-এ মূল value 100।
+
+A4 selected অবস্থায় formula bar-এ =SUM(A2:A3)।
+
+A4-এর calculated result = $350.00।
+
+শুধু A4 selected থাকলে status bar:
+Count = 1, Sum = 350, Average = 350,
+Min = 350, Max = 350।
+
+পরীক্ষার পরিধি:
+তিনটি নির্বাচিত cell-এ USD display formatting এবং
+উল্লিখিত SUM formula-এর সঠিক ফল।
+
+CUR-02 — BDT Formatting / Unchanged Numeric Amount
+Status: PASS — Observed
+Evidence: Screenshot
+
+কাজ:
+পরীক্ষিত A2:A4 range-এ Bangladeshi Taka currency format
+প্রয়োগ করা।
+
+সফল ফল:
+
+100, 250 ও 350 বাংলা অঙ্ক এবং ৳ চিহ্নে দেখা গেছে।
+
+প্রদর্শিত পরিমাণ যথাক্রমে 100, 250 ও 350-ই ছিল।
+
+A2 selected অবস্থায় formula bar-এ মূল value 100।
+
+Toolbar-এ BDT প্রদর্শিত হয়েছে।
+
+পরীক্ষার পরিধি:
+এই তিনটি cell-এ BDT display formatting।
+পরীক্ষিত পরিমাণে exchange-rate conversion ঘটেনি।
+
+এই record দিয়ে নিচের বিষয়গুলো PASS ঘোষণা করা হয়নি:
+
+বাস্তব exchange-rate conversion।
+
+সব currency-এর formatting।
+
+Dropdown search-এর কার্যকারিতা।
+
+নির্বাচিত currency-এর tick indicator।
+
+শুধু একটি cell-এর format বদলালে অন্য cell-এর isolation।
+
+সংস্করণ 1.7 — সংযোজনের সারাংশ
+সংস্করণ 1.6-এর সব test record ও বিস্তারিত বহাল।
+
+CAP-01: Updated sheet limits ও last-cell calculation।
+
+CALC-05: Five-person timesheet calculation।
+
+CUR-01: USD formatting এবং SUM formula result।
+
+CUR-02: BDT formatting ও unchanged numeric amount।
+
+নতুন সফল সংযোজন: মোট 4টি test record।
+
+Design-only পরিবর্তন completed test হিসেবে যোগ করা হয়নি।
+
+৫০ জনের timesheet-এর unresolved mismatch
+Completed Results-এ সফল record হিসেবে যোগ করা হয়নি।
+
+নতুন automated/lint/typecheck/build PASS যোগ করা হয়নি।
+
+পুরোনো KEY-01-এর destination নতুন limit অনুযায়ী
+পরীক্ষা ছাড়া পরিবর্তন করা হয়নি।
+
+20. Formula Practical Tests — Scalar
+Date: 26 November 2026
+Environment: Browser / localhost:3000
+Evidence: Screenshots + print করা PDF
+
+Fixture: A1:C6 = (10,5,Apple) থেকে (60,55,Fig)।
+সূত্র E কলামে, প্রত্যাশিত ফল G কলামে।
+
+FN2-01 — LET
+Status: PASS
+Evidence: Screenshot / PDF
+
+=LET(x,5,x*2) = 10
+
+=LET(a,A1,b,B1,a+b) = 15
+
+=LET(x,A1:A3,SUM(x)) = 60
+
+FN2-02 — ISFORMULA
+Status: PASS
+Evidence: Screenshot / PDF
+
+সূত্রযুক্ত ঘর = TRUE
+
+সাধারণ মানযুক্ত ঘর = FALSE
+
+FN2-03 — Normal Distribution
+Status: PASS
+Evidence: Screenshot / PDF
+
+NORM.S.DIST(0,TRUE) = 0.5
+
+NORM.DIST(60,50,10,TRUE) = 0.8413447461
+
+NORM.S.INV(0.975) = 1.9599639845
+
+NORM.INV(0.5,100,15) = 100
+
+STANDARDIZE(60,50,10) = 1
+
+FN2-04 — Statistical
+Status: PASS
+Evidence: Screenshot / PDF
+
+KURT(A1:A6) = -1.2
+
+MAXA = 60, MINA = 1
+
+AVERAGEA(A1:C2) = 8.3333333333
+
+STDEVA = 18.7082869339, VARA = 350
+
+COVARIANCE.P = 291.6666666667, COVARIANCE.S = 350
+
+PERCENTILE.EXC = 35, QUARTILE.EXC = 17.5
+
+PERCENTRANK.EXC = 0.428, PERCENTRANK = 0.4
+
+FN2-05 — Hyperbolic / Trigonometric / Math
+Status: PASS
+Evidence: Screenshot / PDF
+
+SINH(1) = 1.1752011936; COSH(1) = 1.5430806348;
+TANH(1) = 0.761594156; ASINH(1) = 0.881373587;
+ACOSH(2) = 1.3169578969; ATANH(0.5) = 0.5493061443;
+SQRTPI(2) = 2.5066282746; FACTDOUBLE(7) = 105;
+SEC(0) = 1; CSC(PI()/2) = 1; COT(PI()/4) = 1
+
+FN2-06 — Bit Functions
+Status: PASS
+Evidence: Screenshot / PDF
+
+BITAND(12,10) = 8; BITOR = 14; BITXOR = 6;
+BITLSHIFT(1,4) = 16; BITRSHIFT(16,2) = 4;
+DELTA(5,5) = 1; GESTEP(3,5) = 0
+
+FN2-07 — Base Conversion এবং RRI
+Status: PASS
+Evidence: Screenshot / PDF
+
+BIN2DEC(1010) = 10; DEC2BIN(10) = 1010;
+DEC2BIN(10,8) = 00001010; HEX2DEC("FF") = 255;
+DEC2HEX(255) = FF; OCT2DEC(17) = 15; DEC2OCT(8) = 10;
+DEC2BIN(-1) = 1111111111; HEX2DEC("FFFFFFFFFF") = -1;
+RRI(10,1000,2000) = 0.0717734625
+
+FN2-08 — Negative / Error Tests
+Status: PASS — Negative Test
+Evidence: Screenshot / PDF
+
+সঠিক error দেখানোই সফল ফল:
+
+NORM.S.INV(1) = #NUM!
+
+DEC2BIN(512) = #NUM!
+
+BITAND(-1,2) = #NUM!
+
+SKEW(A1:A2) = #DIV/0!
+
+LET(x,1) = #VALUE!
+
+FOOBAR(1) = #NAME?
+
+HEX2DEC("GG") = #NUM!
+
+FN2-09 — Nested এবং পুরনো সূত্র
+Status: PASS
+Evidence: Screenshot / PDF
+
+SUM(BITAND(12,10),BITOR(12,10)) = 22
+
+LET(x,NORM.S.INV(0.5),x+1) = 1
+
+SUM(A1:A6) = 210
+
+VLOOKUP(30,A1:C6,3,FALSE) = Cherry
+
+IF(A1>5,"yes","no") = yes
+
+TEXT(12.5,"0.00") = 12.50
+
+21. Formula Practical Tests — Array / Spill
+Date: 26 November 2026
+Environment: Browser / localhost:3000
+Evidence: Screenshots + print করা PDF
+
+FN2-10 — HSTACK / VSTACK
+Status: PASS
+
+HSTACK(A1:A3,B1:B3) = (10,5),(20,15),(30,25)
+
+VSTACK(A1:B2,A5:B6) = (10,5),(20,15),(50,45),(60,55)
+
+FN2-11 — SORTBY / RANDARRAY
+Status: PASS
+
+SORTBY(A1:B3,A1:A3,-1) = (30,25),(20,15),(10,5)
+
+RANDARRAY(2,3,1,10,TRUE) = 2x3, ১ থেকে ১০-এর পূর্ণসংখ্যা
+
+FN2-12 — TAKE / DROP
+Status: PASS
+
+TAKE(A1:B6,2,1) = 10, 20
+
+DROP(A1:B6,4) = (50,45),(60,55)
+
+FN2-13 — CHOOSECOLS / CHOOSEROWS
+Status: PASS
+
+CHOOSECOLS(A1:C3,3,1) = (Apple,10),(Banana,20),(Cherry,30)
+
+CHOOSEROWS(A1:B6,-1,1) = (60,55),(10,5)
+
+FN2-14 — TOCOL / TOROW
+Status: PASS
+
+TOCOL(A1:B2) = 10, 5, 20, 15
+
+TOROW(A1:A3) = 10, 20, 30
+
+FN2-15 — WRAPROWS / WRAPCOLS
+Status: PASS
+
+WRAPROWS(A1:A6,3) = (10,20,30),(40,50,60)
+
+WRAPCOLS(A1:A6,3) = (10,40),(20,50),(30,60)
+
+FN2-16 — EXPAND
+Status: PASS
+
+EXPAND(A1:B2,3,3,0) = (10,5,0),(20,15,0),(0,0,0)
+
+Scope clarification (completed test নয়)
+SKEW(A1:A6) প্রত্যাশিত 0, প্রদর্শন -0; PASS গণনা হয়নি।
+
+সূত্র পর্দায় দৃশ্যমান ঘরে থাকা অবস্থায় পরীক্ষা হয়েছে।
+
+G কলামের 1,010 ও 1,111,111,111 পরীক্ষার sheet-এর
+প্রত্যাশিত-মান কলামের ফরম্যাট; ফলের কলামে 1010 ও 1111111111।
+
+এই PASS শুধু উল্লিখিত fixture ও সূত্রের জন্য।
+
+সংস্করণ 1.8 — সংযোজনের সারাংশ
+সংস্করণ 1.7-এর সব test record ও বিস্তারিত বহাল।
+
+FN2-01 থেকে FN2-09: ৯টি scalar formula record।
+
+FN2-10 থেকে FN2-16: ৭টি array/spill formula record।
+
+নতুন সফল সংযোজন: মোট 16টি manual/practical record।
+
+Evidence: Screenshot ও print করা PDF।
+
+নতুন automated/lint/typecheck/build PASS যোগ করা হয়নি।
+
+পুরো software-এর সব পরিস্থিতিতে নির্ভুলতার দাবি করা হয়নি।
+
+পরবর্তী আপডেটের নিয়ম
+নতুন কোনো পরীক্ষা বাস্তবে সফল হলেই এই পেজে যোগ হবে।
+
+অসম্পূর্ণ বা ব্যর্থ পরীক্ষা আলাদা working list-এ থাকবে।
+
+Screenshot, user confirmation এবং recorded history আলাদা থাকবে।
+
+Negative test-এ সঠিক error / rejection দেখানো সফল ফল হতে পারে।
+
+Completed test অকারণে আবার করানো হবে না।
+
+Code পরিবর্তনের কারণে regression দরকার হলে কারণ উল্লেখ থাকবে।
+
+পুরোনো বিস্তারিত ledger ইতিহাস হিসেবে আলাদাভাবে সংরক্ষিত থাকবে।
+
+নতুন সংযোজনের সময় আগের record বাদ দেওয়া হবে না।
+
+শুধু code-এ implementation পাওয়াকে manual test PASS বলা হবে না।
+
+বড় selection-এর PASS ছোট selection-এর ফল থেকে অনুমান করা হবে না।
+
+— Completed Manual & Practical Results-এর সমাপ্তি

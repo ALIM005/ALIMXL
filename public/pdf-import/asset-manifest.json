@@ -1,0 +1,11 @@
+{
+  "package": "pdfjs-dist",
+  "version": "6.5.438",
+  "worker": "pdf.worker.min.mjs",
+  "workerSha256": "1e64c8240e54735ec5913b37acd5134747799cb8c6bb3777c70adbc01232d2aa",
+  "assetFolders": [
+    "cmaps",
+    "standard_fonts",
+    "wasm"
+  ]
+}
