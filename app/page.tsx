@@ -279,6 +279,14 @@ interface DrawShape {
   endPoint?: { x: number; y: number };
 }
 
+interface NamedRangeDefinition {
+  name: string;
+  reference: string;
+  scope?: string;
+  sheetName?: string;
+  comment?: string;
+}
+
 interface WorkbookSheet {
   id: string;
   name: string;
@@ -307,6 +315,7 @@ interface WorkbookSnapshot {
   orientation: "portrait" | "landscape";
   activeSheetIndex: number;
   sheets: WorkbookSheet[];
+  namedRanges?: NamedRangeDefinition[];
   updatedAt?: string;
 }
 
@@ -5430,6 +5439,7 @@ export default function ExcelStudioPage() {
   const [workbookId, setWorkbookId] = useState<string | null>(null);
   const localSaveInProgressRef = useRef(false);
   const [sheets, setSheetsRaw] = useState<WorkbookSheet[]>([createSheet("Sheet 1")]);
+  const [workbookNamedRanges, setWorkbookNamedRanges] = useState<NamedRangeDefinition[]>([]);
   const [activeSheetIndex, setActiveSheetIndex] = useState(0);
   const [pageSize, setPageSize] = useState<"A4" | "Letter" | "Legal">("A4");
   const [orientation, setOrientation] = useState<"portrait" | "landscape">("landscape");
@@ -10782,6 +10792,7 @@ export default function ExcelStudioPage() {
         setActiveSheetIndex(0);
         setActiveCell("A1");
         setSelection({ r1: 0, c1: 0, r2: 0, c2: 0 });
+        setWorkbookNamedRanges([]);
         showToast("New workbook created.");
       }
     );
@@ -10830,6 +10841,10 @@ export default function ExcelStudioPage() {
         setSelection({ r1: 0, c1: 0, r2: 0, c2: 0 });
         setSaveState("idle");
 
+        setWorkbookNamedRanges(
+          Array.isArray(workbook.namedRanges) ? workbook.namedRanges : []
+        );
+
         showToast(`Reopened "${file.name}".`);
       } catch (error) {
         console.error("ALIMXL recent workbook open failed:", error);
@@ -10870,6 +10885,9 @@ export default function ExcelStudioPage() {
     setActiveCell("A1");
     setSelection({ r1: 0, c1: 0, r2: 0, c2: 0 });
     setShowTemplatesDialog(null);
+    setWorkbookNamedRanges(
+      Array.isArray(tpl.snapshot.namedRanges) ? tpl.snapshot.namedRanges : []
+    );
     showToast(`New workbook created from "${tpl.name}".`);
   }, [showToast, setSheets]);
 
@@ -11305,6 +11323,9 @@ export default function ExcelStudioPage() {
       setFormatPainter(null);
 
       replaceWorkbookSheets(snapshot.sheets);
+      setWorkbookNamedRanges(
+        Array.isArray(snapshot.namedRanges) ? snapshot.namedRanges : []
+      );
       setActiveSheetIndex(snapshot.activeSheetIndex);
       setWorkbookName(snapshot.name.trim());
 
@@ -11328,7 +11349,7 @@ export default function ExcelStudioPage() {
     }
 
     try {
-      const { sheets: importedSheets } = await importXlsxFile(file, {
+      const { sheets: importedSheets, namedRanges: importedNamedRanges } = await importXlsxFile(file, {
         maxRows: MAX_ROWS,
         maxCols: MAX_COLS,
         defaultRows: DEFAULT_ROWS,
@@ -11345,6 +11366,7 @@ export default function ExcelStudioPage() {
       setWorkbookName(file.name.replace(/\.[^/.]+$/, ""));
       setActiveCell("A1");
       setSelection({ r1: 0, c1: 0, r2: 0, c2: 0 });
+      setWorkbookNamedRanges(importedNamedRanges ?? []);
       showToast("Workbook loaded.");
 
       recordRecentFile(file.name.replace(/\.[^/.]+$/, ""));
@@ -11360,12 +11382,13 @@ export default function ExcelStudioPage() {
 
   const buildWorkbookSnapshot = useCallback((): WorkbookSnapshot => ({
     id: workbookId || undefined,
+    namedRanges: workbookNamedRanges,
     name: workbookName,
     pageSize,
     orientation,
     activeSheetIndex,
     sheets,
-  }), [workbookId, workbookName, pageSize, orientation, activeSheetIndex, sheets]);
+  }), [workbookId, workbookName, pageSize, orientation, activeSheetIndex, sheets, workbookNamedRanges]);
 
   const handleSaveToApp = () => {
     if (localSaveInProgressRef.current) {
@@ -11441,6 +11464,7 @@ export default function ExcelStudioPage() {
       const blob = await exportXlsxWorkbook({
         workbookName,
         sheets,
+        namedRanges: workbookNamedRanges,
         helpers: {
           getCellValueInSheet,
           normalizeDigitsOutsideQuotes,
@@ -11602,6 +11626,9 @@ export default function ExcelStudioPage() {
                 : [createSheet("Sheet 1")];
 
               replaceWorkbookSheets(sheets);
+              setWorkbookNamedRanges(
+                Array.isArray(parsed.namedRanges) ? parsed.namedRanges : []
+              );
               setActiveSheetIndex(0);
               setWorkbookName(parsed.name || "Remote Workbook");
               setWorkbookId(parsed.id || null);
@@ -11793,7 +11820,9 @@ export default function ExcelStudioPage() {
             );
 
             replaceWorkbookSheets(doc.sheets);
-
+            setWorkbookNamedRanges(
+              Array.isArray(doc.namedRanges) ? doc.namedRanges : []
+            );
             setActiveCell("A1");
             setSelection({
               r1: 0,
@@ -13991,6 +14020,7 @@ export default function ExcelStudioPage() {
 
             setWorkbookName("ALIMXL Workbook");
             setWorkbookId(null);
+            setWorkbookNamedRanges([]);
             replaceWorkbookSheets([createSheet("Sheet 1")]);
             setActiveSheetIndex(0);
 
