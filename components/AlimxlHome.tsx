@@ -611,7 +611,7 @@ function AlimxlHomeContent({
   templateImages,
   profileImageSrc,
   profileName = "User",
-  version = "4.0.0",
+  version = "10.0.0",
 }: AlimxlHomeProps) {
   const router = useRouter();
 

@@ -1,13 +1,13 @@
 {
   "name": "alimxl",
-  "version": "4.0.0",
+  "version": "10.0.0",
   "private": true,
   "main": "electron/main.ts",
   "scripts": {
     "test": "node --test",
     "pdf:assets": "node lib/copy-pdf-assets.mjs",
     "dev": "npm run pdf:assets && next dev",
-    "build": "npm run pdf:assets && next build",
+        "build": "npm run pdf:assets && node lib/stamp-sw-release.mjs && next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",

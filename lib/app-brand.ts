@@ -86,7 +86,7 @@ export interface AppBrand {
  */
 const PRODUCT_NAME = "ALIMXL";
 
-const PRODUCT_VERSION = "4.0.0";
+const PRODUCT_VERSION = "10.0.0";
 
 const COMPANY_NAME =
   "Smart Family IT Solutions World";

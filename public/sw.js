@@ -20,7 +20,7 @@
  *
  * This is separate from package.json's application version.
  */
-const APP_RELEASE = "v4-offline-3";
+const APP_RELEASE = "v10-offline";
 
 const CACHE_PREFIX = "alimxl-shell-";
 const CACHE_NAME = `${CACHE_PREFIX}${APP_RELEASE}`;
