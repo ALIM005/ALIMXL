@@ -1,5 +1,5 @@
 import { prepareWorkbookForSave, validateStoredWorkbook } from "./workbook-integrity.mjs";
-
+import { makeId } from "./safe-id";
 const DB_NAME = "alimxl-local";
 const DB_VERSION = 1;
 const STORE_NAME = "workbooks";
@@ -137,7 +137,7 @@ export async function saveLocalWorkbook<T extends LocalWorkbook>(
   // Capture nested data before the first await; later UI edits cannot alter this save.
   const captured = prepareWorkbookForSave(snapshot);
 
-  const id = captured.id?.trim() || crypto.randomUUID();
+    const id = captured.id?.trim() || makeId();
   const updatedAt = new Date().toISOString();
 
   const stored: StoredWorkbook<T> = {

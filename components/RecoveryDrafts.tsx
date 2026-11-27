@@ -4,6 +4,7 @@ import {createBackupText,parseBackupText} from "../lib/workbook-backup.mjs";
 import {makeRecoveryKey,makeRecoveryRecord,type RecoverySummary} from "../lib/recovery-policy.mjs";
 import {getRecovery,listRecovery,removeRecovery,writeRecovery} from "../lib/recovery-store";
 import {saveLocalWorkbook,type LocalWorkbook} from "../lib/local-workbooks";
+import {makeId} from "../lib/safe-id";
 interface Props {workbook:LocalWorkbook;enabled:boolean;onRecovered:()=>void}
 const message=(error:unknown)=>error instanceof Error?error.message:String(error);
 export default function RecoveryDrafts({workbook,enabled,onRecovered}:Props) {
@@ -30,7 +31,7 @@ export default function RecoveryDrafts({workbook,enabled,onRecovered}:Props) {
       if(!snapshot || snapshot===previous.current || writing.current || lock.current)return;
       writing.current=true;
       try {
-        if(!owner.current) owner.current=crypto.randomUUID();
+        if(!owner.current) owner.current=makeId();
         const key=makeRecoveryKey(owner.current,snapshot);
         const backup=await createBackupText(snapshot);
         const record=makeRecoveryRecord(key,snapshot.name,backup);

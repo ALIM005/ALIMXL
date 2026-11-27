@@ -5635,6 +5635,7 @@ export default function ExcelStudioPage() {
 
   const [darkMode, setDarkMode] = useState(false);
   const [showStatusBar, setShowStatusBar] = useState(true);
+    const [statusMoreOpen, setStatusMoreOpen] = useState(false);
   const [displayGrouping, setDisplayGrouping] = useState<DisplayGrouping>(DISPLAY_SETTINGS.grouping);
   const [displayDigits, setDisplayDigits] = useState<DisplayDigits>(DISPLAY_SETTINGS.digits);
   const [showPredictiveAnalytics, setShowPredictiveAnalytics] = useState(false);
@@ -11854,6 +11855,100 @@ export default function ExcelStudioPage() {
     );
   };
 
+  const autoSaveBusyRef = useRef(false);
+
+  // মোবাইল: লেখা থামার ১.৫ সেকেন্ড পরে নিজে থেকে সেভ
+  useEffect(() => {
+    if (showHomeScreen) return;
+    if (
+      typeof window === "undefined" ||
+      !window.matchMedia("(max-width: 767px)").matches
+    ) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      if (autoSaveBusyRef.current || localSaveInProgressRef.current) return;
+      autoSaveBusyRef.current = true;
+
+      void (async () => {
+        try {
+          const name = workbookName.trim() || "ALIMXL Workbook";
+          const saved = await saveLocalWorkbook({
+            ...buildWorkbookSnapshot(),
+            name,
+          });
+          if (!workbookId) setWorkbookId(saved.id);
+          window.localStorage.setItem("alimxl-last-workbook-id", saved.id);
+        } catch (error) {
+          console.error("ALIMXL auto-save failed:", error);
+        } finally {
+          autoSaveBusyRef.current = false;
+        }
+      })();
+    }, 1500);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    showHomeScreen,
+    workbookId,
+    workbookName,
+    sheets,
+    pageSize,
+    orientation,
+    activeSheetIndex,
+    workbookNamedRanges,
+    buildWorkbookSnapshot,
+  ]);
+
+  // মোবাইল: রিফ্রেশের পর শেষ ওয়ার্কবুক নিজে থেকে খোলা
+  useEffect(() => {
+    if (
+      typeof window === "undefined" ||
+      !window.matchMedia("(max-width: 767px)").matches
+    ) {
+      return;
+    }
+
+    const lastId = window.localStorage.getItem("alimxl-last-workbook-id");
+    if (!lastId) return;
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const doc = await getLocalWorkbook<WorkbookSnapshot>(lastId);
+        if (!doc || cancelled || doc.sheets.length === 0) return;
+
+        setWorkbookId(doc.id);
+        setWorkbookName(doc.name);
+        setPageSize(doc.pageSize);
+        setOrientation(doc.orientation);
+        setActiveSheetIndex(
+          Math.min(Math.max(doc.activeSheetIndex, 0), doc.sheets.length - 1)
+        );
+        replaceWorkbookSheets(doc.sheets);
+        setWorkbookNamedRanges(
+          Array.isArray(doc.namedRanges) ? doc.namedRanges : []
+        );
+        setActiveCell("A1");
+        setSelection({ r1: 0, c1: 0, r2: 0, c2: 0 });
+        setSaveState("idle");
+        setShowHomeScreen(false);
+        void refreshRecentFromDevice();
+      } catch (error) {
+        console.error("ALIMXL auto-restore failed:", error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // শুধু প্রথমবার লোডে একবার চলবে
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+
   const openPrintDialogNew = () => {
     if (newPrintLock.current) return;
 
@@ -16215,7 +16310,19 @@ export default function ExcelStudioPage() {
                   </>
                 )}
               </div>
-              <div className="flex items-center gap-2">
+                            <button
+                type="button"
+                className="alx-status-more rounded-md border border-[#D2D0CE] bg-white px-2 py-0.5"
+                aria-expanded={statusMoreOpen}
+                aria-label="আরও সেটিং"
+                onClick={() => setStatusMoreOpen((open) => !open)}
+              >
+                ⚙ {statusMoreOpen ? "▲" : "▼"}
+              </button>
+              <div
+                className="alx-status-extra flex items-center gap-2"
+                data-open={statusMoreOpen ? "true" : "false"}
+              >
                 {userExchangeRatesActive && (
                   <span className="rounded bg-[#E1F0E5] px-2 py-0.5 text-[11px] text-[#0F5132]" title="Exchange Rates শিটে দেওয়া রেট ব্যবহৃত হচ্ছে।">
                     Exchange Rates: sheet রেট ব্যবহৃত হচ্ছে
