@@ -6865,6 +6865,10 @@ export default function ExcelStudioPage() {
   const touchScrollElRef = useRef<HTMLElement | null>(null);
   const touchPointRef = useRef<{ x: number; y: number } | null>(null);
   const touchRafRef = useRef<number | null>(null);
+    const touchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touchSelectingRef = useRef(false);
+  const touchStartPtRef = useRef<{ x: number; y: number; row: number; col: number } | null>(null);
+  const touchLastSelectAtRef = useRef(0);
 
   const selectFromTouchPoint = (x: number, y: number) => {
     const box = touchScrollElRef.current;
@@ -6907,31 +6911,53 @@ export default function ExcelStudioPage() {
     touchRafRef.current = requestAnimationFrame(touchAutoScrollStep);
   };
 
-  const handleTouchStart = (row: number, col: number, e: React.TouchEvent) => {
+    const handleTouchStart = (row: number, col: number, e: React.TouchEvent) => {
     const touch = e.touches[0];
     if (!touch) return;
-    const key = cellKey(row, col);
     touchScrollElRef.current = (e.currentTarget as HTMLElement).closest("#awm-print-area") as HTMLElement | null;
     touchPointRef.current = { x: touch.clientX, y: touch.clientY };
-    setCtrlSelectedRows([]);
-    setCtrlSelectedCols([]);
-    setCtrlSelectedCells([]);
-    dragging.current = true;
-    setActiveCell(key);
-    setSelection({ r1: row, c1: col, r2: row, c2: col });
-    recordAction({ type: "SELECT", keys: [key], activeCell: key });
-    if (touchRafRef.current === null) touchRafRef.current = requestAnimationFrame(touchAutoScrollStep);
+    touchStartPtRef.current = { x: touch.clientX, y: touch.clientY, row, col };
+    touchSelectingRef.current = false;
+    if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
+    touchTimerRef.current = setTimeout(() => {
+      const st = touchStartPtRef.current;
+      if (!st) return;
+      touchSelectingRef.current = true;
+      touchLastSelectAtRef.current = Date.now();
+      const key = cellKey(st.row, st.col);
+      setCtrlSelectedRows([]);
+      setCtrlSelectedCols([]);
+      setCtrlSelectedCells([]);
+      dragging.current = true;
+      setActiveCell(key);
+      setSelection({ r1: st.row, c1: st.col, r2: st.row, c2: st.col });
+      recordAction({ type: "SELECT", keys: [key], activeCell: key });
+      try { navigator.vibrate?.(30); } catch { }
+      if (touchRafRef.current === null) touchRafRef.current = requestAnimationFrame(touchAutoScrollStep);
+    }, 350);
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    if (!dragging.current) return;
     const touch = e.touches[0];
     if (!touch) return;
+    if (!touchSelectingRef.current) {
+      const st = touchStartPtRef.current;
+      if (st && Math.hypot(touch.clientX - st.x, touch.clientY - st.y) > 10) {
+        if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
+        touchTimerRef.current = null;
+      }
+      return;
+    }
     touchPointRef.current = { x: touch.clientX, y: touch.clientY };
     selectFromTouchPoint(touch.clientX, touch.clientY);
   };
 
   const handleTouchEnd = () => {
+    if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
+    touchTimerRef.current = null;
+    if (touchSelectingRef.current) touchLastSelectAtRef.current = Date.now();
+    touchSelectingRef.current = false;
+    touchStartPtRef.current = null;
     dragging.current = false;
     touchPointRef.current = null;
     if (touchRafRef.current !== null) {
@@ -6939,6 +6965,26 @@ export default function ExcelStudioPage() {
       touchRafRef.current = null;
     }
   };
+
+  useEffect(() => {
+    const blockScroll = (e: TouchEvent) => {
+      if (touchSelectingRef.current && e.cancelable) e.preventDefault();
+    };
+    const blockTouchEndClick = (e: TouchEvent) => {
+      if (touchSelectingRef.current && e.cancelable) e.preventDefault();
+    };
+    const blockMenu = (e: Event) => {
+      if (touchSelectingRef.current || Date.now() - touchLastSelectAtRef.current < 800) e.preventDefault();
+    };
+    document.addEventListener("touchmove", blockScroll, { passive: false });
+    document.addEventListener("touchend", blockTouchEndClick, { passive: false });
+    document.addEventListener("contextmenu", blockMenu);
+    return () => {
+      document.removeEventListener("touchmove", blockScroll);
+      document.removeEventListener("touchend", blockTouchEndClick);
+      document.removeEventListener("contextmenu", blockMenu);
+    };
+  }, []);
 
 
   const handleMouseEnter = (row: number, col: number) => {
@@ -16131,7 +16177,6 @@ export default function ExcelStudioPage() {
 
                               style={{
                                 userSelect: isEditing ? "text" : "none",
-                                touchAction: "none",
                                 WebkitUserSelect: isEditing ? "text" : "none",
                                 width: sheet.colWidths[c] || DEFAULT_COL_WIDTH,
                                 minWidth: sheet.colWidths[c] || DEFAULT_COL_WIDTH,
