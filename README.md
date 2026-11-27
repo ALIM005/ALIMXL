@@ -324,6 +324,7 @@ ALIMXL
 ├─ tests
 │  ├─ chart-geometry.test.mjs
 │  ├─ extra-50.test.mjs
+│  ├─ formula-core.advanced.test.mjs
 │  ├─ formula-core.all-functions.test.mjs
 │  ├─ formula-core.batch1.test.mjs
 │  ├─ formula-core.batch2.test.mjs
