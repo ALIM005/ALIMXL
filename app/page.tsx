@@ -6862,6 +6862,85 @@ export default function ExcelStudioPage() {
     }
   };
 
+  const touchScrollElRef = useRef<HTMLElement | null>(null);
+  const touchPointRef = useRef<{ x: number; y: number } | null>(null);
+  const touchRafRef = useRef<number | null>(null);
+
+  const selectFromTouchPoint = (x: number, y: number) => {
+    const box = touchScrollElRef.current;
+    let px = x;
+    let py = y;
+    if (box) {
+      const rect = box.getBoundingClientRect();
+      px = Math.min(Math.max(x, rect.left + 50), rect.right - 5);
+      py = Math.min(Math.max(y, rect.top + 45), rect.bottom - 5);
+    }
+    const el = document.elementFromPoint(px, py) as HTMLElement | null;
+    const cell = el?.closest("td[data-row]") as HTMLElement | null;
+    if (!cell) return;
+    const row = Number(cell.dataset.row);
+    const col = Number(cell.dataset.col);
+    if (!Number.isFinite(row) || !Number.isFinite(col)) return;
+    setSelection((prev) => (prev.r2 === row && prev.c2 === col ? prev : { ...prev, r2: row, c2: col }));
+  };
+
+  const touchAutoScrollStep = () => {
+    const box = touchScrollElRef.current;
+    const p = touchPointRef.current;
+    if (!dragging.current || !box || !p) {
+      touchRafRef.current = null;
+      return;
+    }
+    const rect = box.getBoundingClientRect();
+    const EDGE = 60;
+    const MAX = 24;
+    let dx = 0;
+    let dy = 0;
+    if (p.y > rect.bottom - EDGE) dy = Math.min(MAX, ((p.y - (rect.bottom - EDGE)) / EDGE) * MAX);
+    else if (p.y < rect.top + EDGE) dy = -Math.min(MAX, ((rect.top + EDGE - p.y) / EDGE) * MAX);
+    if (p.x > rect.right - EDGE) dx = Math.min(MAX, ((p.x - (rect.right - EDGE)) / EDGE) * MAX);
+    else if (p.x < rect.left + EDGE) dx = -Math.min(MAX, ((rect.left + EDGE - p.x) / EDGE) * MAX);
+    if (dx !== 0 || dy !== 0) {
+      box.scrollBy(dx, dy);
+      selectFromTouchPoint(p.x, p.y);
+    }
+    touchRafRef.current = requestAnimationFrame(touchAutoScrollStep);
+  };
+
+  const handleTouchStart = (row: number, col: number, e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    if (!touch) return;
+    const key = cellKey(row, col);
+    touchScrollElRef.current = (e.currentTarget as HTMLElement).closest("#awm-print-area") as HTMLElement | null;
+    touchPointRef.current = { x: touch.clientX, y: touch.clientY };
+    setCtrlSelectedRows([]);
+    setCtrlSelectedCols([]);
+    setCtrlSelectedCells([]);
+    dragging.current = true;
+    setActiveCell(key);
+    setSelection({ r1: row, c1: col, r2: row, c2: col });
+    recordAction({ type: "SELECT", keys: [key], activeCell: key });
+    if (touchRafRef.current === null) touchRafRef.current = requestAnimationFrame(touchAutoScrollStep);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!dragging.current) return;
+    const touch = e.touches[0];
+    if (!touch) return;
+    touchPointRef.current = { x: touch.clientX, y: touch.clientY };
+    selectFromTouchPoint(touch.clientX, touch.clientY);
+  };
+
+  const handleTouchEnd = () => {
+    dragging.current = false;
+    touchPointRef.current = null;
+    if (touchRafRef.current !== null) {
+      cancelAnimationFrame(touchRafRef.current);
+      touchRafRef.current = null;
+    }
+  };
+
+
   const handleMouseEnter = (row: number, col: number) => {
     if (isFilling.current) {
       dragFillTo(row, col);
@@ -16023,7 +16102,10 @@ export default function ExcelStudioPage() {
                               data-row={r}
                               data-col={c}
                               onMouseDown={(e) => handleMouseDown(r, c, e)}
-
+                              onTouchStart={(e) => handleTouchStart(r, c, e)}
+                              onTouchMove={(e) => handleTouchMove(e)}
+                              onTouchEnd={handleTouchEnd}
+                              onTouchCancel={handleTouchEnd}
                               onMouseEnter={() => handleMouseEnter(r, c)}
                               onDoubleClick={() => startEditing(key)}
                               onContextMenu={(e) => {
@@ -16049,6 +16131,7 @@ export default function ExcelStudioPage() {
 
                               style={{
                                 userSelect: isEditing ? "text" : "none",
+                                touchAction: "none",
                                 WebkitUserSelect: isEditing ? "text" : "none",
                                 width: sheet.colWidths[c] || DEFAULT_COL_WIDTH,
                                 minWidth: sheet.colWidths[c] || DEFAULT_COL_WIDTH,
@@ -16300,8 +16383,8 @@ export default function ExcelStudioPage() {
                   type="button"
                   onClick={() => setExtendSelectMode((on) => !on)}
                   className={`md:hidden rounded-md border px-2 py-0.5 ${extendSelectMode
-                      ? "border-[#107C10] bg-[#107C10] text-white"
-                      : "border-[#D2D0CE] bg-white"
+                    ? "border-[#107C10] bg-[#107C10] text-white"
+                    : "border-[#D2D0CE] bg-white"
                     }`}
                 >
                   {extendSelectMode ? "বাড়ানো চালু" : "বাড়ান"}
