@@ -5645,6 +5645,7 @@ export default function ExcelStudioPage() {
   const [activeMenuIndex, setActiveMenuIndex] = useState<number | null>(null);
   const [focusedMenuItemIndex, setFocusedMenuItemIndex] = useState<number | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileRibbonOpen, setMobileRibbonOpen] = useState(false);
   const [mobileOpenCategory, setMobileOpenCategory] = useState<number | null>(null);
 
   const sheet = sheets[activeSheetIndex] || sheets[0];
@@ -14220,12 +14221,21 @@ export default function ExcelStudioPage() {
           />
           <span className="relative z-10 font-bold text-white">Home</span>
         </button>
-
+        <button
+          type="button"
+          onClick={() => setMobileRibbonOpen((v) => !v)}
+          aria-expanded={mobileRibbonOpen}
+          aria-label="Toolbar"
+          className="alx-ribbon-btn md:hidden rounded-md border border-[#E3A20060] px-2 py-2 text-xs font-bold text-[#F8D150]"
+        >
+          {mobileRibbonOpen ? "▲ Tools" : "▼ Tools"}
+        </button>
 
         <button
           type="button"
           onClick={() => setMobileMenuOpen((open) => !open)}
           className="md:hidden ml-auto rounded-md border border-[#E3A200]/60 px-2 py-2"
+
           aria-label="Open menu"
           aria-expanded={mobileMenuOpen}
         >
@@ -14370,7 +14380,9 @@ export default function ExcelStudioPage() {
 
 
       {/* alimxl Style Enterprise Toolbar */}
-      <div className="awm-vip-toolbar border-b-2 border-[#E3A200] bg-linear-to-b from-[#FFFDF4] via-[#FFF6D6] to-[#F7E7B0] shadow-[0_2px_6px_rgba(1,78,0,0.18)]">
+      <div
+        className={`awm-vip-toolbar alx-ribbon ${mobileRibbonOpen ? "alx-ribbon-open" : ""} border-b-2 border-[#E3A200] bg-linear-to-b from-[#FFFDF4] via-[#FFF6D6] to-[#F7E7B0] shadow-[0_2px_6px_rgba(1,78,0,0.18)]`}
+      >
         <div className="flex items-center gap-3 border-b border-[#D2D0CE] px-3 py-1.5">
 
         </div>
@@ -16561,7 +16573,7 @@ export default function ExcelStudioPage() {
 
         {!rightSidebarOpen && (
           <div
-            className="relative flex shrink-0"
+            className="alx-sidebar-rail relative flex shrink-0"
             onMouseEnter={() => setSidebarHoverPeek(true)}
             onMouseLeave={() => setSidebarHoverPeek(false)}
           >
@@ -17829,15 +17841,16 @@ export default function ExcelStudioPage() {
           </div>
         </Modal>
       )}
-
-      <RecoveryDrafts
-        workbook={buildWorkbookSnapshot()}
-        enabled={!showHomeScreen}
-        onRecovered={() => {
-          void refreshRecentFromDevice();
-          setShowLoadDialog(true);
-        }}
-      />
+      <div className="alx-recovery">
+        <RecoveryDrafts
+          workbook={buildWorkbookSnapshot()}
+          enabled={!showHomeScreen}
+          onRecovered={() => {
+            void refreshRecentFromDevice();
+            setShowLoadDialog(true);
+          }}
+        />
+      </div>
 
       <MyFiles
         open={showLoadDialog}

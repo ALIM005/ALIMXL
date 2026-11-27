@@ -5,6 +5,8 @@ const nextConfig: NextConfig = {
 
   partialPrefetching: true,
 
+  allowedDevOrigins: ["192.168.0.144"],
+
   turbopack: {
     rules: {
       "*.css": {
