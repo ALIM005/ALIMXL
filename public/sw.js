@@ -20,7 +20,7 @@
  *
  * This is separate from package.json's application version.
  */
-const APP_RELEASE = "v4-offline-2";
+const APP_RELEASE = "v4-offline-3";
 
 const CACHE_PREFIX = "alimxl-shell-";
 const CACHE_NAME = `${CACHE_PREFIX}${APP_RELEASE}`;
@@ -642,4 +642,9 @@ self.addEventListener("message", (event) => {
       }
     })()
   );
+});
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "ALIMXL_SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });

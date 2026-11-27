@@ -5635,7 +5635,8 @@ export default function ExcelStudioPage() {
 
   const [darkMode, setDarkMode] = useState(false);
   const [showStatusBar, setShowStatusBar] = useState(true);
-    const [statusMoreOpen, setStatusMoreOpen] = useState(false);
+  const [statusMoreOpen, setStatusMoreOpen] = useState(false);
+  const [extendSelectMode, setExtendSelectMode] = useState(false);
   const [displayGrouping, setDisplayGrouping] = useState<DisplayGrouping>(DISPLAY_SETTINGS.grouping);
   const [displayDigits, setDisplayDigits] = useState<DisplayDigits>(DISPLAY_SETTINGS.digits);
   const [showPredictiveAnalytics, setShowPredictiveAnalytics] = useState(false);
@@ -6841,7 +6842,7 @@ export default function ExcelStudioPage() {
     setCtrlSelectedRows([]);
     setCtrlSelectedCols([]);
     setCtrlSelectedCells([]);
-    if (e?.shiftKey) {
+    if (e?.shiftKey || extendSelectMode) {
       dragging.current = false;
       setSelection((prev) => ({ ...prev, r2: row, c2: col }));
       setActiveCell(key);
@@ -16295,6 +16296,23 @@ export default function ExcelStudioPage() {
             <div className="alx-status-bar flex shrink-0 items-center justify-between border-t border-[#D2D0CE] bg-[#F3F2F1] px-3 py-1 text-xs text-[#3B3A39]">
               <div className="flex items-center gap-4">
                 <span>Selected: {selectionStats.count}</span>
+                <button
+                  type="button"
+                  onClick={() => setExtendSelectMode((on) => !on)}
+                  className={`md:hidden rounded-md border px-2 py-0.5 ${extendSelectMode
+                      ? "border-[#107C10] bg-[#107C10] text-white"
+                      : "border-[#D2D0CE] bg-white"
+                    }`}
+                >
+                  {extendSelectMode ? "বাড়ানো চালু" : "বাড়ান"}
+                </button>
+                <button
+                  type="button"
+                  onClick={selectAllCells}
+                  className="md:hidden rounded-md border border-[#D2D0CE] bg-white px-2 py-0.5"
+                >
+                  সব
+                </button>
                 {selectionStats.numericCount > 0 && (
                   <>
                     <span>Count: {selectionStats.numericCount.toLocaleString("en-US")}</span>
@@ -16310,7 +16328,7 @@ export default function ExcelStudioPage() {
                   </>
                 )}
               </div>
-                            <button
+              <button
                 type="button"
                 className="alx-status-more rounded-md border border-[#D2D0CE] bg-white px-2 py-0.5"
                 aria-expanded={statusMoreOpen}

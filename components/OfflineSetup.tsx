@@ -1080,8 +1080,8 @@ export default function OfflineSetup() {
 
       setNotice((current) =>
         current &&
-        current.key === next.key &&
-        current.text === next.text
+          current.key === next.key &&
+          current.text === next.text
           ? current
           : next
       );
@@ -1588,6 +1588,29 @@ export default function OfflineSetup() {
               <p className="alx-toast-text">{notice.text}</p>
             </div>
           </div>
+
+          {notice.key === "update-waiting" && (
+            <button
+              type="button"
+              onClick={() => {
+                navigator.serviceWorker.addEventListener(
+                  "controllerchange",
+                  () => window.location.reload(),
+                  { once: true }
+                );
+                void navigator.serviceWorker
+                  .getRegistration()
+                  .then((reg) =>
+                    reg?.waiting?.postMessage({
+                      type: "ALIMXL_SKIP_WAITING",
+                    })
+                  );
+              }}
+              className="alx-btn alx-btn-primary"
+            >
+              এখনই আপডেট করুন
+            </button>
+          )}
 
           <div className="alx-toast-actions">
             {showInstallButton && (
