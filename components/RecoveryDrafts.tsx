@@ -28,6 +28,7 @@ export default function RecoveryDrafts({workbook,enabled,onRecovered}:Props) {
     alive.current=true;
     const capture=async()=>{
       const snapshot=current.current;
+            if(typeof window!=="undefined" && window.matchMedia("(max-width: 767px)").matches)return;
       if(!snapshot || snapshot===previous.current || writing.current || lock.current)return;
       writing.current=true;
       try {
