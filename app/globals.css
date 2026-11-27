@@ -145,3 +145,17 @@ canvas {
   }
   .alx-pill { right: 8px !important; bottom: 92px !important; max-width: calc(100vw - 16px); }
 }
+@media screen and (max-width: 767px) {
+  .alx-sheet-tabs {
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .alx-pill {
+    bottom: 56px !important;
+    transform: scale(0.85);
+    transform-origin: right bottom;
+  }
+}
