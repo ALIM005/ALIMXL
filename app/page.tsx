@@ -6865,7 +6865,7 @@ export default function ExcelStudioPage() {
   const touchScrollElRef = useRef<HTMLElement | null>(null);
   const touchPointRef = useRef<{ x: number; y: number } | null>(null);
   const touchRafRef = useRef<number | null>(null);
-    const touchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const touchSelectingRef = useRef(false);
   const touchStartPtRef = useRef<{ x: number; y: number; row: number; col: number } | null>(null);
   const touchLastSelectAtRef = useRef(0);
@@ -6911,7 +6911,7 @@ export default function ExcelStudioPage() {
     touchRafRef.current = requestAnimationFrame(touchAutoScrollStep);
   };
 
-    const handleTouchStart = (row: number, col: number, e: React.TouchEvent) => {
+  const handleTouchStart = (row: number, col: number, e: React.TouchEvent) => {
     const touch = e.touches[0];
     if (!touch) return;
     touchScrollElRef.current = (e.currentTarget as HTMLElement).closest("#awm-print-area") as HTMLElement | null;
@@ -6985,6 +6985,100 @@ export default function ExcelStudioPage() {
       document.removeEventListener("contextmenu", blockMenu);
     };
   }, []);
+
+  const [isTouchUi, setIsTouchUi] = useState(false);
+  const [handlePos, setHandlePos] = useState<{
+    tl: { x: number; y: number } | null;
+    br: { x: number; y: number } | null;
+  }>({ tl: null, br: null });
+  const touchOffsetRef = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    const mq = window.matchMedia("(pointer: coarse)");
+    const update = () => setIsTouchUi(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
+    if (!isTouchUi) return;
+    const raf = requestAnimationFrame(() => {
+      const box = document.getElementById("awm-print-area");
+      if (!box) {
+        setHandlePos((prev) => (prev.tl || prev.br ? { tl: null, br: null } : prev));
+        return;
+      }
+      const b = box.getBoundingClientRect();
+      const r1 = Math.min(selection.r1, selection.r2);
+      const r2 = Math.max(selection.r1, selection.r2);
+      const c1 = Math.min(selection.c1, selection.c2);
+      const c2 = Math.max(selection.c1, selection.c2);
+      const tlEl = cellRefs.current.get(cellKey(r1, c1));
+      const brEl = cellRefs.current.get(cellKey(r2, c2));
+      const inside = (x: number, y: number) => x >= b.left && x <= b.right && y >= b.top && y <= b.bottom;
+      let tl: { x: number; y: number } | null = null;
+      let br: { x: number; y: number } | null = null;
+      if (tlEl) {
+        const r = tlEl.getBoundingClientRect();
+        if (inside(r.left, r.top)) tl = { x: r.left, y: r.top };
+      }
+      if (brEl) {
+        const r = brEl.getBoundingClientRect();
+        if (inside(r.right, r.bottom)) br = { x: r.right, y: r.bottom };
+      }
+      setHandlePos((prev) => {
+        const same = (a: { x: number; y: number } | null, c: { x: number; y: number } | null) =>
+          a === c || (!!a && !!c && a.x === c.x && a.y === c.y);
+        return same(prev.tl, tl) && same(prev.br, br) ? prev : { tl, br };
+      });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [isTouchUi, selection, viewport, zoomLevel, editingKey, sheet.id, sheet.colWidths]);
+
+  const handleCornerTouchStart = (corner: "tl" | "br", e: React.TouchEvent) => {
+    e.stopPropagation();
+    const touch = e.touches[0];
+    const pos = handlePos[corner];
+    if (!touch || !pos) return;
+    touchScrollElRef.current = document.getElementById("awm-print-area");
+    if (touchTimerRef.current) {
+      clearTimeout(touchTimerRef.current);
+      touchTimerRef.current = null;
+    }
+    const inward = corner === "br" ? -10 : 10;
+    touchOffsetRef.current = { x: pos.x + inward - touch.clientX, y: pos.y + inward - touch.clientY };
+    touchPointRef.current = { x: pos.x + inward, y: pos.y + inward };
+    const rMin = Math.min(selection.r1, selection.r2);
+    const rMax = Math.max(selection.r1, selection.r2);
+    const cMin = Math.min(selection.c1, selection.c2);
+    const cMax = Math.max(selection.c1, selection.c2);
+    setSelection(
+      corner === "br"
+        ? { r1: rMin, c1: cMin, r2: rMax, c2: cMax }
+        : { r1: rMax, c1: cMax, r2: rMin, c2: cMin }
+    );
+    touchSelectingRef.current = true;
+    dragging.current = true;
+    try { navigator.vibrate?.(15); } catch { }
+    if (touchRafRef.current === null) touchRafRef.current = requestAnimationFrame(touchAutoScrollStep);
+  };
+
+  const handleCornerTouchMove = (e: React.TouchEvent) => {
+    e.stopPropagation();
+    if (!dragging.current) return;
+    const touch = e.touches[0];
+    if (!touch) return;
+    const x = touch.clientX + touchOffsetRef.current.x;
+    const y = touch.clientY + touchOffsetRef.current.y;
+    touchPointRef.current = { x, y };
+    selectFromTouchPoint(x, y);
+  };
+
+  const handleCornerTouchEnd = (e: React.TouchEvent) => {
+    e.stopPropagation();
+    handleTouchEnd();
+  };
 
 
   const handleMouseEnter = (row: number, col: number) => {
@@ -16389,6 +16483,42 @@ export default function ExcelStudioPage() {
                 )}
               </tbody>
             </table>
+            {isTouchUi && !editingKey && (["tl", "br"] as const).map((corner) => {
+              const p = handlePos[corner];
+              if (!p) return null;
+              return (
+                <div
+                  key={corner}
+                  onTouchStart={(e) => handleCornerTouchStart(corner, e)}
+                  onTouchMove={handleCornerTouchMove}
+                  onTouchEnd={handleCornerTouchEnd}
+                  onTouchCancel={handleCornerTouchEnd}
+                  style={{
+                    position: "fixed",
+                    left: p.x - 22,
+                    top: p.y - 22,
+                    width: 44,
+                    height: 44,
+                    zIndex: 60,
+                    touchAction: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: "50%",
+                      background: "#107C41",
+                      border: "2px solid #FFFFFF",
+                      boxShadow: "0 0 3px rgba(0,0,0,0.5)",
+                    }}
+                  />
+                </div>
+              );
+            })}
             {showDrawFunctions && (
               <svg
                 tabIndex={0}
