@@ -6916,6 +6916,7 @@ export default function ExcelStudioPage() {
   };
 
   const handleTouchStart = (row: number, col: number, e: React.TouchEvent) => {
+    setTouchActionBar(false);
     const touch = e.touches[0];
     if (!touch) return;
     touchScrollElRef.current = (e.currentTarget as HTMLElement).closest("#awm-print-area") as HTMLElement | null;
@@ -6959,7 +6960,10 @@ export default function ExcelStudioPage() {
   const handleTouchEnd = () => {
     if (touchTimerRef.current) clearTimeout(touchTimerRef.current);
     touchTimerRef.current = null;
-    if (touchSelectingRef.current) touchLastSelectAtRef.current = Date.now();
+    if (touchSelectingRef.current) {
+      touchLastSelectAtRef.current = Date.now();
+      setTouchActionBar(true);
+    }
     touchSelectingRef.current = false;
     touchStartPtRef.current = null;
     dragging.current = false;
@@ -7085,7 +7089,7 @@ export default function ExcelStudioPage() {
   };
 
   const [touchFillMode, setTouchFillMode] = useState(false);
-
+  const [touchActionBar, setTouchActionBar] = useState(false);
   const handleFillTouchStart = (e: React.TouchEvent) => {
     e.stopPropagation();
     const touch = e.touches[0];
@@ -16572,6 +16576,50 @@ export default function ExcelStudioPage() {
               >
                 Fill
               </button>
+            )}
+
+            {isTouchUi && !editingKey && touchActionBar && handlePos.tl && (
+              <div
+                style={{
+                  position: "fixed",
+                  left: Math.max(4, Math.min(handlePos.tl.x - 10, window.innerWidth - 230)),
+                  top: Math.max(4, handlePos.tl.y - 56),
+                  zIndex: 62,
+                  display: "flex",
+                  gap: 2,
+                  padding: 4,
+                  borderRadius: 10,
+                  background: "#FFFFFF",
+                  border: "1px solid #D1D5DB",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.35)",
+                }}
+              >
+                {[
+                  { label: "Cut", run: () => doCopy("cut") },
+                  { label: "Copy", run: () => doCopy("copy") },
+                  { label: "Paste", run: () => doPaste() },
+                ].map((b) => (
+                  <button
+                    key={b.label}
+                    type="button"
+                    onClick={() => {
+                      b.run();
+                      setTouchActionBar(false);
+                    }}
+                    style={{
+                      padding: "8px 14px",
+                      fontSize: 14,
+                      fontWeight: 700,
+                      color: "#107C41",
+                      background: "transparent",
+                      border: "none",
+                      borderRadius: 6,
+                    }}
+                  >
+                    {b.label}
+                  </button>
+                ))}
+              </div>
             )}
 
             {showDrawFunctions && (
