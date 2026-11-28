@@ -6885,6 +6885,10 @@ export default function ExcelStudioPage() {
     const row = Number(cell.dataset.row);
     const col = Number(cell.dataset.col);
     if (!Number.isFinite(row) || !Number.isFinite(col)) return;
+    if (isFilling.current) {
+      dragFillTo(row, col);
+      return;
+    }
     setSelection((prev) => (prev.r2 === row && prev.c2 === col ? prev : { ...prev, r2: row, c2: col }));
   };
 
@@ -7080,6 +7084,32 @@ export default function ExcelStudioPage() {
     handleTouchEnd();
   };
 
+  const [touchFillMode, setTouchFillMode] = useState(false);
+
+  const handleFillTouchStart = (e: React.TouchEvent) => {
+    e.stopPropagation();
+    const touch = e.touches[0];
+    const pos = handlePos.br;
+    if (!touch || !pos) return;
+    touchScrollElRef.current = document.getElementById("awm-print-area");
+    touchOffsetRef.current = { x: pos.x - 10 - touch.clientX, y: pos.y - 10 - touch.clientY };
+    touchPointRef.current = { x: pos.x - 10, y: pos.y - 10 };
+    isFilling.current = true;
+    fillSeriesMode.current = true;
+    fillBaseSelection.current = { ...selection };
+    setFillPreview({ ...selection });
+    touchSelectingRef.current = true;
+    dragging.current = true;
+    try { navigator.vibrate?.(15); } catch { }
+    if (touchRafRef.current === null) touchRafRef.current = requestAnimationFrame(touchAutoScrollStep);
+  };
+
+  const handleFillTouchEnd = (e: React.TouchEvent) => {
+    e.stopPropagation();
+    endFillDrag();
+    setTouchFillMode(false);
+    handleTouchEnd();
+  };
 
   const handleMouseEnter = (row: number, col: number) => {
     if (isFilling.current) {
@@ -16483,16 +16513,18 @@ export default function ExcelStudioPage() {
                 )}
               </tbody>
             </table>
+
             {isTouchUi && !editingKey && (["tl", "br"] as const).map((corner) => {
               const p = handlePos[corner];
               if (!p) return null;
+              const fillHandle = corner === "br" && touchFillMode;
               return (
                 <div
                   key={corner}
-                  onTouchStart={(e) => handleCornerTouchStart(corner, e)}
+                  onTouchStart={(e) => (fillHandle ? handleFillTouchStart(e) : handleCornerTouchStart(corner, e))}
                   onTouchMove={handleCornerTouchMove}
-                  onTouchEnd={handleCornerTouchEnd}
-                  onTouchCancel={handleCornerTouchEnd}
+                  onTouchEnd={(e) => (fillHandle ? handleFillTouchEnd(e) : handleCornerTouchEnd(e))}
+                  onTouchCancel={(e) => (fillHandle ? handleFillTouchEnd(e) : handleCornerTouchEnd(e))}
                   style={{
                     position: "fixed",
                     left: p.x - 22,
@@ -16510,8 +16542,8 @@ export default function ExcelStudioPage() {
                     style={{
                       width: 16,
                       height: 16,
-                      borderRadius: "50%",
-                      background: "#107C41",
+                      borderRadius: fillHandle ? 3 : "50%",
+                      background: fillHandle ? "#D97706" : "#107C41",
                       border: "2px solid #FFFFFF",
                       boxShadow: "0 0 3px rgba(0,0,0,0.5)",
                     }}
@@ -16519,6 +16551,29 @@ export default function ExcelStudioPage() {
                 </div>
               );
             })}
+            {isTouchUi && !editingKey && handlePos.br && (
+              <button
+                type="button"
+                onClick={() => setTouchFillMode((m) => !m)}
+                style={{
+                  position: "fixed",
+                  left: Math.max(4, handlePos.br.x - 70),
+                  top: Math.min(handlePos.br.y + 24, window.innerHeight - 60),
+                  zIndex: 61,
+                  padding: "6px 14px",
+                  borderRadius: 8,
+                  border: "1px solid #107C41",
+                  background: touchFillMode ? "#D97706" : "#FFFFFF",
+                  color: touchFillMode ? "#FFFFFF" : "#107C41",
+                  fontWeight: 700,
+                  fontSize: 14,
+                  boxShadow: "0 1px 4px rgba(0,0,0,0.3)",
+                }}
+              >
+                Fill
+              </button>
+            )}
+
             {showDrawFunctions && (
               <svg
                 tabIndex={0}
