@@ -7099,7 +7099,9 @@ export default function ExcelStudioPage() {
     touchOffsetRef.current = { x: pos.x - 10 - touch.clientX, y: pos.y - 10 - touch.clientY };
     touchPointRef.current = { x: pos.x - 10, y: pos.y - 10 };
     isFilling.current = true;
-    fillSeriesMode.current = true;
+    const selCells =
+      (Math.abs(selection.r2 - selection.r1) + 1) * (Math.abs(selection.c2 - selection.c1) + 1);
+    fillSeriesMode.current = selCells > 1;
     fillBaseSelection.current = { ...selection };
     setFillPreview({ ...selection });
     touchSelectingRef.current = true;
@@ -16716,7 +16718,7 @@ export default function ExcelStudioPage() {
                 >
                   <label className="flex items-center gap-1.5">
                     <span className="whitespace-nowrap text-[11px] font-medium">
-                      কমার ধরন
+                      Comma Style
                     </span>
 
                     <select
@@ -16733,14 +16735,14 @@ export default function ExcelStudioPage() {
                         International — 1,250,000
                       </option>
                       <option value="bd">
-                        লাখ–কোটি — 12,50,000
+                        Lakh-Crore — 12,50,000
                       </option>
                     </select>
                   </label>
 
                   <label className="flex items-center gap-1.5">
                     <span className="whitespace-nowrap text-[11px] font-medium">
-                      অঙ্ক
+                      Digits
                     </span>
 
                     <select

@@ -1170,7 +1170,7 @@ export default function OfflineSetup() {
         publish({
           key: `cache-ok:${status.release}`,
           kind: "info",
-          title: "প্রধান page-এর cache পাওয়া গেছে",
+          title: "Main page cache Found",
           text:
             `Cache release: ${status.release}। ` +
             "Home, Settings ও Photo Studio-এর HTML cache আছে। " +
