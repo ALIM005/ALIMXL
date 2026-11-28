@@ -1273,7 +1273,7 @@ export default function OfflineSetup() {
           publish({
             key: "update-waiting",
             kind: "info",
-            title: "নতুন সংস্করণ পাওয়া গেছে",
+            title: "New Version Available",
             text:
               "কাজ সেভ করে এই অ্যাপের সব tab ও installed " +
               "window বন্ধ করে আবার খুলুন। Update জোর করে " +
@@ -1608,7 +1608,7 @@ export default function OfflineSetup() {
               }}
               className="alx-btn alx-btn-primary"
             >
-              এখনই আপডেট করুন
+              Update Now
             </button>
           )}
 
