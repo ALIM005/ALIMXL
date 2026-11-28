@@ -16617,14 +16617,14 @@ export default function ExcelStudioPage() {
                     : "border-[#D2D0CE] bg-white"
                     }`}
                 >
-                  {extendSelectMode ? "বাড়ানো চালু" : "বাড়ান"}
+                  {extendSelectMode ? "Extend On" : "Extend"}
                 </button>
                 <button
                   type="button"
                   onClick={selectAllCells}
                   className="md:hidden rounded-md border border-[#D2D0CE] bg-white px-2 py-0.5"
                 >
-                  সব
+                  All
                 </button>
                 {selectionStats.numericCount > 0 && (
                   <>
